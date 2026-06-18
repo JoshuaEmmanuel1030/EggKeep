@@ -1,0 +1,283 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { message, userId } = await req.json();
+    
+    if (!message) {
+      throw new Error('Message is required');
+    }
+
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY is not configured');
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch ALL inventory data with full details
+    const { data: inflows, error: inflowsError } = await supabase
+      .from('inflows')
+      .select('id, product, quantity_butir, quantity_original, remaining_butir, date, category, invoice_supplier, created_at')
+      .order('date', { ascending: true });
+
+    if (inflowsError) {
+      console.error('Error fetching inflows:', inflowsError);
+      throw new Error('Failed to fetch inventory data');
+    }
+
+    const { data: outflows, error: outflowsError } = await supabase
+      .from('outflows')
+      .select('id, product, quantity_butir, date, category, invoice_supplier, created_at')
+      .order('date', { ascending: false });
+
+    if (outflowsError) {
+      console.error('Error fetching outflows:', outflowsError);
+      throw new Error('Failed to fetch outflow data');
+    }
+
+    const { data: activityLogs, error: logsError } = await supabase
+      .from('activity_logs')
+      .select('action_type, product, quantity_butir, quantity_original, recorded_at, category, invoice_supplier, user_email')
+      .order('recorded_at', { ascending: false })
+      .limit(20);
+
+    if (logsError) {
+      console.error('Error fetching activity logs:', logsError);
+    }
+
+    const today = new Date();
+    
+    // Calculate comprehensive inventory summary with batch details
+    interface BatchInfo {
+      date: string;
+      invoiceSupplier: string | null;
+      quantity: number;
+      daysOld: number;
+      isAtRisk: boolean;
+    }
+    
+    interface ProductSummary {
+      total: number;
+      remaining: number;
+      atRiskQuantity: number;
+      safeQuantity: number;
+      category: string;
+      batches: BatchInfo[];
+    }
+    
+    const inventorySummary: Record<string, ProductSummary> = {};
+    
+    for (const inflow of inflows || []) {
+      if (!inventorySummary[inflow.product]) {
+        inventorySummary[inflow.product] = { 
+          total: 0, 
+          remaining: 0, 
+          atRiskQuantity: 0,
+          safeQuantity: 0,
+          category: inflow.category,
+          batches: []
+        };
+      }
+      
+      const inflowDate = new Date(inflow.date);
+      const daysOld = Math.floor((today.getTime() - inflowDate.getTime()) / (1000 * 60 * 60 * 24));
+      const isAtRisk = inflow.category === 'egg' && daysOld > 5;
+      
+      inventorySummary[inflow.product].total += inflow.quantity_butir;
+      inventorySummary[inflow.product].remaining += inflow.remaining_butir;
+      
+      if (inflow.remaining_butir > 0) {
+        if (isAtRisk) {
+          inventorySummary[inflow.product].atRiskQuantity += inflow.remaining_butir;
+        } else {
+          inventorySummary[inflow.product].safeQuantity += inflow.remaining_butir;
+        }
+        
+        inventorySummary[inflow.product].batches.push({
+          date: inflow.date,
+          invoiceSupplier: inflow.invoice_supplier,
+          quantity: inflow.remaining_butir,
+          daysOld,
+          isAtRisk
+        });
+      }
+    }
+
+    // Calculate monthly averages (last 3 months)
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    
+    const monthlyInflows: Record<string, number[]> = {};
+    const monthlyOutflows: Record<string, number[]> = {};
+    
+    for (const inflow of inflows || []) {
+      const inflowDate = new Date(inflow.date);
+      if (inflowDate >= threeMonthsAgo) {
+        if (!monthlyInflows[inflow.product]) monthlyInflows[inflow.product] = [];
+        monthlyInflows[inflow.product].push(inflow.quantity_butir);
+      }
+    }
+    
+    for (const outflow of outflows || []) {
+      const outflowDate = new Date(outflow.date);
+      if (outflowDate >= threeMonthsAgo) {
+        if (!monthlyOutflows[outflow.product]) monthlyOutflows[outflow.product] = [];
+        monthlyOutflows[outflow.product].push(outflow.quantity_butir);
+      }
+    }
+
+    // Build comprehensive inventory context
+    let inventoryContext = "CURRENT INVENTORY WITH RISK ANALYSIS:\n";
+    let totalAtRisk = 0;
+    
+    for (const [product, data] of Object.entries(inventorySummary)) {
+      if (data.remaining > 0) {
+        inventoryContext += `\n${product} (${data.category}):\n`;
+        inventoryContext += `  Total: ${data.remaining.toLocaleString()} ${data.category === 'egg' ? 'butir' : 'pcs'}\n`;
+        
+        if (data.category === 'egg') {
+          inventoryContext += `  At Risk (>5 days): ${data.atRiskQuantity.toLocaleString()} butir\n`;
+          inventoryContext += `  Safe (<5 days): ${data.safeQuantity.toLocaleString()} butir\n`;
+          totalAtRisk += data.atRiskQuantity;
+          
+          if (data.batches.length > 0) {
+            inventoryContext += `  Batches (oldest first):\n`;
+            for (const batch of data.batches.slice(0, 5)) { // Show up to 5 batches
+              const status = batch.isAtRisk ? '❌ AT RISK' : '✅ OK';
+              const supplier = batch.invoiceSupplier ? ` (${batch.invoiceSupplier})` : '';
+              inventoryContext += `    - ${batch.date}${supplier}: ${batch.quantity.toLocaleString()} butir, ${batch.daysOld} days old ${status}\n`;
+            }
+            if (data.batches.length > 5) {
+              inventoryContext += `    ... and ${data.batches.length - 5} more batches\n`;
+            }
+          }
+        }
+      }
+    }
+    
+    inventoryContext += `\nTOTAL EGGS AT RISK: ${totalAtRisk.toLocaleString()} butir\n`;
+
+    // Monthly averages context
+    let monthlyContext = "\nMONTHLY AVERAGES (Last 3 months):\n";
+    for (const [product, quantities] of Object.entries(monthlyInflows)) {
+      const avgIn = Math.round(quantities.reduce((a, b) => a + b, 0) / 3);
+      const outQuantities = monthlyOutflows[product] || [];
+      const avgOut = outQuantities.length > 0 ? Math.round(outQuantities.reduce((a, b) => a + b, 0) / 3) : 0;
+      monthlyContext += `- ${product}: Avg Inflow ~${avgIn.toLocaleString()}/month, Avg Outflow ~${avgOut.toLocaleString()}/month\n`;
+    }
+
+    // Stock velocity (days of stock remaining)
+    let velocityContext = "\nSTOCK VELOCITY (Days until depleted at current rate):\n";
+    for (const [product, data] of Object.entries(inventorySummary)) {
+      if (data.remaining > 0) {
+        const outQuantities = monthlyOutflows[product] || [];
+        if (outQuantities.length > 0) {
+          const avgDailyOut = outQuantities.reduce((a, b) => a + b, 0) / 90; // 90 days = 3 months
+          const daysRemaining = avgDailyOut > 0 ? Math.round(data.remaining / avgDailyOut) : Infinity;
+          velocityContext += `- ${product}: ~${daysRemaining === Infinity ? 'No outflow data' : `${daysRemaining} days`}\n`;
+        }
+      }
+    }
+
+    // Recent activity
+    let activityContext = "\nRECENT ACTIVITY (Last 20 transactions):\n";
+    for (const log of activityLogs || []) {
+      const date = new Date(log.recorded_at).toLocaleDateString();
+      const action = log.action_type === 'inflow' ? '📥 IN' : '📤 OUT';
+      const user = log.user_email ? ` by ${log.user_email}` : '';
+      const invoice = log.invoice_supplier ? ` (${log.invoice_supplier})` : '';
+      activityContext += `- ${date}: ${action} ${log.quantity_butir.toLocaleString()} ${log.product}${invoice}${user}\n`;
+    }
+
+    const systemPrompt = `You are a highly capable warehouse inventory secretary/assistant. You have complete access to all inventory data and can answer any question about stock levels, batches, suppliers, transactions, and analytics.
+
+${inventoryContext}
+${monthlyContext}
+${velocityContext}
+${activityContext}
+
+YOUR CAPABILITIES:
+- Report exact stock levels for any product
+- Identify at-risk eggs (>5 days old) with specific batch details
+- Show which batches came from which supplier/invoice
+- Calculate monthly averages for inflows and outflows
+- Estimate when stock will run out based on usage patterns
+- Report recent transaction history
+- Identify slow-moving or fast-moving products
+- Answer questions in the same language as the user
+
+GUIDELINES:
+- Be precise and use exact numbers from the data
+- If asked about at-risk eggs, provide batch-level details (date, supplier, quantity)
+- If asked about trends, use the monthly averages
+- Proactively mention important issues like high at-risk quantities
+- Be concise but thorough
+- If a product is not in inventory, say so clearly`;
+
+    console.log('Sending comprehensive request to Lovable AI');
+
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('AI gateway error:', response.status, errorText);
+      
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: 'AI credits exhausted. Please add credits to continue.' }), {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error('AI gateway error');
+    }
+
+    const data = await response.json();
+    const assistantMessage = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
+
+    console.log('AI response received successfully');
+
+    return new Response(JSON.stringify({ response: assistantMessage }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (error: unknown) {
+    console.error('Error in inventory-assistant:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});
