@@ -1,6 +1,8 @@
 import { parseISO } from "date-fns";
 import { InflowEntry, OutflowEntry, StockSummary, CONVERSION_DICT, InventoryCategory, PRODUCT_NAMES, BatchDetail } from "@/types/inventory";
 
+export const EGG_FRESHNESS_DAYS = 5;
+
 const INFLOW_KEY = "js_online_inflow";
 const OUTFLOW_KEY = "js_online_outflow";
 
@@ -109,7 +111,7 @@ export function calculateStockSummary(inflows: InflowEntry[]): StockSummary[] {
       
       const inflowDate = parseISO(inflow.date);
       const daysInWarehouse = Math.floor((today.getTime() - inflowDate.getTime()) / (1000 * 60 * 60 * 24));
-      const isAtRisk = inflow.category === 'egg' && daysInWarehouse > 5;
+      const isAtRisk = inflow.category === 'egg' && daysInWarehouse > EGG_FRESHNESS_DAYS;
       
       const batch: BatchDetail = {
         id: inflow.id,
@@ -147,7 +149,7 @@ export function calculateStockSummary(inflows: InflowEntry[]): StockSummary[] {
     }
 
     // Only eggs can be "at risk"
-    const isAtRisk = data.category === 'egg' && maxDays > 5;
+    const isAtRisk = data.category === 'egg' && maxDays > EGG_FRESHNESS_DAYS;
     
     // Sort batches by date (oldest first - FIFO)
     const sortedBatches = data.batches.sort((a, b) => 

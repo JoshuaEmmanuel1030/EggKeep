@@ -6,42 +6,75 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const EGG_FRESHNESS_DAYS = 5;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { message, userId } = await req.json();
-    
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: { user }, error: userError } = await authClient.auth.getUser();
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { message } = await req.json();
+
     if (!message) {
       throw new Error('Message is required');
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not configured');
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch ALL inventory data with full details
+    // Only fetch active batches (remaining > 0) to keep payload small
     const { data: inflows, error: inflowsError } = await supabase
       .from('inflows')
       .select('id, product, quantity_butir, quantity_original, remaining_butir, date, category, invoice_supplier, created_at')
-      .order('date', { ascending: true });
+      .gt('remaining_butir', 0)
+      .order('date', { ascending: true })
+      .limit(500);
 
     if (inflowsError) {
       console.error('Error fetching inflows:', inflowsError);
       throw new Error('Failed to fetch inventory data');
     }
 
+    // Only last 3 months of outflows needed for velocity/average calculations
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - 3);
+
     const { data: outflows, error: outflowsError } = await supabase
       .from('outflows')
       .select('id, product, quantity_butir, date, category, invoice_supplier, created_at')
-      .order('date', { ascending: false });
+      .gte('date', cutoff.toISOString().slice(0, 10))
+      .order('date', { ascending: false })
+      .limit(500);
 
     if (outflowsError) {
       console.error('Error fetching outflows:', outflowsError);
@@ -94,7 +127,7 @@ serve(async (req) => {
       
       const inflowDate = new Date(inflow.date);
       const daysOld = Math.floor((today.getTime() - inflowDate.getTime()) / (1000 * 60 * 60 * 24));
-      const isAtRisk = inflow.category === 'egg' && daysOld > 5;
+      const isAtRisk = inflow.category === 'egg' && daysOld > EGG_FRESHNESS_DAYS;
       
       inventorySummary[inflow.product].total += inflow.quantity_butir;
       inventorySummary[inflow.product].remaining += inflow.remaining_butir;
@@ -116,27 +149,19 @@ serve(async (req) => {
       }
     }
 
-    // Calculate monthly averages (last 3 months)
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    // Calculate monthly averages (last 3 months — outflows already filtered to this window)
     
     const monthlyInflows: Record<string, number[]> = {};
     const monthlyOutflows: Record<string, number[]> = {};
     
     for (const inflow of inflows || []) {
-      const inflowDate = new Date(inflow.date);
-      if (inflowDate >= threeMonthsAgo) {
-        if (!monthlyInflows[inflow.product]) monthlyInflows[inflow.product] = [];
-        monthlyInflows[inflow.product].push(inflow.quantity_butir);
-      }
+      if (!monthlyInflows[inflow.product]) monthlyInflows[inflow.product] = [];
+      monthlyInflows[inflow.product].push(inflow.quantity_butir);
     }
-    
+
     for (const outflow of outflows || []) {
-      const outflowDate = new Date(outflow.date);
-      if (outflowDate >= threeMonthsAgo) {
-        if (!monthlyOutflows[outflow.product]) monthlyOutflows[outflow.product] = [];
-        monthlyOutflows[outflow.product].push(outflow.quantity_butir);
-      }
+      if (!monthlyOutflows[outflow.product]) monthlyOutflows[outflow.product] = [];
+      monthlyOutflows[outflow.product].push(outflow.quantity_butir);
     }
 
     // Build comprehensive inventory context
@@ -227,18 +252,18 @@ GUIDELINES:
 - Be concise but thorough
 - If a product is not in inventory, say so clearly`;
 
-    console.log('Sending comprehensive request to Lovable AI');
-
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2048,
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
           { role: 'user', content: message }
         ],
       }),
@@ -246,27 +271,19 @@ GUIDELINES:
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('AI gateway error:', response.status, errorText);
-      
+      console.error('Anthropic API error:', response.status, errorText);
+
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
           status: 429,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: 'AI credits exhausted. Please add credits to continue.' }), {
-          status: 402,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      throw new Error('AI gateway error');
+      throw new Error('Anthropic API error');
     }
 
     const data = await response.json();
-    const assistantMessage = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
-
-    console.log('AI response received successfully');
+    const assistantMessage = data.content?.[0]?.text || 'Sorry, I could not generate a response.';
 
     return new Response(JSON.stringify({ response: assistantMessage }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

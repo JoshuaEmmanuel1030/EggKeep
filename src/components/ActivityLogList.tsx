@@ -1,11 +1,41 @@
 import { useState, useMemo } from "react";
-import { Cloud, CloudOff, Filter, X, Search, Calendar, ChevronDown } from "lucide-react";
+import { Cloud, CloudOff, Filter, X, Search, Calendar, ChevronDown, Download } from "lucide-react";
+import { ActivityLog } from "@/types/activityLog";
+
+function exportLogsToCSV(logs: ActivityLog[]): string {
+  const headers = ["Date", "Time", "Type", "Product", "Qty (butir)", "Buyer / Supplier", "Invoice", "User", "Voided"];
+  const rows = logs.map(log => {
+    const dt = new Date(log.recorded_at);
+    return [
+      dt.toISOString().slice(0, 10),
+      dt.toTimeString().slice(0, 5),
+      log.action_type,
+      log.product,
+      log.quantity_butir.toString(),
+      log.metadata?.buyerName || log.invoice_supplier || "",
+      log.metadata?.invoiceRef || log.invoice_supplier || "",
+      log.user_email || "",
+      log.voided_at ? "YES" : "NO",
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",");
+  });
+  return [headers.join(","), ...rows].join("\n");
+}
+
+function downloadCSV(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
 import { Badge } from "@/components/ui/badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -20,7 +50,6 @@ import {
 } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ActivityLog } from "@/types/activityLog";
 import { GroupedActivityLog } from "./GroupedActivityLog";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { format, parseISO, startOfDay, endOfDay, isWithinInterval } from "date-fns";
@@ -148,10 +177,20 @@ export function ActivityLogList({
   if (loading) {
     return (
       <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <div className="animate-pulse text-muted-foreground">
-            Loading activity logs...
-          </div>
+        <CardHeader>
+          <Skeleton className="h-6 w-40" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+              <Skeleton className="h-5 w-16" />
+            </div>
+          ))}
         </CardContent>
       </Card>
     );
@@ -192,8 +231,25 @@ export function ActivityLogList({
               {t.activity.title}
             </CardTitle>
             
-            {/* View Toggle */}
-            <ToggleGroup 
+            <div className="flex items-center gap-2">
+              {/* Export Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  const csv = exportLogsToCSV(filteredLogs);
+                  const date = new Date().toISOString().slice(0, 10);
+                  downloadCSV(csv, `activity-logs-${date}.csv`);
+                }}
+                disabled={filteredLogs.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
+
+              {/* View Toggle */}
+              <ToggleGroup
               type="single" 
               value={viewMode} 
               onValueChange={(value) => value && setViewMode(value as "grouped" | "chronological")}
@@ -216,6 +272,7 @@ export function ActivityLogList({
                 {t.activity.chronologicalView}
               </ToggleGroupItem>
             </ToggleGroup>
+          </div>
           </div>
         </CardHeader>
 

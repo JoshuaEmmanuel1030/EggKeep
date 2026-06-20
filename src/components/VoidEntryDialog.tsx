@@ -20,6 +20,7 @@ interface VoidEntryDialogProps {
   entry: ActivityLog | null;
   onConfirm: (reason: string) => Promise<void>;
   loading?: boolean;
+  orderLogsCount?: number;
 }
 
 export function VoidEntryDialog({
@@ -28,6 +29,7 @@ export function VoidEntryDialog({
   entry,
   onConfirm,
   loading = false,
+  orderLogsCount,
 }: VoidEntryDialogProps) {
   const { t } = useLanguage();
   const [reason, setReason] = useState("");
@@ -57,10 +59,12 @@ export function VoidEntryDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
-            {t.activity.voidEntry}
+            {orderLogsCount && orderLogsCount > 1 ? `Void Entire Order (${orderLogsCount} items)` : t.activity.voidEntry}
           </DialogTitle>
           <DialogDescription>
-            {t.activity.voidWarning}
+            {orderLogsCount && orderLogsCount > 1
+              ? `This will void all ${orderLogsCount} entries in this order and restore inventory.`
+              : t.activity.voidWarning}
           </DialogDescription>
         </DialogHeader>
 

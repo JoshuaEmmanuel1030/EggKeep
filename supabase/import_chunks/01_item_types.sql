@@ -1,0 +1,63 @@
+SET session_replication_role = replica;
+BEGIN;
+-- item_types
+-- item_types
+DELETE FROM public.item_types;
+
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('843a9b34-c918-4cfc-8627-7f11a852fcb4', 'box', 'box osave', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('b3cedc49-e48b-4890-b03c-38fa92f7844b', 'box', 'box osave polos', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('b52d475c-2e99-4f99-8dfc-d2801e860116', 'box', 'box kecil', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('65b5ae93-ce7f-4389-8e9e-e7b3197ffbd2', 'label', 'negeri omega po online', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('6297b6b9-9316-4619-ab4d-84077691d92b', 'label', 'Renkoles online', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('45689da9-04ba-49d2-b55e-36e5cfcbba4e', 'label', 'Kip omega', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('1419731a-adbb-4bc0-90b9-5b0bb3f3e88c', 'label', 'Kip kp arabia', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('9696e1f0-8c84-46c0-a93d-71cf07b8bd4c', 'label', 'Kip puyuh', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('b4f64cfe-1e83-4c9d-863e-95923a4fbd6e', 'label', 'Kip asin matang', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('d38305a0-c73c-47dc-a83d-7c46dd15b347', 'label', 'Segari 15', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('9e8bd312-4df7-4d0e-99c0-f5aeaefcc078', 'label', 'Segari 10', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('785e0210-6e07-48f0-9209-472c93ca8c2d', 'label', 'Segari negeri omega', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('11433161-3712-4c0a-a57b-5e2df8703a09', 'label', 'puyuh', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('900ca331-f783-4904-bfb0-345a4fd49a2a', 'label', 'kp kuning', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('d116076c-398a-4844-bb95-44bb6b2e8822', 'label', 'astro goods', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('317323ca-c760-4fb3-a77a-ac2a241e8040', 'label', 'bebek mentah sajira', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('505c8a2a-89ce-40cd-b291-fd397b1f768e', 'label', 'asin matang sajira', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('999b3d9b-b3c7-4e46-bd9c-7ae8f2231d3f', 'label', 'isi 4', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('b0db52f3-23f3-4303-9a50-cbabc3b2c782', 'label', 'kampung isi 10', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('b3d3edfb-f5fe-4b5b-8759-7e47d94a5567', 'label', 'farmers negeri omega', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('eb5b4edd-20fb-462b-8815-8da25cbfe66a', 'label', 'farmers negeri isi 10', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('bc9c84f5-8f3a-4204-b07f-d6b4ef744d7e', 'label', 'farmers negeri isi 30', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('a7be5656-b312-4920-8175-016627454c09', 'label', 'kip negeri isi 10', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('ce8fe88b-7077-428f-a588-75338db6f6c6', 'packaging', 'negeri isi 10', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('26554d47-3828-4e7f-89bd-ee65bbf7471a', 'packaging', 'bebek kecil', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('031401b8-d079-4e28-85f9-b49ea51139e4', 'packaging', 'bebek besar', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('8ff6c156-5b51-46f9-81fc-96c5999b6bcf', 'packaging', 'kampung isi 6', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('c54e4ef7-800d-4426-a0eb-4a7c62715060', 'packaging', 'kampung isi 10', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('73950fba-b2f8-40ec-8088-3105f45b44e8', 'packaging', 'puyuh isi 25', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('fcde803e-63de-420f-885c-dd9a700d759f', 'packaging', 'puyuh isi 30', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('f68a7e02-e2d0-4990-82f3-65de092fc198', 'packaging', 'negeri isi 6', '2026-01-12 19:19:50.503615+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('e7e519e2-3a82-4a18-bf59-d4ea582416ef', 'egg', 'KUNING MANIK', '2026-01-13 07:34:49.14258+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('78b7a390-8cc7-4973-91c3-298d3ed7f9a9', 'packaging', 'mika plastik', '2026-01-13 07:34:49.14258+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('31bdef1b-fcfa-4828-86c5-622a85724c6d', 'egg', 'NEGERI BIASA', '2026-01-16 06:09:05.112882+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('f96a9cf5-460a-4511-a9bb-b27da37dc9b4', 'egg', 'NEGERI OMEGA', '2026-01-16 06:09:05.112882+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('ac6cb277-af10-40f8-a427-c33f07b4d538', 'egg', 'KAMPUNG BIASA', '2026-01-16 06:09:05.112882+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('fcb8de81-8fa5-4088-8b58-639101c3b981', 'egg', 'KAMPUNG MERAH', '2026-01-16 06:09:05.112882+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('7c8a0b86-c105-4eb7-b835-1203e6ff030b', 'egg', 'ASIN MATENG', '2026-01-16 06:09:05.112882+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('96d78016-1527-4f79-96a7-614e537bbe07', 'egg', 'ASIN MENTAH', '2026-01-16 06:09:05.112882+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('20511a5d-c7f5-4848-80e8-2c5062bd92ab', 'egg', 'BEBEK TAWAR', '2026-01-16 06:09:05.112882+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('282835b5-b771-4ef7-ac5e-b69aa529968d', 'egg', 'PUYUH', '2026-01-16 06:09:05.112882+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('2f8df21d-aa1f-460c-beac-c02aef286478', 'egg', 'NEGERI BIASA (Retakan)', '2026-01-13 07:59:57.120439+00', '2026-01-16 06:10:16.187647+00') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('610c1e4b-d66b-4165-bbcc-70f9f8ce16d0', 'egg', 'NEGERI OMEGA (Retakan)', '2026-01-13 07:59:57.120439+00', '2026-01-16 06:10:16.187647+00') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('6b113e02-7d9e-4abe-bd07-68bf2179a0d8', 'egg', 'KAMPUNG BIASA (Retakan)', '2026-01-13 07:59:57.120439+00', '2026-01-16 06:10:16.187647+00') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('921eaf11-5cbe-4aad-bf4c-0b3aec128b4f', 'egg', 'KAMPUNG MERAH (Retakan)', '2026-01-13 07:59:57.120439+00', '2026-01-16 06:10:16.187647+00') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('295a416f-a411-4874-bde1-d5f5bfc30511', 'egg', 'BEBEK TAWAR (Retakan)', '2026-01-13 07:59:57.120439+00', '2026-01-16 06:10:16.187647+00') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('8da31a44-bda8-4ca9-ab2e-7228e306a819', 'egg', 'ASIN MATENG (Retakan)', '2026-01-13 07:59:57.120439+00', '2026-01-16 06:10:16.187647+00') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('f0ec2fe2-5069-4fdc-8843-06e69300a8a3', 'egg', 'ASIN MENTAH (Retakan)', '2026-01-13 07:59:57.120439+00', '2026-01-16 06:10:16.187647+00') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('ec6149ce-c31c-41fb-b7ad-03070f9091d5', 'egg', 'PUYUH (Retakan)', '2026-01-13 07:59:57.120439+00', '2026-01-16 06:10:16.187647+00') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('85055609-8cd4-4d27-a7fc-e2096dfebed1', 'egg', 'KUNING MANIK (Retakan)', '2026-01-13 07:59:57.120439+00', '2026-01-16 06:10:16.187647+00') ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('ed09b962-caf8-4d40-a8ed-17dd8062c2bb', 'packaging', 'NEGERI ISI 4', '2026-01-16 06:14:07.881332+00', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.item_types (id, category, name, created_at, deleted_at) VALUES ('95edc2ef-0d86-480a-96b7-53fcba4045b8', 'packaging', 'negeri isi 15', '2026-01-02 04:55:28.30954+00', NULL) ON CONFLICT (id) DO NOTHING;
+COMMIT;
+SET session_replication_role = DEFAULT;
+
+-- Verify item_types
+SELECT 'item_types' AS tbl, COUNT(*) FROM public.item_types;

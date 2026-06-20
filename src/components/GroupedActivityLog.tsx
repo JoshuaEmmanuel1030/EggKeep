@@ -63,6 +63,8 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ActivityLog | null>(null);
   const [voidLoading, setVoidLoading] = useState(false);
+  const [voidOrderDialogOpen, setVoidOrderDialogOpen] = useState(false);
+  const [voidOrderLogs, setVoidOrderLogs] = useState<ActivityLog[]>([]);
 
   // Group logs by date, then by type (quick outflow, manual outflow, inflow)
   const groupedData = useMemo(() => {
@@ -150,6 +152,29 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
     }
   };
 
+  const handleVoidOrderClick = (logs: ActivityLog[]) => {
+    setVoidOrderLogs(logs);
+    setVoidOrderDialogOpen(true);
+  };
+
+  const handleVoidOrderConfirm = async (reason: string) => {
+    setVoidLoading(true);
+    try {
+      for (const log of voidOrderLogs) {
+        const entryId = await findRelatedEntryId(log);
+        if (!entryId) continue;
+        if (log.action_type === 'outflow') {
+          await voidOutflow(entryId, log.id, reason);
+        } else {
+          await voidInflow(entryId, log.id, reason);
+        }
+      }
+    } finally {
+      setVoidLoading(false);
+      setVoidOrderLogs([]);
+    }
+  };
+
   const isEditable = (log: ActivityLog) => {
     return canEdit(log.created_at, log.user_id) && !log.voided_at;
   };
@@ -195,12 +220,13 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
   return (
     <div className="space-y-6">
       {groupedData.map((dateGroup, idx) => (
-        <DateSection 
-          key={idx} 
-          group={dateGroup} 
+        <DateSection
+          key={idx}
+          group={dateGroup}
           onEditClick={handleEditClick}
           isEditable={isEditable}
           getEditWindowHours={getEditWindowHours}
+          onVoidOrderClick={handleVoidOrderClick}
         />
       ))}
       
@@ -211,6 +237,14 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
         onConfirm={handleVoidConfirm}
         loading={voidLoading}
       />
+      <VoidEntryDialog
+        open={voidOrderDialogOpen}
+        onOpenChange={setVoidOrderDialogOpen}
+        entry={voidOrderLogs[0] ?? null}
+        onConfirm={handleVoidOrderConfirm}
+        loading={voidLoading}
+        orderLogsCount={voidOrderLogs.length}
+      />
     </div>
   );
 }
@@ -220,9 +254,10 @@ interface DateSectionProps {
   onEditClick: (log: ActivityLog) => void;
   isEditable: (log: ActivityLog) => boolean;
   getEditWindowHours: (createdAt: string) => number;
+  onVoidOrderClick: (logs: ActivityLog[]) => void;
 }
 
-function DateSection({ group, onEditClick, isEditable, getEditWindowHours }: DateSectionProps) {
+function DateSection({ group, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick }: DateSectionProps) {
   const { t } = useLanguage();
   const hasQuickOutflows = group.quickOutflows.size > 0;
   const hasManualOutflows = group.manualOutflows.length > 0;
@@ -246,12 +281,13 @@ function DateSection({ group, onEditClick, isEditable, getEditWindowHours }: Dat
           </div>
           <div className="space-y-2 pl-2">
             {Array.from(group.quickOutflows.values()).map((order, idx) => (
-              <BuyerOrderCard 
-                key={idx} 
-                order={order} 
+              <BuyerOrderCard
+                key={idx}
+                order={order}
                 onEditClick={onEditClick}
                 isEditable={isEditable}
                 getEditWindowHours={getEditWindowHours}
+                onVoidOrderClick={onVoidOrderClick}
               />
             ))}
           </div>
@@ -308,9 +344,10 @@ interface BuyerOrderCardProps {
   onEditClick: (log: ActivityLog) => void;
   isEditable: (log: ActivityLog) => boolean;
   getEditWindowHours: (createdAt: string) => number;
+  onVoidOrderClick: (logs: ActivityLog[]) => void;
 }
 
-function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours }: BuyerOrderCardProps) {
+function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick }: BuyerOrderCardProps) {
   const { t } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const formattedTime = format(parseISO(order.timestamp), "HH:mm");
@@ -363,15 +400,29 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours }: 
               <CloudOff className="h-3 w-3 text-yellow-500" />
             )}
             {canEditOrder && !isVoided && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => onEditClick(firstLog)}
-                title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => onEditClick(firstLog)}
+                  title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
+                  aria-label="Edit"
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                {order.logs.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs text-destructive hover:text-destructive px-2"
+                    aria-label="Void entire order"
+                    onClick={() => onVoidOrderClick(order.logs)}
+                  >
+                    Void Order
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -500,6 +551,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours }
                 className="h-6 w-6"
                 onClick={() => onEditClick(log)}
                 title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
+                aria-label="Edit"
               >
                 <Pencil className="h-3 w-3" />
               </Button>
@@ -567,6 +619,7 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
                 className="h-6 w-6"
                 onClick={() => onEditClick(log)}
                 title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
+                aria-label="Edit"
               >
                 <Pencil className="h-3 w-3" />
               </Button>
@@ -686,6 +739,7 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours }
                 className="h-6 w-6"
                 onClick={() => onEditClick(log)}
                 title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
+                aria-label="Edit"
               >
                 <Pencil className="h-3 w-3" />
               </Button>

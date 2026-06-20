@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Egg, Package, Tag, Box, Users } from "lucide-react";
+import { Egg, Package, Tag, Box, Users, Layers } from "lucide-react";
 import { SKUList } from "@/components/catalog/SKUList";
 import { ItemTypeList } from "@/components/catalog/ItemTypeList";
 import { BuyerList } from "@/components/catalog/BuyerList";
@@ -25,7 +25,7 @@ export function Catalog() {
       <Tabs defaultValue="skus" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto p-1 gap-1">
           <TabsTrigger value="skus" className="gap-1.5 text-xs sm:text-sm h-9">
-            <Package className="h-4 w-4" />
+            <Layers className="h-4 w-4" />
             <span className="hidden sm:inline">{t.catalog.skus}</span>
           </TabsTrigger>
           <TabsTrigger value="eggs" className="gap-1.5 text-xs sm:text-sm h-9">
@@ -54,7 +54,7 @@ export function Catalog() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
+                <Layers className="h-5 w-5" />
                 {t.catalog.skus}
               </CardTitle>
             </CardHeader>

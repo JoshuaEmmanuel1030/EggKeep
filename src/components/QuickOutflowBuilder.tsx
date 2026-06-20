@@ -23,7 +23,9 @@ import {
   validateStockAgainstInventory,
   getAvailableBoxModes,
 } from "@/lib/outflowCalculator";
-import { ShoppingCart, Plus, ChevronsUpDown, Check, Package, ChevronDown, Trash2, Users } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { PickListDialog } from "./PickListDialog";
+import { ShoppingCart, Plus, ChevronsUpDown, Check, Package, ChevronDown, Trash2, Users, Pencil, ClipboardList } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -75,6 +77,9 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   // Multi-buyer queue
   const [orderQueue, setOrderQueue] = useState<QueuedOrder[]>([]);
   const [queueOpen, setQueueOpen] = useState(true);
+  const [shortageDialogOpen, setShortageDialogOpen] = useState(false);
+  const [pendingOrders, setPendingOrders] = useState<QueuedOrder[]>([]);
+  const [pickListOpen, setPickListOpen] = useState(false);
 
   // Update box mode when buyer changes
   const handleBuyerSelect = (buyer: Buyer) => {
@@ -222,6 +227,19 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     setOrderQueue(prev => prev.filter(o => o.id !== orderId));
   };
 
+  // Load a queued order back into the form for editing
+  const editFromQueue = (orderId: string) => {
+    const order = orderQueue.find(o => o.id === orderId);
+    if (!order) return;
+    setSelectedBuyer(order.buyer);
+    setDate(order.date);
+    setInvoiceRef(order.invoiceRef);
+    setBoxMode(order.boxMode);
+    setBoxesRequired(order.boxesRequired);
+    setLines([...order.lines]);
+    removeFromQueue(orderId);
+  };
+
   // Build metadata for activity log
   const buildOrderMetadata = (order: QueuedOrder): ActivityLogMetadata => {
     const relatedProducts: Array<{ product: string; quantity: number; type: string }> = [];
@@ -262,14 +280,116 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     };
   };
 
-  // Handle form submission (submit all queued orders + current)
+  const doSubmit = async (ordersToSubmit: QueuedOrder[]) => {
+    setSubmitting(true);
+
+    // Pre-flight: re-validate combined stock before any write to prevent partial commits
+    const combined: AggregatedMaterials = {
+      eggsByProduct: new Map(),
+      packagingByItem: new Map(),
+      boxesByType: new Map(),
+      logistics: { keranjang: false, traysUsed: 0 },
+    };
+    for (const order of ordersToSubmit) {
+      for (const [p, q] of order.aggregates.eggsByProduct) combined.eggsByProduct.set(p, (combined.eggsByProduct.get(p) || 0) + q);
+      for (const [i, q] of order.aggregates.packagingByItem) combined.packagingByItem.set(i, (combined.packagingByItem.get(i) || 0) + q);
+      for (const [b, q] of order.aggregates.boxesByType) combined.boxesByType.set(b, (combined.boxesByType.get(b) || 0) + q);
+    }
+    const preflightShortages = validateStockAgainstInventory(combined, stockSummary).filter(s => s.available === 0);
+    if (preflightShortages.length > 0) {
+      toast({
+        title: "Stock changed",
+        description: `No stock for: ${preflightShortages.map(s => s.item).join(', ')}. Refresh and try again.`,
+        variant: "destructive",
+      });
+      setSubmitting(false);
+      isSubmittingRef.current = false;
+      return;
+    }
+
+    let completedCount = 0;
+    try {
+      const timestamp = new Date().toISOString();
+      const userEmail = user?.email || "";
+      let totalEntries = 0;
+
+      for (const order of ordersToSubmit) {
+        const entries: OutflowEntry[] = [];
+
+        for (const [product, quantity] of order.aggregates.eggsByProduct) {
+          entries.push({
+            id: crypto.randomUUID(),
+            date: order.date,
+            product,
+            quantityInButir: quantity,
+            createdAt: timestamp,
+            category: "egg",
+            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
+          });
+        }
+
+        for (const [item, quantity] of order.aggregates.packagingByItem) {
+          entries.push({
+            id: crypto.randomUUID(),
+            date: order.date,
+            product: item,
+            quantityInButir: quantity,
+            createdAt: timestamp,
+            category: "packaging",
+            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
+          });
+        }
+
+        for (const [boxType, quantity] of order.aggregates.boxesByType) {
+          entries.push({
+            id: crypto.randomUUID(),
+            date: order.date,
+            product: boxType,
+            quantityInButir: quantity,
+            createdAt: timestamp,
+            category: "box",
+            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
+          });
+        }
+
+        const metadata = buildOrderMetadata(order);
+        const success = await onSubmit(entries, userEmail, metadata);
+        if (!success) throw new Error(`Failed to submit order for ${order.buyer.name}`);
+        completedCount++;
+        totalEntries += entries.length;
+      }
+
+      toast({
+        title: t.outflow.orderRecorded,
+        description: `${ordersToSubmit.length} ${ordersToSubmit.length > 1 ? 'orders' : 'order'} recorded (${totalEntries} items)`,
+      });
+
+      setLines([]);
+      setInvoiceRef("");
+      setSelectedBuyer(null);
+      setBoxMode("box kecil");
+      setOrderQueue([]);
+    } catch (error) {
+      console.error("Error submitting orders:", error);
+      const remaining = ordersToSubmit.length - completedCount;
+      toast({
+        title: completedCount > 0 ? `Partial submission (${completedCount}/${ordersToSubmit.length})` : t.common.error,
+        description: completedCount > 0
+          ? `${completedCount} order(s) recorded. ${remaining} failed — check activity log and re-submit the remainder.`
+          : t.outflow.failedToRecordOrder,
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+      isSubmittingRef.current = false;
+    }
+  };
+
   const handleSubmit = async () => {
-    // Immediate guard using ref (not state, which is async) to prevent double-clicks
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
-    // If there are current lines, add them to queue first
+
     let allOrders = [...orderQueue];
-    
     if (hasValidLines && selectedBuyer) {
       allOrders.push({
         id: crypto.randomUUID(),
@@ -289,101 +409,18 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
         description: t.outflow.pleaseAddValidLine,
         variant: "destructive",
       });
+      isSubmittingRef.current = false;
       return;
     }
 
-    // Warn about shortages but allow submit
     if (shortages.length > 0) {
-      const confirmed = window.confirm(
-        `${t.outflow.warningShortages}\n${
-          shortages.map(s => `• ${s.item}: ${t.outflow.need} ${s.required}, ${t.outflow.have} ${s.available}`).join("\n")
-        }\n\n${t.outflow.continueAnyway}`
-      );
-      if (!confirmed) return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const timestamp = new Date().toISOString();
-      const userEmail = user?.email || "";
-      let totalEntries = 0;
-
-      // Process each order
-      for (const order of allOrders) {
-        const entries: OutflowEntry[] = [];
-
-        // Add egg outflows
-        for (const [product, quantity] of order.aggregates.eggsByProduct) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "egg",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
-
-        // Add packaging outflows
-        for (const [item, quantity] of order.aggregates.packagingByItem) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product: item,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "packaging",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
-
-        // Add box outflows (inventory items only)
-        for (const [boxType, quantity] of order.aggregates.boxesByType) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product: boxType,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "box",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
-
-        const metadata = buildOrderMetadata(order);
-        const success = await onSubmit(entries, userEmail, metadata);
-
-        if (!success) {
-          throw new Error(`Failed to submit order for ${order.buyer.name}`);
-        }
-
-        totalEntries += entries.length;
-      }
-
-      toast({
-        title: t.outflow.orderRecorded,
-        description: `${allOrders.length} ${allOrders.length > 1 ? 'orders' : 'order'} recorded (${totalEntries} items)`,
-      });
-
-      // Reset everything
-      setLines([]);
-      setInvoiceRef("");
-      setSelectedBuyer(null);
-      setBoxMode("box kecil");
-      setOrderQueue([]);
-    } catch (error) {
-      console.error("Error submitting orders:", error);
-      toast({
-        title: t.common.error,
-        description: t.outflow.failedToRecordOrder,
-        variant: "destructive",
-      });
-    } finally {
-      setSubmitting(false);
+      setPendingOrders(allOrders);
+      setShortageDialogOpen(true);
       isSubmittingRef.current = false;
+      return;
     }
+
+    await doSubmit(allOrders);
   };
 
   return (
@@ -399,16 +436,28 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
         {orderQueue.length > 0 && (
           <Collapsible open={queueOpen} onOpenChange={setQueueOpen}>
             <div className="border rounded-lg bg-muted/30">
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" className="w-full justify-between h-12 px-4">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    <span className="font-medium">{t.outflow.queuedOrders || "Queued Orders"}</span>
-                    <Badge variant="secondary">{orderQueue.length}</Badge>
-                  </div>
-                  <ChevronDown className={cn("h-4 w-4 transition-transform", queueOpen && "rotate-180")} />
+              <div className="flex items-center">
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="flex-1 justify-between h-12 px-4">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      <span className="font-medium">{t.outflow.queuedOrders || "Queued Orders"}</span>
+                      <Badge variant="secondary">{orderQueue.length}</Badge>
+                    </div>
+                    <ChevronDown className={cn("h-4 w-4 transition-transform", queueOpen && "rotate-180")} />
+                  </Button>
+                </CollapsibleTrigger>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-12 px-3 gap-1.5 text-xs text-muted-foreground hover:text-foreground border-l rounded-none rounded-tr-lg"
+                  onClick={() => setPickListOpen(true)}
+                  aria-label="View pick list"
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  Pick List
                 </Button>
-              </CollapsibleTrigger>
+              </div>
               <CollapsibleContent>
                 <div className="p-4 pt-0 space-y-2">
                   {orderQueue.map((order) => (
@@ -425,13 +474,24 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                           ).join(', ')}
                         </div>
                       </div>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => removeFromQueue(order.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Edit queued order"
+                          onClick={() => editFromQueue(order.id)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Remove queued order"
+                          onClick={() => removeFromQueue(order.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -631,6 +691,41 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
           </Button>
         </div>
       </CardContent>
+
+      <AlertDialog open={shortageDialogOpen} onOpenChange={setShortageDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.outflow.warningShortages}</AlertDialogTitle>
+            <AlertDialogDescription>
+              <ul className="mt-2 space-y-1 text-sm">
+                {shortages.map(s => (
+                  <li key={s.item}>• {s.item}: {t.outflow.need} {s.required}, {t.outflow.have} {s.available}</li>
+                ))}
+              </ul>
+              <span className="block mt-3 text-sm">{t.outflow.continueAnyway}</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel || "Cancel"}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShortageDialogOpen(false);
+                isSubmittingRef.current = true;
+                doSubmit(pendingOrders);
+              }}
+            >
+              {t.outflow.continueAnyway || "Continue Anyway"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <PickListDialog
+        open={pickListOpen}
+        onOpenChange={setPickListOpen}
+        orderQueue={orderQueue}
+        stockSummary={stockSummary}
+      />
     </Card>
   );
 }

@@ -1,21 +1,37 @@
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StockSummary, InventoryCategory, CATEGORY_LABELS } from "@/types/inventory";
-import { AlertTriangle, Clock, Filter, ChevronDown, ChevronRight, FileText } from "lucide-react";
+import { AlertTriangle, Clock, Filter, ChevronDown, ChevronRight, FileText, Settings, AlertCircle } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { useItemTypes } from "@/hooks/useItemTypes";
 
 interface InventoryDashboardProps {
   stockSummary: StockSummary[];
+  loading?: boolean;
 }
 
-export function InventoryDashboard({ stockSummary }: InventoryDashboardProps) {
+const LOW_STOCK_KEY = 'eggkeep_low_stock_threshold';
+
+export function InventoryDashboard({ stockSummary, loading = false }: InventoryDashboardProps) {
   const [selectedCategory, setSelectedCategory] = useState<InventoryCategory | "all">("all");
   const [sortBy, setSortBy] = useState<"stock" | "name" | "days">("stock");
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
+  const [threshold, setThreshold] = useState<number>(() => {
+    const stored = localStorage.getItem(LOW_STOCK_KEY);
+    return stored ? parseInt(stored, 10) : 0;
+  });
+  const [thresholdInput, setThresholdInput] = useState<string>(() =>
+    localStorage.getItem(LOW_STOCK_KEY) || "0"
+  );
+  const [thresholdOpen, setThresholdOpen] = useState(false);
   
   // Fetch all item types to show zero-stock items
   const { itemTypes } = useItemTypes();
@@ -68,38 +84,66 @@ export function InventoryDashboard({ stockSummary }: InventoryDashboardProps) {
     return Array.from(stockMap.values());
   }, [stockSummary, itemTypes]);
 
-  const filteredSummary = mergedSummary
-    .filter((s) => selectedCategory === "all" || s.category === selectedCategory)
-    .sort((a, b) => {
-      if (sortBy === "stock") return b.totalStock - a.totalStock;
-      if (sortBy === "name") return a.product.localeCompare(b.product);
-      if (sortBy === "days") return b.maxDaysInWarehouse - a.maxDaysInWarehouse;
-      return 0;
-    });
+  const filteredSummary = useMemo(() =>
+    mergedSummary
+      .filter((s) => selectedCategory === "all" || s.category === selectedCategory)
+      .sort((a, b) => {
+        if (sortBy === "stock") return b.totalStock - a.totalStock;
+        if (sortBy === "name") return a.product.localeCompare(b.product);
+        if (sortBy === "days") return b.maxDaysInWarehouse - a.maxDaysInWarehouse;
+        return 0;
+      }),
+    [mergedSummary, selectedCategory, sortBy]
+  );
 
-  // Calculate total at-risk quantity across all egg products
-  const totalAtRiskQuantity = stockSummary
-    .filter((s) => s.category === 'egg')
-    .reduce((sum, s) => sum + s.atRiskQuantity, 0);
-  
-  const productsWithAtRisk = stockSummary.filter((s) => s.atRiskQuantity > 0).length;
+  const totalAtRiskQuantity = useMemo(() =>
+    stockSummary
+      .filter((s) => s.category === 'egg')
+      .reduce((sum, s) => sum + s.atRiskQuantity, 0),
+    [stockSummary]
+  );
 
-  // Get all at-risk batches for the dialog
-  const allAtRiskBatches = stockSummary
-    .filter((s) => s.category === 'egg' && s.atRiskQuantity > 0)
-    .flatMap((s) => 
-      s.batches
-        .filter((b) => b.isAtRisk)
-        .map((b) => ({ ...b, product: s.product }))
-    )
-    .sort((a, b) => b.daysInWarehouse - a.daysInWarehouse);
+  const productsWithAtRisk = useMemo(() =>
+    stockSummary.filter((s) => s.atRiskQuantity > 0).length,
+    [stockSummary]
+  );
 
-  // Group by category for summary cards - use merged summary for accurate totals
-  const categoryTotals = mergedSummary.reduce((acc, s) => {
-    if (!acc[s.category]) acc[s.category] = 0;
-    acc[s.category] += s.totalStock;
-    return acc;
-  }, {} as Record<InventoryCategory, number>);
+  const allAtRiskBatches = useMemo(() =>
+    stockSummary
+      .filter((s) => s.category === 'egg' && s.atRiskQuantity > 0)
+      .flatMap((s) =>
+        s.batches
+          .filter((b) => b.isAtRisk)
+          .map((b) => ({ ...b, product: s.product }))
+      )
+      .sort((a, b) => b.daysInWarehouse - a.daysInWarehouse),
+    [stockSummary]
+  );
+
+  const categoryTotals = useMemo(() =>
+    mergedSummary.reduce((acc, s) => {
+      if (!acc[s.category]) acc[s.category] = 0;
+      acc[s.category] += s.totalStock;
+      return acc;
+    }, {} as Record<InventoryCategory, number>),
+    [mergedSummary]
+  );
+
+  const totalEggStock = useMemo(() =>
+    stockSummary.filter(s => s.category === 'egg').reduce((sum, s) => sum + s.totalStock, 0),
+    [stockSummary]
+  );
+
+  const isLowStock = threshold > 0 && totalEggStock < threshold;
+
+  const saveThreshold = () => {
+    const val = parseInt(thresholdInput, 10);
+    if (!isNaN(val) && val >= 0) {
+      setThreshold(val);
+      localStorage.setItem(LOW_STOCK_KEY, String(val));
+    }
+    setThresholdOpen(false);
+  };
 
   const toggleExpanded = (product: string) => {
     const newExpanded = new Set(expandedProducts);
@@ -111,8 +155,66 @@ export function InventoryDashboard({ stockSummary }: InventoryDashboardProps) {
     setExpandedProducts(newExpanded);
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-2 sm:gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="shadow-soft">
+              <CardContent className="p-3 sm:pt-4 sm:pb-4 sm:px-6">
+                <Skeleton className="h-6 w-20 mb-2" />
+                <Skeleton className="h-8 w-24" />
+                <Skeleton className="h-3 w-12 mt-1" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Skeleton className="h-24 w-full rounded-lg" />
+        <Skeleton className="h-64 w-full rounded-lg" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Low-stock alert + settings */}
+      <div className="flex items-center justify-between gap-3">
+        {isLowStock && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-50 dark:bg-amber-950/30 px-4 py-2 text-amber-700 dark:text-amber-400 flex-1">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span className="text-sm font-medium">
+              Low stock: {totalEggStock.toLocaleString()} butir remaining (threshold: {threshold.toLocaleString()})
+            </span>
+          </div>
+        )}
+        <Popover open={thresholdOpen} onOpenChange={setThresholdOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Stock alert settings" className="ml-auto shrink-0">
+              <Settings className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64">
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Low-Stock Alert</p>
+              <p className="text-xs text-muted-foreground">Show a warning when total egg stock drops below this level. Set to 0 to disable.</p>
+              <div className="space-y-1">
+                <Label htmlFor="threshold-input" className="text-xs">Threshold (butir)</Label>
+                <Input
+                  id="threshold-input"
+                  type="number"
+                  min={0}
+                  value={thresholdInput}
+                  onChange={e => setThresholdInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveThreshold()}
+                  className="h-9"
+                />
+              </div>
+              <Button size="sm" className="w-full" onClick={saveThreshold}>Save</Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+
       {/* Category Summary Cards */}
       <div className="grid grid-cols-2 gap-2 sm:gap-4">
         {(["egg", "box", "label", "packaging"] as InventoryCategory[]).map((cat) => {
@@ -270,8 +372,14 @@ export function InventoryDashboard({ stockSummary }: InventoryDashboardProps) {
                       <tr
                         key={`${item.category}-${item.product}`}
                         onClick={() => hasBatches && toggleExpanded(item.product)}
-                        className={`border-b transition-colors hover:bg-muted/50 active:bg-muted ${
-                          item.isAtRisk && item.totalStock > 0 ? "bg-destructive/5" : ""
+                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && hasBatches && toggleExpanded(item.product)}
+                        tabIndex={hasBatches ? 0 : undefined}
+                        role={hasBatches ? "button" : undefined}
+                        aria-expanded={hasBatches ? expandedProducts.has(item.product) : undefined}
+                        className={`border-b transition-colors hover:bg-muted/50 active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
+                          item.isAtRisk && item.totalStock > 0
+                            ? "bg-destructive/5 border-l-2 border-l-destructive"
+                            : ""
                         } ${hasBatches ? "cursor-pointer" : ""}`}
                       >
                         <td className="py-2 sm:py-3 px-1 sm:px-2">

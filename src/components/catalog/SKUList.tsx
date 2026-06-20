@@ -181,6 +181,7 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="Edit SKU"
                           onClick={() => handleEdit(sku)}
                         >
                           <Pencil className="h-4 w-4" />
@@ -188,6 +189,7 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="Delete SKU"
                           onClick={() => handleDeleteClick(sku)}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />

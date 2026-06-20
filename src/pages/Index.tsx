@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Header } from "@/components/Header";
 import { InflowForm } from "@/components/InflowForm";
 import { OutflowPage } from "@/components/OutflowPage";
@@ -20,7 +20,6 @@ import {
   downloadCSV,
 } from "@/lib/inventory";
 import { PackagePlus, PackageMinus, LayoutDashboard, Library, History, BarChart2, Users } from "lucide-react";
-import { Loader2 } from "lucide-react";
 import { InfosPage } from "@/components/InfosPage";
 import { InventoryAssistant } from "@/components/InventoryAssistant";
 import { Badge } from "@/components/ui/badge";
@@ -88,18 +87,7 @@ const Index = () => {
     downloadCSV(csv, filename);
   }, [inflows]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">{t.common.loadingInventory}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const stockSummary = calculateStockSummary(inflows);
+  const stockSummary = useMemo(() => calculateStockSummary(inflows), [inflows]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -108,23 +96,23 @@ const Index = () => {
       <main className="container py-6 px-4 sm:px-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className={`grid w-full h-auto sm:h-12 p-1 gap-1 ${isAdmin ? 'grid-cols-4 sm:grid-cols-7' : 'grid-cols-3 sm:grid-cols-6'}`}>
-            <TabsTrigger value="dashboard" className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+            <TabsTrigger value="dashboard" title={t.nav.dashboard} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
               <LayoutDashboard className="h-4 w-4 shrink-0" />
               <span className="hidden xs:inline truncate">{t.nav.dashboard}</span>
             </TabsTrigger>
-            <TabsTrigger value="inflow" className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+            <TabsTrigger value="inflow" title={t.nav.inflow} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
               <PackagePlus className="h-4 w-4 shrink-0" />
               <span className="hidden xs:inline truncate">{t.nav.inflow}</span>
             </TabsTrigger>
-            <TabsTrigger value="outflow" className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+            <TabsTrigger value="outflow" title={t.nav.outflow} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
               <PackageMinus className="h-4 w-4 shrink-0" />
               <span className="hidden xs:inline truncate">{t.nav.outflow}</span>
             </TabsTrigger>
-            <TabsTrigger value="infos" className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+            <TabsTrigger value="infos" title={t.nav.infos} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
               <BarChart2 className="h-4 w-4 shrink-0" />
               <span className="hidden xs:inline truncate">{t.nav.infos}</span>
             </TabsTrigger>
-            <TabsTrigger value="activity" className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm relative">
+            <TabsTrigger value="activity" title={t.nav.activity} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm relative">
               <History className="h-4 w-4 shrink-0" />
               <span className="hidden xs:inline truncate">{t.nav.activity}</span>
               {pendingCount > 0 && (
@@ -136,12 +124,12 @@ const Index = () => {
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="catalog" className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+            <TabsTrigger value="catalog" title={t.nav.catalog} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
               <Library className="h-4 w-4 shrink-0" />
               <span className="hidden xs:inline truncate">{t.nav.catalog}</span>
             </TabsTrigger>
             {isAdmin && (
-              <TabsTrigger value="users" className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+              <TabsTrigger value="users" title={t.admin?.users || 'Users'} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
                 <Users className="h-4 w-4 shrink-0" />
                 <span className="hidden xs:inline truncate">{t.admin?.users || 'Users'}</span>
               </TabsTrigger>
@@ -149,7 +137,7 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="dashboard" className="m-0">
-            <InventoryDashboard stockSummary={stockSummary} />
+            <InventoryDashboard stockSummary={stockSummary} loading={loading} />
           </TabsContent>
 
           <TabsContent value="inflow" className="m-0">

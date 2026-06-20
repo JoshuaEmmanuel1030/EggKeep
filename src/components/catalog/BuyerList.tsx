@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useBuyers } from "@/hooks/useBuyers";
 import { Buyer } from "@/types/quickOutflow";
@@ -12,12 +12,100 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Loader2, History } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { BuyerDialog } from "./BuyerDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { checkBuyerDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
+
+function BuyerHistoryDialog({ buyer, open, onOpenChange }: { buyer: Buyer | null; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open || !buyer) return;
+    setLoading(true);
+    supabase
+      .from('activity_logs')
+      .select('recorded_at, product, quantity_butir, invoice_supplier, metadata, voided_at')
+      .eq('action_type', 'outflow')
+      .filter('metadata->>buyerName', 'eq', buyer.name)
+      .is('voided_at', null)
+      .order('recorded_at', { ascending: false })
+      .limit(100)
+      .then(({ data }) => {
+        setLogs(data || []);
+        setLoading(false);
+      });
+  }, [open, buyer]);
+
+  if (!buyer) return null;
+
+  const totalButir = logs.reduce((sum, l) => sum + (l.quantity_butir || 0), 0);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            {buyer.name} — Order History
+          </DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : logs.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8">No outflow history found.</p>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">
+              {logs.length} orders · {totalButir.toLocaleString()} butir total
+            </p>
+            <ScrollArea className="h-[400px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead className="text-right">Qty (butir)</TableHead>
+                    <TableHead>Invoice / Ref</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {logs.map((log, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-sm whitespace-nowrap">
+                        {new Date(log.recorded_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-sm">{log.product}</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm">
+                        {(log.quantity_butir || 0).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {log.metadata?.invoiceRef || log.invoice_supplier || "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 interface BuyerListProps {
   isAdmin?: boolean;
@@ -33,6 +121,8 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
   const [buyerToDelete, setBuyerToDelete] = useState<Buyer | null>(null);
   const [dependencies, setDependencies] = useState<DependencyCheckResult | null>(null);
   const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
+  const [historyBuyer, setHistoryBuyer] = useState<Buyer | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const filteredBuyers = buyers.filter((buyer) =>
     buyer.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -162,24 +252,36 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
                     <Badge variant="outline">{buyer.defaultBoxMode}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {isAdmin && (
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(buyer)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteClick(buyer)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="View buyer history"
+                        onClick={() => { setHistoryBuyer(buyer); setHistoryOpen(true); }}
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
+                      {isAdmin && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Edit buyer"
+                            onClick={() => handleEdit(buyer)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Delete buyer"
+                            onClick={() => handleDeleteClick(buyer)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -194,6 +296,12 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
         buyer={editingBuyer}
         onSave={handleSave}
         isLoading={addBuyer?.isPending || updateBuyer?.isPending || false}
+      />
+
+      <BuyerHistoryDialog
+        buyer={historyBuyer}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
       />
 
       <DeleteConfirmDialog

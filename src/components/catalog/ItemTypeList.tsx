@@ -174,6 +174,7 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="Edit item type"
                           onClick={() => handleEdit(item)}
                         >
                           <Pencil className="h-4 w-4" />
@@ -181,6 +182,7 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="Delete item type"
                           onClick={() => handleDeleteClick(item)}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />

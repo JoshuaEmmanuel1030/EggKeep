@@ -121,3 +121,32 @@
     text-wrap: balance;
   }
 }
+
+@media print {
+  body > *:not([data-radix-portal]) {
+    display: none !important;
+  }
+  [data-radix-portal] [role="dialog"] {
+    position: static !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+  .print\:text-black {
+    color: #000 !important;
+  }
+  .print\:text-xl {
+    font-size: 1.25rem !important;
+  }
+  .print\:border-b {
+    border-bottom: 1px solid #ccc !important;
+  }
+  .print\:pb-2 {
+    padding-bottom: 0.5rem !important;
+  }
+}
