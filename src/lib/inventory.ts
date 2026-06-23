@@ -1,5 +1,5 @@
 import { parseISO } from "date-fns";
-import { InflowEntry, OutflowEntry, StockSummary, CONVERSION_DICT, InventoryCategory, PRODUCT_NAMES, BatchDetail } from "@/types/inventory";
+import { InflowEntry, OutflowEntry, StockSummary, CONVERSION_DICT, ConversionMap, InventoryCategory, BatchDetail } from "@/types/inventory";
 
 export const EGG_FRESHNESS_DAYS = 5;
 
@@ -24,19 +24,29 @@ export function saveOutflows(entries: OutflowEntry[]): void {
   localStorage.setItem(OUTFLOW_KEY, JSON.stringify(entries));
 }
 
-export function convertToButir(product: string, quantity: number): number {
-  const config = CONVERSION_DICT[product];
+export function convertToButir(
+  product: string,
+  quantity: number,
+  conversionMap: ConversionMap = CONVERSION_DICT
+): number {
+  const config = conversionMap[product];
   if (!config) return quantity; // For non-egg items, quantity = butir
   return Math.round(quantity * config.eggs_per_unit);
 }
 
-export function getProductUnit(product: string): string {
-  const config = CONVERSION_DICT[product];
+export function getProductUnit(
+  product: string,
+  conversionMap: ConversionMap = CONVERSION_DICT
+): string {
+  const config = conversionMap[product];
   return config?.unit === "kg" ? "kg" : "pcs";
 }
 
-export function isEggProduct(product: string): boolean {
-  return PRODUCT_NAMES.includes(product);
+export function isEggProduct(
+  product: string,
+  conversionMap: ConversionMap = CONVERSION_DICT
+): boolean {
+  return product in conversionMap;
 }
 
 
@@ -73,7 +83,10 @@ export function processOutflowFIFO(
   return updatedInflows;
 }
 
-export function calculateStockSummary(inflows: InflowEntry[]): StockSummary[] {
+export function calculateStockSummary(
+  inflows: InflowEntry[],
+  conversionMap: ConversionMap = CONVERSION_DICT
+): StockSummary[] {
   const today = new Date();
   const productMap = new Map<string, { 
     total: number; 
@@ -85,7 +98,7 @@ export function calculateStockSummary(inflows: InflowEntry[]): StockSummary[] {
   }>();
 
   // Initialize egg products
-  Object.keys(CONVERSION_DICT).forEach((product) => {
+  Object.keys(conversionMap).forEach((product) => {
     productMap.set(product, { 
       total: 0, 
       oldestDate: null, 

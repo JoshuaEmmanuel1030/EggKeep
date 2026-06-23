@@ -205,22 +205,28 @@ export type Database = {
           category: Database["public"]["Enums"]["inventory_category"]
           created_at: string
           deleted_at: string | null
+          eggs_per_unit: number | null
           id: string
           name: string
+          unit: string | null
         }
         Insert: {
           category: Database["public"]["Enums"]["inventory_category"]
           created_at?: string
           deleted_at?: string | null
+          eggs_per_unit?: number | null
           id?: string
           name: string
+          unit?: string | null
         }
         Update: {
           category?: Database["public"]["Enums"]["inventory_category"]
           created_at?: string
           deleted_at?: string | null
+          eggs_per_unit?: number | null
           id?: string
           name?: string
+          unit?: string | null
         }
         Relationships: []
       }

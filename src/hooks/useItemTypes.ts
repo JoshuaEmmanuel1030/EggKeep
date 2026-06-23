@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ItemType, InventoryCategory } from "@/types/inventory";
+import { ItemType, InventoryCategory, ConversionMap, buildConversionMap } from "@/types/inventory";
 
 export function useItemTypes() {
   const [itemTypes, setItemTypes] = useState<ItemType[]>([]);
@@ -22,6 +22,9 @@ export function useItemTypes() {
         id: row.id,
         category: row.category as InventoryCategory,
         name: row.name,
+        // New conversion columns (egg-only). Older rows may not have them yet.
+        unit: (row as { unit?: string | null }).unit as "kg" | "btr" | undefined,
+        eggsPerUnit: (row as { eggs_per_unit?: number | null }).eggs_per_unit ?? undefined,
       }));
 
       setItemTypes(mapped);
@@ -43,11 +46,39 @@ export function useItemTypes() {
     [itemTypes]
   );
 
+  // Authoritative egg conversion table: configured DB egg rows over the baseline.
+  const conversionMap: ConversionMap = useMemo(
+    () => buildConversionMap(itemTypes.filter((t) => t.category === "egg")),
+    [itemTypes]
+  );
+
+  // Egg product names for dropdowns: catalog egg types plus any baseline names
+  // that aren't (yet) in the catalog, so nothing silently disappears.
+  const eggProductNames: string[] = useMemo(
+    () => Object.keys(conversionMap).sort(),
+    [conversionMap]
+  );
+
   const addItemType = useMutation({
-    mutationFn: async ({ name, category }: { name: string; category: InventoryCategory }) => {
+    mutationFn: async ({
+      name,
+      category,
+      unit,
+      eggsPerUnit,
+    }: {
+      name: string;
+      category: InventoryCategory;
+      unit?: "kg" | "btr";
+      eggsPerUnit?: number;
+    }) => {
       const { data, error } = await supabase
         .from("item_types")
-        .insert({ name, category })
+        .insert({
+          name,
+          category,
+          unit: unit ?? null,
+          eggs_per_unit: eggsPerUnit ?? null,
+        })
         .select()
         .single();
 
@@ -60,10 +91,24 @@ export function useItemTypes() {
   });
 
   const updateItemType = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+    mutationFn: async ({
+      id,
+      name,
+      unit,
+      eggsPerUnit,
+    }: {
+      id: string;
+      name: string;
+      unit?: "kg" | "btr";
+      eggsPerUnit?: number;
+    }) => {
       const { data, error } = await supabase
         .from("item_types")
-        .update({ name })
+        .update({
+          name,
+          unit: unit ?? null,
+          eggs_per_unit: eggsPerUnit ?? null,
+        })
         .eq("id", id)
         .select()
         .single();
@@ -110,6 +155,8 @@ export function useItemTypes() {
     itemTypes,
     loading,
     getTypesByCategory,
+    conversionMap,
+    eggProductNames,
     refetch: fetchItemTypes,
     addItemType,
     updateItemType,

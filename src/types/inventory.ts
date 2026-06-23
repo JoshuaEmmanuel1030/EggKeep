@@ -9,6 +9,10 @@ export interface ItemType {
   id: string;
   category: InventoryCategory;
   name: string;
+  // Egg-only: how this product is sold and its kg->butir factor.
+  // Null for non-egg categories (counted in pcs).
+  unit?: "kg" | "btr";
+  eggsPerUnit?: number;
 }
 
 export interface InflowEntry {
@@ -97,6 +101,25 @@ export const CONVERSION_DICT: Record<string, ProductConfig> = {
 };
 
 export const PRODUCT_NAMES = Object.keys(CONVERSION_DICT);
+
+// A runtime conversion table keyed by product name. Same shape as CONVERSION_DICT.
+export type ConversionMap = Record<string, ProductConfig>;
+
+/**
+ * Build the authoritative conversion map from the catalog's egg item types,
+ * layered over the hardcoded CONVERSION_DICT baseline. The baseline guarantees
+ * the 9 original eggs always resolve (offline / before the catalog loads);
+ * configured DB egg types override or extend it (e.g. newly added "Retakan").
+ */
+export function buildConversionMap(eggTypes: ItemType[]): ConversionMap {
+  const map: ConversionMap = { ...CONVERSION_DICT };
+  for (const t of eggTypes) {
+    if (t.category !== "egg") continue;
+    if (!t.unit || t.eggsPerUnit == null) continue; // skip unconfigured eggs
+    map[t.name] = { unit: t.unit, eggs_per_unit: t.eggsPerUnit };
+  }
+  return map;
+}
 
 export const CATEGORY_LABELS: Record<InventoryCategory, string> = {
   egg: "Eggs",

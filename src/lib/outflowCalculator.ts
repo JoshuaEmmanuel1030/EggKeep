@@ -1,6 +1,6 @@
 import { BoxModeType, OrderLine, LineMaterials, AggregatedMaterials, StockShortage } from "@/types/quickOutflow";
 import { StockSummary } from "@/types/inventory";
-import { CONVERSION_DICT } from "@/types/inventory";
+import { CONVERSION_DICT, ConversionMap } from "@/types/inventory";
 
 // Pack SKU interface - now uses dynamic data from database
 export interface PackSKU {
@@ -91,7 +91,8 @@ export function calculateLineMaterials(
   line: OrderLine,
   boxMode: BoxModeType,
   boxesRequired: boolean,
-  skus: PackSKU[] = []
+  skus: PackSKU[] = [],
+  conversionMap: ConversionMap = CONVERSION_DICT
 ): LineMaterials | null {
   if (line.lineType === "pack") {
     if (!line.skuCode || !line.packQty || line.packQty <= 0) {
@@ -138,7 +139,7 @@ export function calculateLineMaterials(
     // Convert to butir if needed
     let eggsButir = line.looseQty;
     if (line.looseUnit === "kg") {
-      const config = CONVERSION_DICT[line.eggProduct];
+      const config = conversionMap[line.eggProduct];
       if (config && config.unit === "kg") {
         eggsButir = Math.round(line.looseQty * config.eggs_per_unit);
       }
@@ -168,7 +169,8 @@ export function aggregateOrderMaterials(
   lines: OrderLine[],
   boxMode: BoxModeType,
   boxesRequired: boolean,
-  skus: PackSKU[] = []
+  skus: PackSKU[] = [],
+  conversionMap: ConversionMap = CONVERSION_DICT
 ): AggregatedMaterials {
   const eggsByProduct = new Map<string, number>();
   const packagingByItem = new Map<string, number>();
@@ -177,7 +179,7 @@ export function aggregateOrderMaterials(
   let totalTrays = 0;
 
   for (const line of lines) {
-    const materials = calculateLineMaterials(line, boxMode, boxesRequired, skus);
+    const materials = calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap);
     if (!materials) continue;
 
     // Aggregate eggs
