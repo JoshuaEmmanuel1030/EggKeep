@@ -228,9 +228,29 @@ serve(async (req) => {
       activityContext += `- ${date}: ${action} ${log.quantity_butir.toLocaleString()} ${log.product}${invoice}${user}\n`;
     }
 
+    // Build the authoritative conversion map: catalog egg rows (item_types) layered
+    // over the hardcoded baseline, so newly added egg types (e.g. "Retakan") are
+    // included without a redeploy. The baseline guarantees the originals always resolve.
+    const conversionMap: Record<string, { unit: string; eggs_per_unit: number }> = {
+      ...CONVERSION_DICT,
+    };
+    const { data: eggTypes, error: eggTypesError } = await supabase
+      .from('item_types')
+      .select('name, unit, eggs_per_unit')
+      .eq('category', 'egg')
+      .is('deleted_at', null);
+    if (eggTypesError) {
+      console.error('Error fetching egg item types (using baseline conversions):', eggTypesError);
+    }
+    for (const row of eggTypes || []) {
+      if (row.unit && row.eggs_per_unit != null) {
+        conversionMap[row.name] = { unit: row.unit, eggs_per_unit: Number(row.eggs_per_unit) };
+      }
+    }
+
     // Build the authoritative unit-conversion reference from the same table the app uses.
-    const kgProducts = Object.entries(CONVERSION_DICT).filter(([, c]) => c.unit === "kg");
-    const btrProducts = Object.entries(CONVERSION_DICT).filter(([, c]) => c.unit === "btr");
+    const kgProducts = Object.entries(conversionMap).filter(([, c]) => c.unit === "kg");
+    const btrProducts = Object.entries(conversionMap).filter(([, c]) => c.unit === "btr");
 
     let conversionContext = "UNIT CONVERSION RULES (authoritative — these come directly from the system, NEVER estimate or guess a conversion factor):\n";
     conversionContext += `- "butir" (btr) means one individual egg. All stock totals above are in butir.\n`;
