@@ -7,6 +7,7 @@ import { MessageCircle, Send, X, Bot, User, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -117,6 +118,7 @@ export function InventoryAssistant() {
                 >
                   {message.role === 'assistant' ? (
                     <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
                       components={{
                         h1: ({ children }) => <p className="font-bold text-base mb-1">{children}</p>,
                         h2: ({ children }) => <p className="font-bold text-sm mt-2 mb-1">{children}</p>,
@@ -127,6 +129,14 @@ export function InventoryAssistant() {
                         li: ({ children }) => <li className="mb-0.5">{children}</li>,
                         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
                         hr: () => <hr className="my-2 border-border" />,
+                        table: ({ children }) => (
+                          <div className="my-2 overflow-x-auto">
+                            <table className="w-full text-xs border-collapse">{children}</table>
+                          </div>
+                        ),
+                        thead: ({ children }) => <thead className="border-b border-border">{children}</thead>,
+                        th: ({ children }) => <th className="text-left font-semibold px-2 py-1 whitespace-nowrap">{children}</th>,
+                        td: ({ children }) => <td className="px-2 py-1 border-t border-border/50 whitespace-nowrap">{children}</td>,
                       }}
                     >
                       {message.content}
