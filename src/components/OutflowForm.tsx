@@ -8,13 +8,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { 
-  OutflowEntry, 
+import {
+  OutflowEntry,
   InflowEntry,
-  InventoryCategory, 
-  CATEGORY_LABELS, 
-  PRODUCT_NAMES,
-  CONVERSION_DICT
+  InventoryCategory,
+  CATEGORY_LABELS,
+  ConversionMap,
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { getTotalAvailableStock } from "@/lib/inventory";
@@ -47,7 +46,7 @@ const CATEGORIES: InventoryCategory[] = ["egg", "box", "label", "packaging"];
 export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
   const { user } = useAuth();
   const { t } = useLanguage();
-  const { getTypesByCategory } = useItemTypes();
+  const { getTypesByCategory, conversionMap, eggProductNames } = useItemTypes();
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [submitting, setSubmitting] = useState(false);
   
@@ -116,7 +115,7 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
 
   const getProductOptions = (category: InventoryCategory): string[] => {
     if (category === "egg") {
-      return PRODUCT_NAMES;
+      return eggProductNames;
     }
     return getTypesByCategory(category).map((t) => t.name);
   };
@@ -173,10 +172,10 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
         const quantityNum = parseFloat(item.quantity);
         if (quantityNum <= 0) continue;
 
-        // Convert kg to butir for Negeri products if needed
+        // Convert kg to butir for weight-sold eggs if needed
         let quantityInButir = quantityNum;
         if (category === "egg" && item.inputUnit === "kg") {
-          const config = CONVERSION_DICT[item.product];
+          const config = conversionMap[item.product];
           if (config && config.unit === "kg") {
             quantityInButir = Math.round(quantityNum * config.eggs_per_unit);
           }
@@ -286,6 +285,7 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
                 category={category}
                 items={data.items}
                 productOptions={getProductOptions(category)}
+                conversionMap={conversionMap}
                 getAvailableStock={(product) => getAvailableStock(category, product)}
                 onAddItem={() => addItemToCategory(category)}
                 onRemoveItem={(itemId) => removeItemFromCategory(category, itemId)}
@@ -322,6 +322,7 @@ interface OutflowCategorySectionProps {
   category: InventoryCategory;
   items: CategoryItem[];
   productOptions: string[];
+  conversionMap: ConversionMap;
   getAvailableStock: (product: string) => number;
   onAddItem: () => void;
   onRemoveItem: (itemId: string) => void;
@@ -332,6 +333,7 @@ function OutflowCategorySection({
   category,
   items,
   productOptions,
+  conversionMap,
   getAvailableStock,
   onAddItem,
   onRemoveItem,
@@ -357,6 +359,7 @@ function OutflowCategorySection({
           index={index}
           category={category}
           productOptions={productOptions}
+          conversionMap={conversionMap}
           availableStock={item.product ? getAvailableStock(item.product) : 0}
           onRemove={() => onRemoveItem(item.id)}
           onUpdate={(field, value) => onUpdateItem(item.id, field, value)}
@@ -377,36 +380,34 @@ interface OutflowItemRowProps {
   index: number;
   category: InventoryCategory;
   productOptions: string[];
+  conversionMap: ConversionMap;
   availableStock: number;
   onRemove: () => void;
   onUpdate: (field: keyof CategoryItem, value: string) => void;
 }
 
-// Check if product is a Negeri type (supports kg input)
-const isNegeriProduct = (product: string): boolean => {
-  return product.startsWith("NEGERI");
-};
-
-function OutflowItemRow({ 
-  item, 
-  index, 
-  category, 
-  productOptions, 
+function OutflowItemRow({
+  item,
+  index,
+  category,
+  productOptions,
+  conversionMap,
   availableStock,
-  onRemove, 
-  onUpdate 
+  onRemove,
+  onUpdate
 }: OutflowItemRowProps) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
-  const isNegeri = category === "egg" && isNegeriProduct(item.product);
+  // A product supports kg input when its catalog conversion says it's sold by weight.
+  const isKgProduct = category === "egg" && conversionMap[item.product]?.unit === "kg";
   const inputUnit = item.inputUnit || "butir";
-  
+
   // Calculate quantity in butir for stock validation
   const getQuantityInButir = () => {
     const qty = parseFloat(item.quantity) || 0;
-    if (inputUnit === "kg" && isNegeri) {
-      const config = CONVERSION_DICT[item.product];
+    if (inputUnit === "kg" && isKgProduct) {
+      const config = conversionMap[item.product];
       return Math.round(qty * (config?.eggs_per_unit || 15.5));
     }
     return qty;
@@ -414,7 +415,7 @@ function OutflowItemRow({
 
   const quantityInButir = getQuantityInButir();
   const isOverstock = item.product && quantityInButir > availableStock;
-  const displayUnit = category === "egg" ? (isNegeri && inputUnit === "kg" ? "kg" : "butir") : "pcs";
+  const displayUnit = category === "egg" ? (isKgProduct && inputUnit === "kg" ? "kg" : "butir") : "pcs";
 
   return (
     <div className="space-y-2 p-3 bg-background rounded border">
@@ -453,8 +454,8 @@ function OutflowItemRow({
                         value={option}
                         onSelect={() => {
                           onUpdate("product", option);
-                          // Reset to butir when changing product
-                          if (!isNegeriProduct(option)) {
+                          // Reset to butir when changing to a non-kg product
+                          if (conversionMap[option]?.unit !== "kg") {
                             onUpdate("inputUnit", "butir");
                           }
                           setOpen(false);
@@ -509,8 +510,8 @@ function OutflowItemRow({
         </div>
       </div>
 
-      {/* Butir/Kg Switch for Negeri products */}
-      {isNegeri && (
+      {/* Butir/Kg Switch for weight-sold eggs */}
+      {isKgProduct && (
         <div className="flex items-center gap-3 pt-1">
           <span className={cn("text-xs font-medium", inputUnit === "butir" && "text-primary")}>
             Butir

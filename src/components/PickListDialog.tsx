@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Printer, Share2, AlertTriangle, Package, CheckCircle2 } from "lucide-react";
-import { StockSummary, CONVERSION_DICT } from "@/types/inventory";
+import { StockSummary, ConversionMap } from "@/types/inventory";
 import { AggregatedMaterials, BoxModeType } from "@/types/quickOutflow";
+import { useItemTypes } from "@/hooks/useItemTypes";
 
 interface QueuedOrder {
   id: string;
@@ -39,12 +40,9 @@ interface ProductPickRow {
   shortfall: number;
 }
 
-function getDisplayUnit(product: string): string {
-  return CONVERSION_DICT[product]?.unit === "kg" ? "kg" : "butir";
-}
-
-function butirToDisplay(product: string, butir: number): string {
-  const cfg = CONVERSION_DICT[product];
+// Format a butir quantity in its product's natural unit (kg for weight-sold eggs).
+function formatButir(product: string, butir: number, conversionMap: ConversionMap): string {
+  const cfg = conversionMap[product];
   if (cfg?.unit === "kg") {
     return `${(butir / cfg.eggs_per_unit).toFixed(1)} kg`;
   }
@@ -83,6 +81,10 @@ interface PickListDialogProps {
 
 export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }: PickListDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const { conversionMap } = useItemTypes();
+
+  const butirToDisplay = (product: string, butir: number): string =>
+    formatButir(product, butir, conversionMap);
 
   const pickData = useMemo(() => {
     // Aggregate total needs across all queued orders

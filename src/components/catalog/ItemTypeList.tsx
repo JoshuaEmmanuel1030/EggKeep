@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Plus, Pencil, Trash2, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { ItemTypeDialog } from "./ItemTypeDialog";
+import { ItemTypeDialog, ItemTypeSaveData } from "./ItemTypeDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { checkItemTypeDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
 
@@ -106,13 +106,23 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
     }
   };
 
-  const handleSave = async (name: string) => {
+  const handleSave = async (data: ItemTypeSaveData) => {
     try {
       if (editingItem && updateItemType) {
-        await updateItemType.mutateAsync({ id: editingItem.id, name });
+        await updateItemType.mutateAsync({
+          id: editingItem.id,
+          name: data.name,
+          unit: data.unit,
+          eggsPerUnit: data.eggsPerUnit,
+        });
         toast.success(t.catalog.updateSuccess);
       } else if (addItemType) {
-        await addItemType.mutateAsync({ name, category });
+        await addItemType.mutateAsync({
+          name: data.name,
+          category,
+          unit: data.unit,
+          eggsPerUnit: data.eggsPerUnit,
+        });
         toast.success(t.catalog.addSuccess);
       }
       setDialogOpen(false);
@@ -202,6 +212,7 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
         onOpenChange={setDialogOpen}
         item={editingItem}
         categoryLabel={getCategoryLabel()}
+        isEgg={category === "egg"}
         onSave={handleSave}
         isLoading={addItemType?.isPending || updateItemType?.isPending || false}
       />

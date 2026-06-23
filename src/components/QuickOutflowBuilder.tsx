@@ -17,6 +17,7 @@ import { StockSummary, InflowEntry, OutflowEntry } from "@/types/inventory";
 import { ActivityLogMetadata } from "@/types/activityLog";
 import { useBuyers } from "@/hooks/useBuyers";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
+import { useItemTypes } from "@/hooks/useItemTypes";
 import { 
   PackSKU,
   aggregateOrderMaterials, 
@@ -53,6 +54,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const { t } = useLanguage();
   const { buyers, isLoading: buyersLoading } = useBuyers();
   const { skus, isLoading: skusLoading } = usePackSKUs();
+  const { conversionMap, eggProductNames } = useItemTypes();
   
   // Map SKUs to PackSKU interface for outflow calculator
   const packSKUs: PackSKU[] = skus.map(sku => ({
@@ -116,8 +118,8 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
 
   // Calculate aggregated materials
   const aggregates = useMemo(() => {
-    return aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs);
-  }, [lines, boxMode, boxesRequired, packSKUs]);
+    return aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap);
+  }, [lines, boxMode, boxesRequired, packSKUs, conversionMap]);
 
   // Calculate total aggregates including queue
   const totalAggregates = useMemo(() => {
@@ -205,7 +207,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       boxMode,
       boxesRequired,
       lines: [...lines],
-      aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs),
+      aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap),
     };
 
     setOrderQueue(prev => [...prev, queuedOrder]);
@@ -399,7 +401,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
         boxMode,
         boxesRequired,
         lines: [...lines],
-        aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs),
+        aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap),
       });
     }
 
@@ -631,6 +633,8 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                     boxesRequired={boxesRequired}
                     selectedBuyer={selectedBuyer}
                     skus={packSKUs}
+                    conversionMap={conversionMap}
+                    eggProductNames={eggProductNames}
                     onUpdate={(updates) => updateLine(line.id, updates)}
                     onRemove={() => removeLine(line.id)}
                   />

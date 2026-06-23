@@ -8,7 +8,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { OrderLine, BoxModeType, Buyer } from "@/types/quickOutflow";
-import { PRODUCT_NAMES } from "@/types/inventory";
+import { ConversionMap } from "@/types/inventory";
 import { 
   PackSKU,
   calculateLineMaterials,
@@ -26,6 +26,8 @@ interface OrderLineItemProps {
   boxesRequired: boolean;
   selectedBuyer: Buyer | null;
   skus: PackSKU[];
+  conversionMap: ConversionMap;
+  eggProductNames: string[];
   onUpdate: (updates: Partial<OrderLine>) => void;
   onRemove: () => void;
 }
@@ -37,6 +39,8 @@ export function OrderLineItem({
   boxesRequired,
   selectedBuyer,
   skus,
+  conversionMap,
+  eggProductNames,
   onUpdate,
   onRemove,
 }: OrderLineItemProps) {
@@ -47,8 +51,8 @@ export function OrderLineItem({
 
   // Calculate materials for this line
   const materials = useMemo(() => {
-    return calculateLineMaterials(line, boxMode, boxesRequired, skus);
-  }, [line, boxMode, boxesRequired, skus]);
+    return calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap);
+  }, [line, boxMode, boxesRequired, skus, conversionMap]);
 
   // Check if current SKU is supported for box mode
   const skuSupported = useMemo(() => {
@@ -187,7 +191,7 @@ export function OrderLineItem({
                   <CommandList>
                     <CommandEmpty>{t.common.noResultsFound}</CommandEmpty>
                     <CommandGroup>
-                      {PRODUCT_NAMES.map((name) => (
+                      {eggProductNames.map((name) => (
                         <CommandItem
                           key={name}
                           value={name}

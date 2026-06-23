@@ -7,12 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { 
-  InflowEntry, 
-  InventoryCategory, 
-  CATEGORY_LABELS, 
-  CONVERSION_DICT,
-  PRODUCT_NAMES,
+import {
+  InflowEntry,
+  InventoryCategory,
+  CATEGORY_LABELS,
+  ConversionMap,
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { convertToButir, getProductUnit } from "@/lib/inventory";
@@ -43,7 +42,7 @@ const CATEGORIES: InventoryCategory[] = ["egg", "box", "label", "packaging"];
 export function InflowForm({ onSubmit }: InflowFormProps) {
   const { user } = useAuth();
   const { t } = useLanguage();
-  const { getTypesByCategory } = useItemTypes();
+  const { getTypesByCategory, conversionMap, eggProductNames } = useItemTypes();
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [submitting, setSubmitting] = useState(false);
   
@@ -111,7 +110,7 @@ export function InflowForm({ onSubmit }: InflowFormProps) {
 
   const getProductOptions = (category: InventoryCategory): string[] => {
     if (category === "egg") {
-      return PRODUCT_NAMES;
+      return eggProductNames;
     }
     return getTypesByCategory(category).map((t) => t.name);
   };
@@ -138,9 +137,9 @@ export function InflowForm({ onSubmit }: InflowFormProps) {
         const quantityNum = parseFloat(item.quantity);
         if (quantityNum <= 0) continue;
 
-        const unit = category === "egg" ? getProductUnit(item.product) : "pcs";
-        const quantityInButir = category === "egg" 
-          ? convertToButir(item.product, quantityNum) 
+        const unit = category === "egg" ? getProductUnit(item.product, conversionMap) : "pcs";
+        const quantityInButir = category === "egg"
+          ? convertToButir(item.product, quantityNum, conversionMap)
           : quantityNum;
 
         entries.push({
@@ -250,6 +249,7 @@ export function InflowForm({ onSubmit }: InflowFormProps) {
                 category={category}
                 items={data.items}
                 productOptions={getProductOptions(category)}
+                conversionMap={conversionMap}
                 onAddItem={() => addItemToCategory(category)}
                 onRemoveItem={(itemId) => removeItemFromCategory(category, itemId)}
                 onUpdateItem={(itemId, field, value) =>
@@ -284,6 +284,7 @@ interface CategorySectionProps {
   category: InventoryCategory;
   items: CategoryItem[];
   productOptions: string[];
+  conversionMap: ConversionMap;
   onAddItem: () => void;
   onRemoveItem: (itemId: string) => void;
   onUpdateItem: (itemId: string, field: keyof CategoryItem, value: string) => void;
@@ -293,6 +294,7 @@ function CategorySection({
   category,
   items,
   productOptions,
+  conversionMap,
   onAddItem,
   onRemoveItem,
   onUpdateItem,
@@ -316,6 +318,7 @@ function CategorySection({
           index={index}
           category={category}
           productOptions={productOptions}
+          conversionMap={conversionMap}
           onRemove={() => onRemoveItem(item.id)}
           onUpdate={(field, value) => onUpdateItem(item.id, field, value)}
         />
@@ -339,18 +342,19 @@ interface ItemRowProps {
   index: number;
   category: InventoryCategory;
   productOptions: string[];
+  conversionMap: ConversionMap;
   onRemove: () => void;
   onUpdate: (field: keyof CategoryItem, value: string) => void;
 }
 
-function ItemRow({ item, index, category, productOptions, onRemove, onUpdate }: ItemRowProps) {
+function ItemRow({ item, index, category, productOptions, conversionMap, onRemove, onUpdate }: ItemRowProps) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
   const quantityNum = parseFloat(item.quantity) || 0;
   const showConversion = category === "egg" && item.product && quantityNum > 0;
-  const convertedButir = showConversion ? convertToButir(item.product, quantityNum) : 0;
-  const unit = category === "egg" && item.product ? getProductUnit(item.product) : "pcs";
+  const convertedButir = showConversion ? convertToButir(item.product, quantityNum, conversionMap) : 0;
+  const unit = category === "egg" && item.product ? getProductUnit(item.product, conversionMap) : "pcs";
 
   return (
     <div className="space-y-2 p-3 bg-background rounded border">
@@ -441,9 +445,9 @@ function ItemRow({ item, index, category, productOptions, onRemove, onUpdate }: 
           <span>
             <strong>{quantityNum}</strong> {unit} ={" "}
             <strong className="text-primary">{convertedButir.toLocaleString()}</strong> butir
-            {unit === "kg" && (
+            {unit === "kg" && conversionMap[item.product] && (
               <span className="text-muted-foreground ml-1">
-                (× {CONVERSION_DICT[item.product].eggs_per_unit} eggs/kg)
+                (× {conversionMap[item.product].eggs_per_unit} eggs/kg)
               </span>
             )}
           </span>
