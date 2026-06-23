@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
+import { CONVERSION_DICT, EGGS_PER_TRAY } from "./conversions.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -227,8 +228,25 @@ serve(async (req) => {
       activityContext += `- ${date}: ${action} ${log.quantity_butir.toLocaleString()} ${log.product}${invoice}${user}\n`;
     }
 
+    // Build the authoritative unit-conversion reference from the same table the app uses.
+    const kgProducts = Object.entries(CONVERSION_DICT).filter(([, c]) => c.unit === "kg");
+    const btrProducts = Object.entries(CONVERSION_DICT).filter(([, c]) => c.unit === "btr");
+
+    let conversionContext = "UNIT CONVERSION RULES (authoritative — these come directly from the system, NEVER estimate or guess a conversion factor):\n";
+    conversionContext += `- "butir" (btr) means one individual egg. All stock totals above are in butir.\n`;
+    conversionContext += `- Weight-sold eggs (priced per kg) and their EXACT kg→butir factor:\n`;
+    for (const [product, c] of kgProducts) {
+      conversionContext += `    • ${product}: 1 kg = ${c.eggs_per_unit} butir (so X kg = X × ${c.eggs_per_unit} butir; X butir = X ÷ ${c.eggs_per_unit} kg)\n`;
+    }
+    conversionContext += `- All other egg types are counted per egg (1 unit = 1 butir, no kg conversion): ${btrProducts.map(([p]) => p).join(", ")}.\n`;
+    conversionContext += `- 1 tray = ${EGGS_PER_TRAY} butir.\n`;
+    conversionContext += `- Boxes, labels, and packaging are counted in pieces (pcs), not butir.\n`;
+    conversionContext += `- Worked example: 10 kg of NEGERI BIASA = 10 × 15.5 = 155 butir. 310 butir of NEGERI OMEGA = 310 ÷ 15.5 = 20 kg.\n`;
+    conversionContext += `- If asked to convert a product not listed above, say you don't have a conversion factor for it rather than inventing one.\n`;
+
     const systemPrompt = `You are a highly capable warehouse inventory secretary/assistant. You have complete access to all inventory data and can answer any question about stock levels, batches, suppliers, transactions, and analytics.
 
+${conversionContext}
 ${inventoryContext}
 ${monthlyContext}
 ${velocityContext}
@@ -242,6 +260,7 @@ YOUR CAPABILITIES:
 - Estimate when stock will run out based on usage patterns
 - Report recent transaction history
 - Identify slow-moving or fast-moving products
+- Convert between kg, butir, trays, and pieces using the UNIT CONVERSION RULES above — but ONLY when the user explicitly asks for a conversion or for a specific unit
 - Answer questions in the same language as the user
 
 GUIDELINES:
@@ -250,6 +269,7 @@ GUIDELINES:
 - If asked about trends, use the monthly averages
 - Proactively mention important issues like high at-risk quantities
 - Be concise but thorough
+- Report quantities in their native unit (butir for eggs, pcs for boxes/labels/packaging). Do NOT proactively convert to kg or trays — only convert when the user specifically asks for a different unit. When you do convert, use the exact factors from the UNIT CONVERSION RULES and never guess
 - If a product is not in inventory, say so clearly`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
