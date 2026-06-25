@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useUserRole } from "./useUserRole";
 import { toast } from "sonner";
+import { ActivityLog } from "@/types/activityLog";
 
 interface FifoDeduction {
   id: string;
@@ -80,11 +81,17 @@ export function useVoidEntry() {
           }
 
           const newRemaining = (inflow?.remaining_butir || 0) + deduction.quantity_deducted;
-          
-          await supabase
+
+          const { error: restoreError } = await supabase
             .from('inflows')
             .update({ remaining_butir: newRemaining })
             .eq('id', deduction.inflow_id);
+
+          if (restoreError) {
+            // Don't silently swallow — a failed restore must not report success.
+            console.error("Error restoring inflow stock:", restoreError);
+            throw restoreError;
+          }
         }
       }
 
@@ -186,28 +193,52 @@ export function useVoidEntry() {
     }
   }, []);
 
-  // Find the corresponding outflow/inflow ID for an activity log
+  // Find the corresponding outflow/inflow ID for an activity log.
   const findRelatedEntryId = useCallback(async (
-    activityLog: { action_type: string; product: string; recorded_at: string; quantity_butir: number }
+    activityLog: ActivityLog
   ): Promise<string | null> => {
     const table = activityLog.action_type === 'inflow' ? 'inflows' : 'outflows';
-    
+
+    // 1. Direct lookup via the id stored on the log at creation (new entries).
+    //    This is the reliable path — no timestamp/clock guessing.
+    const relatedId = activityLog.metadata?.relatedEntryId;
+    if (relatedId) {
+      const { data, error } = await supabase
+        .from(table)
+        .select('id')
+        .eq('id', relatedId)
+        .is('voided_at', null)
+        .maybeSingle();
+
+      if (!error && data?.id) return data.id;
+      // If the stored id is missing/already voided, fall through to the heuristic.
+    }
+
+    // 2. Fallback for legacy rows (no stored id): match by product + quantity +
+    //    category among non-voided rows, then pick the one whose created_at is
+    //    closest to the log's recorded_at. product+quantity is selective enough
+    //    that we don't need a tight time window.
     const { data, error } = await supabase
       .from(table)
-      .select('id')
+      .select('id, created_at')
       .eq('product', activityLog.product)
-      .gte('created_at', new Date(new Date(activityLog.recorded_at).getTime() - 5000).toISOString())
-      .lte('created_at', new Date(new Date(activityLog.recorded_at).getTime() + 5000).toISOString())
-      .is('voided_at', null)
-      .limit(1)
-      .maybeSingle();
+      .eq('quantity_butir', activityLog.quantity_butir)
+      .eq('category', activityLog.category)
+      .is('voided_at', null);
 
     if (error) {
       console.error("Error finding related entry:", error);
       return null;
     }
+    if (!data || data.length === 0) return null;
 
-    return data?.id || null;
+    const target = new Date(activityLog.recorded_at).getTime();
+    let best = { id: data[0].id, dist: Infinity };
+    for (const row of data) {
+      const dist = Math.abs(new Date(row.created_at).getTime() - target);
+      if (dist < best.dist) best = { id: row.id, dist };
+    }
+    return best.id;
   }, []);
 
   return { 

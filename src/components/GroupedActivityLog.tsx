@@ -31,6 +31,8 @@ interface GroupedActivityLogProps {
   logs: ActivityLog[];
   showVoided?: boolean;
   viewMode?: "grouped" | "chronological";
+  // Called after a successful void so the parent can refresh inventory/logs.
+  onVoided?: () => void;
 }
 
 interface BuyerOrder {
@@ -55,7 +57,7 @@ interface DateGroup {
   inflows: ActivityLog[];
 }
 
-export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped" }: GroupedActivityLogProps) {
+export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", onVoided }: GroupedActivityLogProps) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { canEdit, getEditWindowHours, voidOutflow, voidInflow, findRelatedEntryId, isAdmin } = useVoidEntry();
@@ -146,6 +148,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
       } else {
         await voidInflow(entryId, selectedEntry.id, reason);
       }
+      onVoided?.();
     } finally {
       setVoidLoading(false);
       setSelectedEntry(null);
@@ -169,6 +172,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
           await voidInflow(entryId, log.id, reason);
         }
       }
+      onVoided?.();
     } finally {
       setVoidLoading(false);
       setVoidOrderLogs([]);

@@ -3,6 +3,9 @@ import { InventoryCategory } from "./inventory";
 export interface ActivityLogMetadata {
   orderType?: 'quick_outflow' | 'manual';
   buyerName?: string;
+  // The id of the outflow/inflow row this log corresponds to. Lets void look up
+  // the source row directly instead of guessing by product + timestamp.
+  relatedEntryId?: string;
   invoiceRef?: string;
   skuCode?: string;
   packQty?: number;

@@ -25,7 +25,7 @@ import { InventoryAssistant } from "@/components/InventoryAssistant";
 import { Badge } from "@/components/ui/badge";
 
 const Index = () => {
-  const { inflows, outflows, loading, addMultipleInflows, addOutflow } = useInventorySync();
+  const { inflows, outflows, loading, addMultipleInflows, addOutflow, refetch: refetchInventory } = useInventorySync();
   const { logs, loading: logsLoading, pendingCount, isOnline, refetch: refetchLogs } = useActivityLogs();
   const { addActivityLog } = useOfflineSync();
   const { isAdmin } = useUserRole();
@@ -48,6 +48,7 @@ const Index = () => {
           user_email: userEmail,
           metadata: {
             inflowDate: entry.date,
+            relatedEntryId: entry.id,
           },
         });
       }
@@ -69,7 +70,7 @@ const Index = () => {
             category: entry.category,
             invoice_supplier: entry.invoiceSupplier,
             user_email: userEmail,
-            metadata,
+            metadata: { ...metadata, relatedEntryId: entry.id },
           });
         } else {
           return false;
@@ -168,11 +169,12 @@ const Index = () => {
 
           <TabsContent value="activity" className="m-0">
             <div className="max-w-2xl mx-auto">
-              <ActivityLogList 
-                logs={logs} 
-                loading={logsLoading} 
+              <ActivityLogList
+                logs={logs}
+                loading={logsLoading}
                 pendingCount={pendingCount}
                 isOnline={isOnline}
+                onVoided={() => { refetchInventory(); refetchLogs(); }}
               />
             </div>
           </TabsContent>

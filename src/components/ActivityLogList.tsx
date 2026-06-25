@@ -62,6 +62,7 @@ interface ActivityLogListProps {
   loading: boolean;
   pendingCount: number;
   isOnline: boolean;
+  onVoided?: () => void;
 }
 
 type ActionTypeFilter = "all" | "inflow" | "outflow" | "voided";
@@ -71,6 +72,7 @@ export function ActivityLogList({
   loading,
   pendingCount,
   isOnline,
+  onVoided,
 }: ActivityLogListProps) {
   const { t } = useLanguage();
   const [viewMode, setViewMode] = useState<"grouped" | "chronological">("grouped");
@@ -473,7 +475,7 @@ export function ActivityLogList({
             </div>
           ) : (
             <ScrollArea className="h-[calc(100vh-420px)] min-h-[300px] max-h-[600px] pr-4">
-              <GroupedActivityLog logs={filteredLogs} showVoided={actionTypeFilter === "voided"} viewMode={viewMode} />
+              <GroupedActivityLog logs={filteredLogs} showVoided={actionTypeFilter === "voided"} viewMode={viewMode} onVoided={onVoided} />
             </ScrollArea>
           )}
         </CardContent>
