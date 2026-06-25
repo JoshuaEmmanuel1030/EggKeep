@@ -13,9 +13,11 @@ export function useInventorySync() {
   // Fetch all data from the database
   const fetchData = useCallback(async () => {
     try {
+      // Exclude voided rows so a voided inflow drops out of stock immediately and
+      // is never used as a FIFO source for new outflows.
       const [inflowResult, outflowResult] = await Promise.all([
-        supabase.from("inflows").select("*").order("created_at", { ascending: true }),
-        supabase.from("outflows").select("*").order("created_at", { ascending: true }),
+        supabase.from("inflows").select("*").is("voided_at", null).order("created_at", { ascending: true }),
+        supabase.from("outflows").select("*").is("voided_at", null).order("created_at", { ascending: true }),
       ]);
 
       if (inflowResult.error) throw inflowResult.error;
