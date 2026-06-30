@@ -31,14 +31,12 @@ export const BOX_CAPACITIES: Record<string, Record<string, number>> = {
   "box osave": {
     "N10B": 18,
     "N10O": 18,
-    "KP6B": 30,
-    "KP6O": 30,
+    "KP6B": 20,
+    "KP6O": 20,
   },
   "box osave polos": {
     "N10B": 18,
     "N10O": 18,
-    "KP6B": 30,
-    "KP6O": 30,
   },
 };
 
