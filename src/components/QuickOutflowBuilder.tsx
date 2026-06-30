@@ -54,7 +54,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const { t } = useLanguage();
   const { buyers, isLoading: buyersLoading } = useBuyers();
   const { skus, isLoading: skusLoading } = usePackSKUs();
-  const { conversionMap, eggProductNames } = useItemTypes();
+  const { conversionMap, eggProductNames, boxCapacityMap } = useItemTypes();
   
   // Map SKUs to PackSKU interface for outflow calculator
   const packSKUs: PackSKU[] = skus.map(sku => ({
@@ -118,8 +118,8 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
 
   // Calculate aggregated materials
   const aggregates = useMemo(() => {
-    return aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap);
-  }, [lines, boxMode, boxesRequired, packSKUs, conversionMap]);
+    return aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap);
+  }, [lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap]);
 
   // Calculate total aggregates including queue
   const totalAggregates = useMemo(() => {
@@ -207,7 +207,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       boxMode,
       boxesRequired,
       lines: [...lines],
-      aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap),
+      aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap),
     };
 
     setOrderQueue(prev => [...prev, queuedOrder]);
@@ -401,7 +401,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
         boxMode,
         boxesRequired,
         lines: [...lines],
-        aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap),
+        aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap),
       });
     }
 
@@ -634,6 +634,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                     selectedBuyer={selectedBuyer}
                     skus={packSKUs}
                     conversionMap={conversionMap}
+                    boxCapacityMap={boxCapacityMap}
                     eggProductNames={eggProductNames}
                     onUpdate={(updates) => updateLine(line.id, updates)}
                     onRemove={() => removeLine(line.id)}

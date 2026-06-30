@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ItemType, InventoryCategory, ConversionMap, buildConversionMap } from "@/types/inventory";
+import { BoxCapacityMap, buildBoxCapacityMap } from "@/lib/outflowCalculator";
 
 export function useItemTypes() {
   const [itemTypes, setItemTypes] = useState<ItemType[]>([]);
@@ -25,6 +26,11 @@ export function useItemTypes() {
         // New conversion columns (egg-only). Older rows may not have them yet.
         unit: (row as { unit?: string | null }).unit as "kg" | "btr" | undefined,
         eggsPerUnit: (row as { eggs_per_unit?: number | null }).eggs_per_unit ?? undefined,
+        // Box-only packs-per-box map (JSONB). Null/absent for non-box or unconfigured rows.
+        boxCapacities:
+          ((row as { box_capacities?: Record<string, number> | null }).box_capacities as
+            | Record<string, number>
+            | null) ?? undefined,
       }));
 
       setItemTypes(mapped);
@@ -59,17 +65,25 @@ export function useItemTypes() {
     [conversionMap]
   );
 
+  // Authoritative box-capacity table: configured DB box rows over the baseline.
+  const boxCapacityMap: BoxCapacityMap = useMemo(
+    () => buildBoxCapacityMap(itemTypes.filter((t) => t.category === "box")),
+    [itemTypes]
+  );
+
   const addItemType = useMutation({
     mutationFn: async ({
       name,
       category,
       unit,
       eggsPerUnit,
+      boxCapacities,
     }: {
       name: string;
       category: InventoryCategory;
       unit?: "kg" | "btr";
       eggsPerUnit?: number;
+      boxCapacities?: Record<string, number>;
     }) => {
       const { data, error } = await supabase
         .from("item_types")
@@ -78,6 +92,7 @@ export function useItemTypes() {
           category,
           unit: unit ?? null,
           eggs_per_unit: eggsPerUnit ?? null,
+          box_capacities: boxCapacities ?? null,
         })
         .select()
         .single();
@@ -96,11 +111,13 @@ export function useItemTypes() {
       name,
       unit,
       eggsPerUnit,
+      boxCapacities,
     }: {
       id: string;
       name: string;
       unit?: "kg" | "btr";
       eggsPerUnit?: number;
+      boxCapacities?: Record<string, number>;
     }) => {
       const { data, error } = await supabase
         .from("item_types")
@@ -108,6 +125,7 @@ export function useItemTypes() {
           name,
           unit: unit ?? null,
           eggs_per_unit: eggsPerUnit ?? null,
+          box_capacities: boxCapacities ?? null,
         })
         .eq("id", id)
         .select()
@@ -157,6 +175,7 @@ export function useItemTypes() {
     getTypesByCategory,
     conversionMap,
     eggProductNames,
+    boxCapacityMap,
     refetch: fetchItemTypes,
     addItemType,
     updateItemType,

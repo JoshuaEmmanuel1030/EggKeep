@@ -16,6 +16,7 @@ import { Plus, Pencil, Trash2, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { SKUDialog } from "./SKUDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
+import { RenameWarningDialog } from "./RenameWarningDialog";
 import { PackSKU } from "@/types/catalog";
 import { checkSKUDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
 
@@ -33,6 +34,11 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
   const [skuToDelete, setSkuToDelete] = useState<PackSKU | null>(null);
   const [dependencies, setDependencies] = useState<DependencyCheckResult | null>(null);
   const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
+  const [renameWarn, setRenameWarn] = useState<{
+    data: any;
+    oldName: string;
+    deps: DependencyCheckResult;
+  } | null>(null);
 
   const filteredSKUs = skus.filter(
     (sku) =>
@@ -99,7 +105,7 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
     }
   };
 
-  const handleSave = async (data: any) => {
+  const performSave = async (data: any) => {
     try {
       if (editingSKU) {
         await updateSKU.mutateAsync({ id: editingSKU.id, ...data });
@@ -109,9 +115,27 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
         toast.success(t.catalog.addSuccess);
       }
       setDialogOpen(false);
+      setRenameWarn(null);
     } catch (error: any) {
       toast.error(error.message || t.common.error);
     }
+  };
+
+  const handleSave = async (data: any) => {
+    // Guard SKU-code renames: the code is embedded in outflow records + box-capacity
+    // maps, so changing it on a used SKU orphans those references.
+    if (editingSKU && data.code && data.code !== editingSKU.code) {
+      try {
+        const deps = await checkSKUDependencies(editingSKU.code);
+        if (deps.hasDependencies) {
+          setRenameWarn({ data, oldName: editingSKU.code, deps });
+          return;
+        }
+      } catch (error) {
+        console.error("Rename dependency check failed:", error);
+      }
+    }
+    await performSave(data);
   };
 
   if (isLoading) {
@@ -221,6 +245,16 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
         isCheckingDependencies={isCheckingDependencies}
         isDeleting={deleteSKU.isPending}
         onConfirm={handleDeleteConfirm}
+      />
+
+      <RenameWarningDialog
+        open={!!renameWarn}
+        onOpenChange={(open) => { if (!open) setRenameWarn(null); }}
+        oldName={renameWarn?.oldName || ""}
+        newName={renameWarn?.data.code || ""}
+        dependencies={renameWarn?.deps || null}
+        isSaving={updateSKU.isPending}
+        onConfirm={() => { if (renameWarn) performSave(renameWarn.data); }}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import { BoxModeType, OrderLine, LineMaterials, AggregatedMaterials, StockShortage } from "@/types/quickOutflow";
-import { StockSummary } from "@/types/inventory";
+import { StockSummary, ItemType } from "@/types/inventory";
 import { CONVERSION_DICT, ConversionMap } from "@/types/inventory";
 
 // Pack SKU interface - now uses dynamic data from database
@@ -40,6 +40,29 @@ export const BOX_CAPACITIES: Record<string, Record<string, number>> = {
   },
 };
 
+// Runtime box-capacity table: boxName -> skuCode -> packsPerBox. Same shape as BOX_CAPACITIES.
+export type BoxCapacityMap = Record<string, Record<string, number>>;
+
+/**
+ * Build the authoritative box-capacity map from the catalog's box item types,
+ * layered over the hardcoded BOX_CAPACITIES baseline. The baseline guarantees the
+ * original boxes always resolve (offline / before the catalog loads); configured DB
+ * box rows override or extend it. Mirror of buildConversionMap for eggs.
+ */
+export function buildBoxCapacityMap(boxItems: ItemType[]): BoxCapacityMap {
+  // Deep-clone the baseline so per-box merges don't mutate the constant.
+  const map: BoxCapacityMap = {};
+  for (const [boxName, caps] of Object.entries(BOX_CAPACITIES)) {
+    map[boxName] = { ...caps };
+  }
+  for (const t of boxItems) {
+    if (t.category !== "box") continue;
+    if (!t.boxCapacities) continue; // skip unconfigured boxes
+    map[t.name] = { ...(map[t.name] || {}), ...t.boxCapacities };
+  }
+  return map;
+}
+
 // Buyer default box modes
 export const BUYER_BOX_MODES: Record<string, BoxModeType> = {
   "Astro": "box kecil",
@@ -66,16 +89,19 @@ export function isLogisticsOnlyMode(boxMode: BoxModeType): boolean {
 
 // Calculate boxes needed for a pack SKU
 export function calculateBoxes(
-  skuCode: string, 
-  packs: number, 
-  boxMode: BoxModeType
+  skuCode: string,
+  packs: number,
+  boxMode: BoxModeType,
+  boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES
 ): { boxes: number; remainder: number; capacity: number | null } {
   if (isLogisticsOnlyMode(boxMode)) {
     return { boxes: 0, remainder: 0, capacity: null };
   }
 
-  const capacity = BOX_CAPACITIES[boxMode]?.[skuCode];
+  const capacity = boxCapacityMap[boxMode]?.[skuCode];
   if (!capacity) {
+    // capacity: null signals "not configured for this SKU×box" (vs a real 0 need),
+    // so the UI can surface a warning instead of a silent "0 boxes".
     return { boxes: 0, remainder: packs, capacity: null };
   }
 
@@ -90,7 +116,8 @@ export function calculateLineMaterials(
   boxMode: BoxModeType,
   boxesRequired: boolean,
   skus: PackSKU[] = [],
-  conversionMap: ConversionMap = CONVERSION_DICT
+  conversionMap: ConversionMap = CONVERSION_DICT,
+  boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES
 ): LineMaterials | null {
   if (line.lineType === "pack") {
     if (!line.skuCode || !line.packQty || line.packQty <= 0) {
@@ -109,7 +136,7 @@ export function calculateLineMaterials(
     const isLogisticsOnly = isLogisticsOnlyMode(effectiveBoxMode);
 
     if (boxesRequired && !isLogisticsOnly) {
-      const { boxes, remainder, capacity } = calculateBoxes(line.skuCode, line.packQty, effectiveBoxMode);
+      const { boxes, remainder, capacity } = calculateBoxes(line.skuCode, line.packQty, effectiveBoxMode, boxCapacityMap);
       boxesPcs = boxes;
       boxType = effectiveBoxMode;
       if (remainder > 0 && capacity) {
@@ -168,7 +195,8 @@ export function aggregateOrderMaterials(
   boxMode: BoxModeType,
   boxesRequired: boolean,
   skus: PackSKU[] = [],
-  conversionMap: ConversionMap = CONVERSION_DICT
+  conversionMap: ConversionMap = CONVERSION_DICT,
+  boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES
 ): AggregatedMaterials {
   const eggsByProduct = new Map<string, number>();
   const packagingByItem = new Map<string, number>();
@@ -177,7 +205,7 @@ export function aggregateOrderMaterials(
   let totalTrays = 0;
 
   for (const line of lines) {
-    const materials = calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap);
+    const materials = calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap);
     if (!materials) continue;
 
     // Aggregate eggs
@@ -283,7 +311,11 @@ export function getAvailableBoxModes(buyerName: string): BoxModeType[] {
 }
 
 // Check if a SKU is supported for a box mode
-export function isSKUSupportedForBoxMode(skuCode: string, boxMode: BoxModeType): boolean {
+export function isSKUSupportedForBoxMode(
+  skuCode: string,
+  boxMode: BoxModeType,
+  boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES
+): boolean {
   if (isLogisticsOnlyMode(boxMode)) return true;
-  return !!BOX_CAPACITIES[boxMode]?.[skuCode];
+  return !!boxCapacityMap[boxMode]?.[skuCode];
 }

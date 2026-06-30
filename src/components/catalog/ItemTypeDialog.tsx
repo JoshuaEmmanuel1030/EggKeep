@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { ItemType } from "@/types/inventory";
+import { PackSKU } from "@/types/catalog";
+import { BOX_CAPACITIES } from "@/lib/outflowCalculator";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +25,7 @@ export interface ItemTypeSaveData {
   name: string;
   unit?: "kg" | "btr";
   eggsPerUnit?: number;
+  boxCapacities?: Record<string, number>;
 }
 
 interface ItemTypeDialogProps {
@@ -31,6 +34,8 @@ interface ItemTypeDialogProps {
   item: ItemType | null;
   categoryLabel: string;
   isEgg: boolean;
+  isBox?: boolean;
+  skus?: PackSKU[];
   onSave: (data: ItemTypeSaveData) => Promise<void>;
   isLoading: boolean;
 }
@@ -41,6 +46,8 @@ export function ItemTypeDialog({
   item,
   categoryLabel,
   isEgg,
+  isBox = false,
+  skus = [],
   onSave,
   isLoading,
 }: ItemTypeDialogProps) {
@@ -48,14 +55,33 @@ export function ItemTypeDialog({
   const [name, setName] = useState("");
   const [unit, setUnit] = useState<"kg" | "btr">("btr");
   const [eggsPerUnit, setEggsPerUnit] = useState("");
+  // Per-SKU packs-per-box, kept as raw strings keyed by SKU code (blank = unset).
+  const [caps, setCaps] = useState<Record<string, string>>({});
+
+  // Only active SKUs are configurable.
+  const activeSkus = useMemo(() => skus.filter((s) => s.isActive), [skus]);
 
   useEffect(() => {
     if (open) {
       setName(item?.name || "");
       setUnit(item?.unit || "btr");
       setEggsPerUnit(item?.eggsPerUnit != null ? String(item.eggsPerUnit) : "");
+
+      if (isBox) {
+        // Seed each SKU from the box's saved map, falling back to the hardcoded
+        // baseline for that box name so existing boxes show their current numbers.
+        const baseline = item ? BOX_CAPACITIES[item.name] : undefined;
+        const seeded: Record<string, string> = {};
+        for (const sku of activeSkus) {
+          const v = item?.boxCapacities?.[sku.code] ?? baseline?.[sku.code];
+          seeded[sku.code] = v != null ? String(v) : "";
+        }
+        setCaps(seeded);
+      } else {
+        setCaps({});
+      }
     }
-  }, [open, item]);
+  }, [open, item, isBox, activeSkus]);
 
   // For eggs sold by kg, a positive factor is required.
   const factorNum = parseFloat(eggsPerUnit);
@@ -72,6 +98,14 @@ export function ItemTypeDialog({
         unit,
         eggsPerUnit: unit === "kg" ? factorNum : 1,
       });
+    } else if (isBox) {
+      // Collect positive-integer entries; blanks are omitted (fall back to baseline).
+      const boxCapacities: Record<string, number> = {};
+      for (const [code, raw] of Object.entries(caps)) {
+        const n = parseInt(raw, 10);
+        if (!isNaN(n) && n > 0) boxCapacities[code] = n;
+      }
+      await onSave({ name: name.trim(), boxCapacities });
     } else {
       await onSave({ name: name.trim() });
     }
@@ -131,6 +165,39 @@ export function ItemTypeDialog({
                 </div>
               )}
             </>
+          )}
+
+          {isBox && (
+            <div className="space-y-2">
+              <Label>{t.catalog.packsPerBox}</Label>
+              {activeSkus.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{t.catalog.noSkusToConfigure}</p>
+              ) : (
+                <div className="max-h-64 overflow-y-auto rounded-md border divide-y">
+                  {activeSkus.map((sku) => (
+                    <div key={sku.code} className="flex items-center gap-3 px-3 py-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{sku.code}</p>
+                        <p className="text-xs text-muted-foreground truncate">{sku.displayName}</p>
+                      </div>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        className="w-24"
+                        placeholder="—"
+                        value={caps[sku.code] ?? ""}
+                        onChange={(e) =>
+                          setCaps((prev) => ({ ...prev, [sku.code]: e.target.value }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">{t.catalog.packsPerBoxHelp}</p>
+            </div>
           )}
 
           <div className="flex justify-end gap-2 pt-4">

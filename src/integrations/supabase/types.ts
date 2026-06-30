@@ -202,6 +202,7 @@ export type Database = {
       }
       item_types: {
         Row: {
+          box_capacities: Json | null
           category: Database["public"]["Enums"]["inventory_category"]
           created_at: string
           deleted_at: string | null
@@ -211,6 +212,7 @@ export type Database = {
           unit: string | null
         }
         Insert: {
+          box_capacities?: Json | null
           category: Database["public"]["Enums"]["inventory_category"]
           created_at?: string
           deleted_at?: string | null
@@ -220,6 +222,7 @@ export type Database = {
           unit?: string | null
         }
         Update: {
+          box_capacities?: Json | null
           category?: Database["public"]["Enums"]["inventory_category"]
           created_at?: string
           deleted_at?: string | null

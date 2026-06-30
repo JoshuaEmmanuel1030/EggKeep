@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { BuyerDialog } from "./BuyerDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
+import { RenameWarningDialog } from "./RenameWarningDialog";
 import { checkBuyerDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
 
 function BuyerHistoryDialog({ buyer, open, onOpenChange }: { buyer: Buyer | null; open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -123,6 +124,11 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
   const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
   const [historyBuyer, setHistoryBuyer] = useState<Buyer | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [renameWarn, setRenameWarn] = useState<{
+    data: { name: string; defaultBoxMode: string };
+    oldName: string;
+    deps: DependencyCheckResult;
+  } | null>(null);
 
   const filteredBuyers = buyers.filter((buyer) =>
     buyer.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -185,7 +191,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
     }
   };
 
-  const handleSave = async (data: { name: string; defaultBoxMode: string }) => {
+  const performSave = async (data: { name: string; defaultBoxMode: string }) => {
     try {
       if (editingBuyer && updateBuyer) {
         await updateBuyer.mutateAsync({ id: editingBuyer.id, ...data });
@@ -195,9 +201,27 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
         toast.success(t.catalog.addSuccess);
       }
       setDialogOpen(false);
+      setRenameWarn(null);
     } catch (error: any) {
       toast.error(error.message || t.common.error);
     }
+  };
+
+  const handleSave = async (data: { name: string; defaultBoxMode: string }) => {
+    // Guard buyer renames: order history filters by buyerName in activity_logs metadata,
+    // so renaming a used buyer hides their past orders.
+    if (editingBuyer && data.name !== editingBuyer.name) {
+      try {
+        const deps = await checkBuyerDependencies(editingBuyer.name);
+        if (deps.hasDependencies) {
+          setRenameWarn({ data, oldName: editingBuyer.name, deps });
+          return;
+        }
+      } catch (error) {
+        console.error("Rename dependency check failed:", error);
+      }
+    }
+    await performSave(data);
   };
 
   if (isLoading) {
@@ -313,6 +337,16 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
         isCheckingDependencies={isCheckingDependencies}
         isDeleting={deleteBuyer?.isPending || false}
         onConfirm={handleDeleteConfirm}
+      />
+
+      <RenameWarningDialog
+        open={!!renameWarn}
+        onOpenChange={(open) => { if (!open) setRenameWarn(null); }}
+        oldName={renameWarn?.oldName || ""}
+        newName={renameWarn?.data.name || ""}
+        dependencies={renameWarn?.deps || null}
+        isSaving={updateBuyer?.isPending || false}
+        onConfirm={() => { if (renameWarn) performSave(renameWarn.data); }}
       />
     </div>
   );

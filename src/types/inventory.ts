@@ -13,6 +13,9 @@ export interface ItemType {
   // Null for non-egg categories (counted in pcs).
   unit?: "kg" | "btr";
   eggsPerUnit?: number;
+  // Box-only: packs-per-box keyed by pack SKU code, e.g. { "N15B": 8, "N6B": 20 }.
+  // Undefined for non-box categories.
+  boxCapacities?: Record<string, number>;
 }
 
 export interface InflowEntry {

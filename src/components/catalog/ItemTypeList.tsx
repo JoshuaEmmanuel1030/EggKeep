@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useItemTypes } from "@/hooks/useItemTypes";
+import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { InventoryCategory, ItemType } from "@/types/inventory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import { Plus, Pencil, Trash2, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { ItemTypeDialog, ItemTypeSaveData } from "./ItemTypeDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
+import { RenameWarningDialog } from "./RenameWarningDialog";
 import { checkItemTypeDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
 
 interface ItemTypeListProps {
@@ -26,6 +28,8 @@ interface ItemTypeListProps {
 export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
   const { t } = useLanguage();
   const { getTypesByCategory, loading, addItemType, updateItemType, deleteItemType, restoreItemType } = useItemTypes();
+  // SKUs are only needed to configure box capacities; harmless to load for other categories.
+  const { skus } = usePackSKUs();
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ItemType | null>(null);
@@ -33,6 +37,12 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
   const [itemToDelete, setItemToDelete] = useState<ItemType | null>(null);
   const [dependencies, setDependencies] = useState<DependencyCheckResult | null>(null);
   const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
+  // Rename-warning state: a pending save held back while we confirm an at-risk rename.
+  const [renameWarn, setRenameWarn] = useState<{
+    data: ItemTypeSaveData;
+    oldName: string;
+    deps: DependencyCheckResult;
+  } | null>(null);
 
   const items = getTypesByCategory(category);
   const filteredItems = items.filter((item) =>
@@ -106,7 +116,8 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
     }
   };
 
-  const handleSave = async (data: ItemTypeSaveData) => {
+  // Actually persist the item (add or update). Used directly, or after a rename is confirmed.
+  const performSave = async (data: ItemTypeSaveData) => {
     try {
       if (editingItem && updateItemType) {
         await updateItemType.mutateAsync({
@@ -114,6 +125,7 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
           name: data.name,
           unit: data.unit,
           eggsPerUnit: data.eggsPerUnit,
+          boxCapacities: data.boxCapacities,
         });
         toast.success(t.catalog.updateSuccess);
       } else if (addItemType) {
@@ -122,13 +134,33 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
           category,
           unit: data.unit,
           eggsPerUnit: data.eggsPerUnit,
+          boxCapacities: data.boxCapacities,
         });
         toast.success(t.catalog.addSuccess);
       }
       setDialogOpen(false);
+      setRenameWarn(null);
     } catch (error: any) {
       toast.error(error.message || t.common.error);
     }
+  };
+
+  const handleSave = async (data: ItemTypeSaveData) => {
+    // Guard renames of used items: references are name-keyed, so a rename orphans
+    // history. Warn (don't block) when the name actually changed and is in use.
+    if (editingItem && data.name !== editingItem.name) {
+      try {
+        const deps = await checkItemTypeDependencies(editingItem.name, category);
+        if (deps.hasDependencies) {
+          setRenameWarn({ data, oldName: editingItem.name, deps });
+          return;
+        }
+      } catch (error) {
+        console.error("Rename dependency check failed:", error);
+        // On check failure, fall through and save rather than blocking the user.
+      }
+    }
+    await performSave(data);
   };
 
   if (loading) {
@@ -213,6 +245,8 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
         item={editingItem}
         categoryLabel={getCategoryLabel()}
         isEgg={category === "egg"}
+        isBox={category === "box"}
+        skus={skus}
         onSave={handleSave}
         isLoading={addItemType?.isPending || updateItemType?.isPending || false}
       />
@@ -226,6 +260,16 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
         isCheckingDependencies={isCheckingDependencies}
         isDeleting={deleteItemType?.isPending || false}
         onConfirm={handleDeleteConfirm}
+      />
+
+      <RenameWarningDialog
+        open={!!renameWarn}
+        onOpenChange={(open) => { if (!open) setRenameWarn(null); }}
+        oldName={renameWarn?.oldName || ""}
+        newName={renameWarn?.data.name || ""}
+        dependencies={renameWarn?.deps || null}
+        isSaving={updateItemType?.isPending || false}
+        onConfirm={() => { if (renameWarn) performSave(renameWarn.data); }}
       />
     </div>
   );

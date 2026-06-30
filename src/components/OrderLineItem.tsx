@@ -9,8 +9,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { OrderLine, BoxModeType, Buyer } from "@/types/quickOutflow";
 import { ConversionMap } from "@/types/inventory";
-import { 
+import {
   PackSKU,
+  BoxCapacityMap,
   calculateLineMaterials,
   isSKUSupportedForBoxMode,
   isLogisticsOnlyMode
@@ -27,6 +28,7 @@ interface OrderLineItemProps {
   selectedBuyer: Buyer | null;
   skus: PackSKU[];
   conversionMap: ConversionMap;
+  boxCapacityMap: BoxCapacityMap;
   eggProductNames: string[];
   onUpdate: (updates: Partial<OrderLine>) => void;
   onRemove: () => void;
@@ -40,6 +42,7 @@ export function OrderLineItem({
   selectedBuyer,
   skus,
   conversionMap,
+  boxCapacityMap,
   eggProductNames,
   onUpdate,
   onRemove,
@@ -51,14 +54,14 @@ export function OrderLineItem({
 
   // Calculate materials for this line
   const materials = useMemo(() => {
-    return calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap);
-  }, [line, boxMode, boxesRequired, skus, conversionMap]);
+    return calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap);
+  }, [line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap]);
 
   // Check if current SKU is supported for box mode
   const skuSupported = useMemo(() => {
     if (!line.skuCode) return true;
-    return isSKUSupportedForBoxMode(line.skuCode, boxMode);
-  }, [line.skuCode, boxMode]);
+    return isSKUSupportedForBoxMode(line.skuCode, boxMode, boxCapacityMap);
+  }, [line.skuCode, boxMode, boxCapacityMap]);
 
   // Get available box mode overrides for Osave
   const canOverrideBoxMode = selectedBuyer?.name === "Osave";
