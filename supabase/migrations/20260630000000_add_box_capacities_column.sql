@@ -22,13 +22,12 @@ WHERE category = 'box' AND name = 'box kecil';
 UPDATE public.item_types
 SET box_capacities = '{
   "N10B": 18, "N10O": 18,
-  "KP6B": 30, "KP6O": 30
+  "KP6B": 20, "KP6O": 20
 }'::jsonb
 WHERE category = 'box' AND name = 'box osave';
 
 UPDATE public.item_types
 SET box_capacities = '{
-  "N10B": 18, "N10O": 18,
-  "KP6B": 30, "KP6O": 30
+  "N10B": 18, "N10O": 18
 }'::jsonb
 WHERE category = 'box' AND name = 'box osave polos';
