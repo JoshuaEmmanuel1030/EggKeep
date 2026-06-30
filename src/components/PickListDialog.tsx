@@ -90,6 +90,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
     // Aggregate total needs across all queued orders
     const eggNeeds = new Map<string, number>();
     const packagingNeeds = new Map<string, number>();
+    const labelNeeds = new Map<string, number>();
     const boxNeeds = new Map<string, number>();
 
     for (const order of orderQueue) {
@@ -98,6 +99,9 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
       }
       for (const [item, qty] of order.aggregates.packagingByItem) {
         packagingNeeds.set(item, (packagingNeeds.get(item) || 0) + qty);
+      }
+      for (const [item, qty] of order.aggregates.labelsByItem) {
+        labelNeeds.set(item, (labelNeeds.get(item) || 0) + qty);
       }
       for (const [type, qty] of order.aggregates.boxesByType) {
         boxNeeds.set(type, (boxNeeds.get(type) || 0) + qty);
@@ -121,7 +125,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
     // sort by most butir first
     eggRows.sort((a, b) => b.totalButir - a.totalButir);
 
-    return { eggRows, packagingNeeds, boxNeeds };
+    return { eggRows, packagingNeeds, labelNeeds, boxNeeds };
   }, [orderQueue, stockSummary]);
 
   const hasAtRisk = pickData.eggRows.some(r => r.allocations.some(a => a.isAtRisk));
@@ -149,6 +153,13 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
     if (pickData.packagingNeeds.size > 0) {
       lines.push(`\n*PACKAGING:*`);
       for (const [item, qty] of pickData.packagingNeeds) {
+        lines.push(`• ${item}: ${qty} pcs`);
+      }
+    }
+
+    if (pickData.labelNeeds.size > 0) {
+      lines.push(`\n*LABEL:*`);
+      for (const [item, qty] of pickData.labelNeeds) {
         lines.push(`• ${item}: ${qty} pcs`);
       }
     }
@@ -278,8 +289,8 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
             ))}
           </div>
 
-          {/* Packaging + Boxes */}
-          {(pickData.packagingNeeds.size > 0 || pickData.boxNeeds.size > 0) && (
+          {/* Packaging + Labels + Boxes */}
+          {(pickData.packagingNeeds.size > 0 || pickData.labelNeeds.size > 0 || pickData.boxNeeds.size > 0) && (
             <>
               <Separator />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -290,6 +301,21 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
                     </p>
                     <div className="border rounded-lg divide-y">
                       {Array.from(pickData.packagingNeeds.entries()).map(([item, qty]) => (
+                        <div key={item} className="flex items-center justify-between px-4 py-2 text-sm">
+                          <span>{item}</span>
+                          <span className="font-medium tabular-nums">{qty.toLocaleString()} pcs</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {pickData.labelNeeds.size > 0 && (
+                  <div className="space-y-2">
+                    <p className="font-semibold text-sm uppercase tracking-wide text-muted-foreground print:text-black">
+                      Labels
+                    </p>
+                    <div className="border rounded-lg divide-y">
+                      {Array.from(pickData.labelNeeds.entries()).map(([item, qty]) => (
                         <div key={item} className="flex items-center justify-between px-4 py-2 text-sm">
                           <span>{item}</span>
                           <span className="font-medium tabular-nums">{qty.toLocaleString()} pcs</span>

@@ -144,11 +144,17 @@ export function calculateLineMaterials(
       }
     }
 
+    // Optional label: one label per pack when the line picks one from the catalog.
+    const labelItem = line.labelSelection || null;
+    const labelPcs = labelItem ? line.packQty : 0;
+
     return {
       eggsButir,
       eggProduct: sku.eggProduct,
       packagingPcs: line.packQty,
       packagingItem: sku.packagingItem,
+      labelPcs,
+      labelItem,
       boxesPcs,
       boxType,
       isLogisticsOnly,
@@ -179,6 +185,8 @@ export function calculateLineMaterials(
       eggProduct: line.eggProduct,
       packagingPcs: 0,
       packagingItem: "",
+      labelPcs: 0,
+      labelItem: null,
       boxesPcs: 0,
       boxType: null,
       isLogisticsOnly: true,
@@ -200,6 +208,7 @@ export function aggregateOrderMaterials(
 ): AggregatedMaterials {
   const eggsByProduct = new Map<string, number>();
   const packagingByItem = new Map<string, number>();
+  const labelsByItem = new Map<string, number>();
   const boxesByType = new Map<string, number>();
   let hasKeranjang = false;
   let totalTrays = 0;
@@ -216,6 +225,12 @@ export function aggregateOrderMaterials(
     if (materials.packagingItem && materials.packagingPcs > 0) {
       const currentPkg = packagingByItem.get(materials.packagingItem) || 0;
       packagingByItem.set(materials.packagingItem, currentPkg + materials.packagingPcs);
+    }
+
+    // Aggregate labels (only when a label is selected on the line)
+    if (materials.labelItem && materials.labelPcs > 0) {
+      const currentLabel = labelsByItem.get(materials.labelItem) || 0;
+      labelsByItem.set(materials.labelItem, currentLabel + materials.labelPcs);
     }
 
     // Aggregate boxes (only for inventory box types)
@@ -237,6 +252,7 @@ export function aggregateOrderMaterials(
   return {
     eggsByProduct,
     packagingByItem,
+    labelsByItem,
     boxesByType,
     logistics: { keranjang: hasKeranjang, traysUsed: totalTrays },
   };
@@ -271,6 +287,21 @@ export function validateStockAgainstInventory(
     if (required > available) {
       shortages.push({
         category: "packaging",
+        item,
+        required,
+        available,
+        shortage: required - available,
+      });
+    }
+  }
+
+  // Check labels
+  for (const [item, required] of aggregates.labelsByItem) {
+    const stock = stockSummary.find(s => s.product === item && s.category === "label");
+    const available = stock?.totalStock || 0;
+    if (required > available) {
+      shortages.push({
+        category: "label",
         item,
         required,
         available,

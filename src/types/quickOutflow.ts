@@ -25,6 +25,8 @@ export interface LineMaterials {
   eggProduct: string;
   packagingPcs: number;
   packagingItem: string;
+  labelPcs: number;
+  labelItem: string | null;
   boxesPcs: number;
   boxType: string | null;
   isLogisticsOnly: boolean;
@@ -35,12 +37,13 @@ export interface LineMaterials {
 export interface AggregatedMaterials {
   eggsByProduct: Map<string, number>;
   packagingByItem: Map<string, number>;
+  labelsByItem: Map<string, number>;
   boxesByType: Map<string, number>;
   logistics: { keranjang: boolean; traysUsed: number };
 }
 
 export interface StockShortage {
-  category: 'egg' | 'packaging' | 'box';
+  category: 'egg' | 'packaging' | 'label' | 'box';
   item: string;
   required: number;
   available: number;

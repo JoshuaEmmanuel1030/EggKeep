@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { OrderLine, BoxModeType, Buyer } from "@/types/quickOutflow";
 import { ConversionMap } from "@/types/inventory";
 import {
@@ -16,7 +15,7 @@ import {
   isSKUSupportedForBoxMode,
   isLogisticsOnlyMode
 } from "@/lib/outflowCalculator";
-import { Trash2, ChevronsUpDown, Check, ChevronRight, Tag, Egg, Package, Box } from "lucide-react";
+import { Trash2, ChevronsUpDown, Check, Tag, Egg, Package, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -30,6 +29,7 @@ interface OrderLineItemProps {
   conversionMap: ConversionMap;
   boxCapacityMap: BoxCapacityMap;
   eggProductNames: string[];
+  labelNames: string[];
   onUpdate: (updates: Partial<OrderLine>) => void;
   onRemove: () => void;
 }
@@ -44,13 +44,13 @@ export function OrderLineItem({
   conversionMap,
   boxCapacityMap,
   eggProductNames,
+  labelNames,
   onUpdate,
   onRemove,
 }: OrderLineItemProps) {
   const { t } = useLanguage();
   const [skuOpen, setSkuOpen] = useState(false);
   const [eggOpen, setEggOpen] = useState(false);
-  const [labelsOpen, setLabelsOpen] = useState(false);
 
   // Calculate materials for this line
   const materials = useMemo(() => {
@@ -295,6 +295,15 @@ export function OrderLineItem({
               </span>
             </div>
           )}
+
+          {materials.labelItem && materials.labelPcs > 0 && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Tag className="h-3.5 w-3.5" />
+              <span>
+                → {materials.labelPcs.toLocaleString()} pcs {materials.labelItem}
+              </span>
+            </div>
+          )}
           
           {boxesRequired && !materials.isLogisticsOnly && materials.boxesPcs > 0 && (
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -331,21 +340,29 @@ export function OrderLineItem({
         </div>
       )}
 
-      {/* Labels section (paused) */}
-      <Collapsible open={labelsOpen} onOpenChange={setLabelsOpen}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-muted-foreground">
-            <ChevronRight className={cn("h-3 w-3 mr-1 transition-transform", labelsOpen && "rotate-90")} />
-            <Tag className="h-3 w-3 mr-1" />
-            {t.outflow.labelsPaused}
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-2">
-          <div className="p-3 bg-muted/30 rounded text-xs text-muted-foreground italic">
-            {t.outflow.labelsPausedDesc}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+      {/* Label selector (pack lines) — deducts one label per pack from label inventory */}
+      {line.lineType === "pack" && (
+        <div className="space-y-1">
+          <Label className="text-xs flex items-center gap-1">
+            <Tag className="h-3 w-3" />
+            {t.outflow.label} ({t.common.optional})
+          </Label>
+          <Select
+            value={line.labelSelection || "__none__"}
+            onValueChange={(v) => onUpdate({ labelSelection: v === "__none__" ? null : v })}
+          >
+            <SelectTrigger className="h-10 w-full sm:w-[220px]">
+              <SelectValue placeholder={t.outflow.selectLabel} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">— {t.outflow.noLabel} —</SelectItem>
+              {labelNames.map((name) => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   );
 }

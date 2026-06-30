@@ -54,7 +54,13 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const { t } = useLanguage();
   const { buyers, isLoading: buyersLoading } = useBuyers();
   const { skus, isLoading: skusLoading } = usePackSKUs();
-  const { conversionMap, eggProductNames, boxCapacityMap } = useItemTypes();
+  const { conversionMap, eggProductNames, boxCapacityMap, getTypesByCategory } = useItemTypes();
+
+  // Label catalog names for the per-line label dropdown.
+  const labelNames = useMemo(
+    () => getTypesByCategory("label").map((lt) => lt.name),
+    [getTypesByCategory]
+  );
   
   // Map SKUs to PackSKU interface for outflow calculator
   const packSKUs: PackSKU[] = skus.map(sku => ({
@@ -126,6 +132,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     const combined: AggregatedMaterials = {
       eggsByProduct: new Map(),
       packagingByItem: new Map(),
+      labelsByItem: new Map(),
       boxesByType: new Map(),
       logistics: { keranjang: false, traysUsed: 0 },
     };
@@ -136,6 +143,9 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     }
     for (const [item, qty] of aggregates.packagingByItem) {
       combined.packagingByItem.set(item, (combined.packagingByItem.get(item) || 0) + qty);
+    }
+    for (const [item, qty] of aggregates.labelsByItem) {
+      combined.labelsByItem.set(item, (combined.labelsByItem.get(item) || 0) + qty);
     }
     for (const [type, qty] of aggregates.boxesByType) {
       combined.boxesByType.set(type, (combined.boxesByType.get(type) || 0) + qty);
@@ -150,6 +160,9 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       }
       for (const [item, qty] of order.aggregates.packagingByItem) {
         combined.packagingByItem.set(item, (combined.packagingByItem.get(item) || 0) + qty);
+      }
+      for (const [item, qty] of order.aggregates.labelsByItem) {
+        combined.labelsByItem.set(item, (combined.labelsByItem.get(item) || 0) + qty);
       }
       for (const [type, qty] of order.aggregates.boxesByType) {
         combined.boxesByType.set(type, (combined.boxesByType.get(type) || 0) + qty);
@@ -252,6 +265,9 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     for (const [item, qty] of order.aggregates.packagingByItem) {
       relatedProducts.push({ product: item, quantity: qty, type: 'packaging' });
     }
+    for (const [item, qty] of order.aggregates.labelsByItem) {
+      relatedProducts.push({ product: item, quantity: qty, type: 'label' });
+    }
     for (const [type, qty] of order.aggregates.boxesByType) {
       relatedProducts.push({ product: type, quantity: qty, type: 'box' });
     }
@@ -289,12 +305,14 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     const combined: AggregatedMaterials = {
       eggsByProduct: new Map(),
       packagingByItem: new Map(),
+      labelsByItem: new Map(),
       boxesByType: new Map(),
       logistics: { keranjang: false, traysUsed: 0 },
     };
     for (const order of ordersToSubmit) {
       for (const [p, q] of order.aggregates.eggsByProduct) combined.eggsByProduct.set(p, (combined.eggsByProduct.get(p) || 0) + q);
       for (const [i, q] of order.aggregates.packagingByItem) combined.packagingByItem.set(i, (combined.packagingByItem.get(i) || 0) + q);
+      for (const [i, q] of order.aggregates.labelsByItem) combined.labelsByItem.set(i, (combined.labelsByItem.get(i) || 0) + q);
       for (const [b, q] of order.aggregates.boxesByType) combined.boxesByType.set(b, (combined.boxesByType.get(b) || 0) + q);
     }
     const preflightShortages = validateStockAgainstInventory(combined, stockSummary).filter(s => s.available === 0);
@@ -338,6 +356,18 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
             quantityInButir: quantity,
             createdAt: timestamp,
             category: "packaging",
+            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
+          });
+        }
+
+        for (const [item, quantity] of order.aggregates.labelsByItem) {
+          entries.push({
+            id: crypto.randomUUID(),
+            date: order.date,
+            product: item,
+            quantityInButir: quantity,
+            createdAt: timestamp,
+            category: "label",
             invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
           });
         }
@@ -636,6 +666,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                     conversionMap={conversionMap}
                     boxCapacityMap={boxCapacityMap}
                     eggProductNames={eggProductNames}
+                    labelNames={labelNames}
                     onUpdate={(updates) => updateLine(line.id, updates)}
                     onRemove={() => removeLine(line.id)}
                   />

@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { AggregatedMaterials, StockShortage, BoxModeType } from "@/types/quickOutflow";
 import { isLogisticsOnlyMode } from "@/lib/outflowCalculator";
-import { AlertCircle, CheckCircle2, Egg, Package, Box, Truck } from "lucide-react";
+import { AlertCircle, CheckCircle2, Egg, Package, Box, Truck, Tag } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface OrderSummaryPanelProps {
@@ -15,9 +15,10 @@ interface OrderSummaryPanelProps {
 export function OrderSummaryPanel({ aggregates, shortages, boxMode }: OrderSummaryPanelProps) {
   const { t } = useLanguage();
   
-  const hasContent = 
-    aggregates.eggsByProduct.size > 0 || 
-    aggregates.packagingByItem.size > 0 || 
+  const hasContent =
+    aggregates.eggsByProduct.size > 0 ||
+    aggregates.packagingByItem.size > 0 ||
+    aggregates.labelsByItem.size > 0 ||
     aggregates.boxesByType.size > 0;
 
   const hasShortages = shortages.length > 0;
@@ -72,6 +73,34 @@ export function OrderSummaryPanel({ aggregates, shortages, boxMode }: OrderSumma
                 <div className="space-y-1 pl-6">
                   {Array.from(aggregates.packagingByItem).map(([item, qty]) => {
                     const shortage = shortages.find(s => s.category === "packaging" && s.item === item);
+                    return (
+                      <div key={item} className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">{item}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono">{qty.toLocaleString()}</span>
+                          {shortage && (
+                            <Badge variant="destructive" className="text-xs">
+                              -{shortage.shortage.toLocaleString()}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Labels section */}
+            {aggregates.labelsByItem.size > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Tag className="h-4 w-4 text-pink-500" />
+                  {t.outflow.labels}
+                </div>
+                <div className="space-y-1 pl-6">
+                  {Array.from(aggregates.labelsByItem).map(([item, qty]) => {
+                    const shortage = shortages.find(s => s.category === "label" && s.item === item);
                     return (
                       <div key={item} className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">{item}</span>
