@@ -140,13 +140,21 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
 
       for (const item of data.items) {
         if (!item.product || !item.quantity) continue;
-        const qty = parseInt(item.quantity) || 0;
+        // Compare in butir: kg input must be converted before checking stock,
+        // otherwise a kg quantity slips past the gate (stock is stored in butir).
+        let qty = parseFloat(item.quantity) || 0;
+        if (category === "egg" && item.inputUnit === "kg") {
+          const config = conversionMap[item.product];
+          if (config && config.unit === "kg") {
+            qty = Math.round(qty * config.eggs_per_unit);
+          }
+        }
         const available = getAvailableStock(category, item.product);
         if (qty > available) return true;
       }
     }
     return false;
-  }, [categoryData, inflows]);
+  }, [categoryData, inflows, conversionMap]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

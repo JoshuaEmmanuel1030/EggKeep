@@ -68,6 +68,22 @@ export function useInventorySync() {
     }
   }, [fetchData, user]);
 
+  // Refetch when the tab regains focus so two devices don't show two different
+  // stock levels (PWA sessions stay open all day on the warehouse phones).
+  useEffect(() => {
+    if (!user) return;
+    const onFocus = () => fetchData();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") fetchData();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [user, fetchData]);
+
   // Add inflow to database
   const addInflow = useCallback(
     async (entry: InflowEntry) => {
@@ -140,132 +156,48 @@ export function useInventorySync() {
     [user]
   );
 
-  // Add outflow and update inflows (FIFO) - only for eggs
-  const addOutflow = useCallback(
-    async (entry: OutflowEntry, quantityToRemove: number) => {
-      if (!user) return false;
-      
+  // Record ALL entries of one order (eggs + packaging + labels + boxes) atomically
+  // via the record_order_outflows RPC. The database does the FIFO deduction inside
+  // one transaction with row locks, so either the whole order goes through or none
+  // of it does — and concurrent submits from two devices can't overwrite each
+  // other's deductions (the old client-side FIFO wrote stale absolute values).
+  const submitOrderOutflows = useCallback(
+    async (entries: OutflowEntry[]) => {
+      if (!user || entries.length === 0) return false;
+
       try {
-        // Get inflows for this product with stock remaining
-        // Sort by business date (physical arrival) for FIFO, createdAt as tiebreaker
-        const productInflows = inflows
-          .filter((i) => i.product === entry.product && i.remainingButir > 0 && i.category === entry.category)
-          .sort((a, b) => {
-            const dateCompare = a.date.localeCompare(b.date);
-            if (dateCompare !== 0) return dateCompare;
-            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-          });
-
-        // Check available stock before proceeding
-        const availableStock = productInflows.reduce((sum, i) => sum + i.remainingButir, 0);
-        if (quantityToRemove > availableStock) {
-          toast({
-            title: "Insufficient Stock",
-            description: `Only ${availableStock.toLocaleString()} available for ${entry.product}. Requested: ${quantityToRemove.toLocaleString()}`,
-            variant: "destructive",
-          });
-          return false;
-        }
-
-        // Calculate FIFO deductions
-        let remaining = quantityToRemove;
-        const updates: { id: string; remaining_butir: number; deducted: number }[] = [];
-
-        for (const inflow of productInflows) {
-          if (remaining <= 0) break;
-          const toDeduct = Math.min(inflow.remainingButir, remaining);
-          updates.push({
-            id: inflow.id,
-            remaining_butir: inflow.remainingButir - toDeduct,
-            deducted: toDeduct,
-          });
-          remaining -= toDeduct;
-        }
-
-        // Update inflows with FIFO deductions
-        for (const update of updates) {
-          const { error: updateError } = await supabase
-            .from("inflows")
-            .update({ remaining_butir: update.remaining_butir })
-            .eq("id", update.id);
-
-          if (updateError) throw updateError;
-        }
-
-        // Insert outflow record
-        const { error: outflowError } = await supabase.from("outflows").insert({
-          id: entry.id,
-          date: entry.date,
-          product: entry.product,
-          quantity_butir: entry.quantityInButir,
-          user_id: user.id,
-          category: entry.category,
-          invoice_supplier: entry.invoiceSupplier || null,
+        const { error } = await supabase.rpc("record_order_outflows", {
+          p_entries: entries.map((entry) => ({
+            id: entry.id,
+            date: entry.date,
+            product: entry.product,
+            quantity_butir: entry.quantityInButir,
+            category: entry.category,
+            invoice_supplier: entry.invoiceSupplier || null,
+          })),
         });
 
-        if (outflowError) throw outflowError;
+        if (error) throw error;
 
-        // Record FIFO deductions for audit trail
-        const fifoRecords = updates
-          .filter((u) => u.deducted > 0)
-          .map((u) => ({
-            outflow_id: entry.id,
-            inflow_id: u.id,
-            quantity_deducted: u.deducted,
-          }));
-
-        if (fifoRecords.length > 0) {
-          const { error: fifoError } = await supabase
-            .from("fifo_deductions")
-            .insert(fifoRecords);
-
-          if (fifoError) {
-            console.error("Error recording FIFO deductions:", fifoError);
-            // Don't throw - outflow was successful, this is just audit logging
-          }
-        }
-
-        // Update local state
-        setInflows((prev) =>
-          prev.map((i) => {
-            const update = updates.find((u) => u.id === i.id);
-            return update ? { ...i, remainingButir: update.remaining_butir } : i;
-          })
-        );
-
-        setOutflows((prev) => [...prev, entry]);
-
+        // Refetch instead of patching local state: the DB computed the deductions,
+        // so its remaining_butir values are the only correct ones.
+        await fetchData();
         return true;
       } catch (error) {
-        console.error("Error adding outflow:", error);
+        console.error("Error recording order outflows:", error);
+        const message = error instanceof Error ? error.message : String(error);
+        const shortStock = message.includes("INSUFFICIENT_STOCK");
         toast({
-          title: "Error",
-          description: "Failed to save outflow",
+          title: shortStock ? "Insufficient Stock" : "Error",
+          description: shortStock
+            ? `${message.replace(/^.*INSUFFICIENT_STOCK:\s*/, "")} — nothing was deducted.`
+            : "Failed to save outflow — nothing was deducted.",
           variant: "destructive",
         });
         return false;
       }
     },
-    [inflows, user]
-  );
-
-  // Add multiple outflows at once
-  const addMultipleOutflows = useCallback(
-    async (entries: OutflowEntry[]) => {
-      if (!user || entries.length === 0) return false;
-
-      try {
-        for (const entry of entries) {
-          const success = await addOutflow(entry, entry.quantityInButir);
-          if (!success) return false;
-        }
-        return true;
-      } catch (error) {
-        console.error("Error adding multiple outflows:", error);
-        return false;
-      }
-    },
-    [user, addOutflow]
+    [user, fetchData]
   );
 
   return {
@@ -274,8 +206,7 @@ export function useInventorySync() {
     loading,
     addInflow,
     addMultipleInflows,
-    addOutflow,
-    addMultipleOutflows,
+    submitOrderOutflows,
     refetch: fetchData,
   };
 }

@@ -26,6 +26,8 @@ export interface ItemTypeSaveData {
   unit?: "kg" | "btr";
   eggsPerUnit?: number;
   boxCapacities?: Record<string, number>;
+  freshnessDays?: number;
+  lowStockThreshold?: number;
 }
 
 interface ItemTypeDialogProps {
@@ -55,6 +57,8 @@ export function ItemTypeDialog({
   const [name, setName] = useState("");
   const [unit, setUnit] = useState<"kg" | "btr">("btr");
   const [eggsPerUnit, setEggsPerUnit] = useState("");
+  const [freshnessDays, setFreshnessDays] = useState("");
+  const [lowStockThreshold, setLowStockThreshold] = useState("");
   // Per-SKU packs-per-box, kept as raw strings keyed by SKU code (blank = unset).
   const [caps, setCaps] = useState<Record<string, string>>({});
 
@@ -66,6 +70,8 @@ export function ItemTypeDialog({
       setName(item?.name || "");
       setUnit(item?.unit || "btr");
       setEggsPerUnit(item?.eggsPerUnit != null ? String(item.eggsPerUnit) : "");
+      setFreshnessDays(item?.freshnessDays != null ? String(item.freshnessDays) : "");
+      setLowStockThreshold(item?.lowStockThreshold != null ? String(item.lowStockThreshold) : "");
 
       if (isBox) {
         // Seed each SKU from the box's saved map, falling back to the hardcoded
@@ -91,10 +97,21 @@ export function ItemTypeDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSave) return;
+
+    // Blank or non-positive means "unset": freshness falls back to the 5-day
+    // default, threshold disables the low-stock alert for this item.
+    const fresh = parseInt(freshnessDays, 10);
+    const threshold = parseFloat(lowStockThreshold);
+    const shared = {
+      name: name.trim(),
+      freshnessDays: !isNaN(fresh) && fresh > 0 ? fresh : undefined,
+      lowStockThreshold: !isNaN(threshold) && threshold > 0 ? threshold : undefined,
+    };
+
     if (isEgg) {
       // btr eggs are always 1:1; kg eggs carry their factor.
       await onSave({
-        name: name.trim(),
+        ...shared,
         unit,
         eggsPerUnit: unit === "kg" ? factorNum : 1,
       });
@@ -105,9 +122,9 @@ export function ItemTypeDialog({
         const n = parseInt(raw, 10);
         if (!isNaN(n) && n > 0) boxCapacities[code] = n;
       }
-      await onSave({ name: name.trim(), boxCapacities });
+      await onSave({ ...shared, boxCapacities });
     } else {
-      await onSave({ name: name.trim() });
+      await onSave(shared);
     }
   };
 
@@ -164,8 +181,38 @@ export function ItemTypeDialog({
                   )}
                 </div>
               )}
+
+              <div className="space-y-2">
+                <Label htmlFor="freshnessDays">{t.catalog.freshnessDays}</Label>
+                <Input
+                  id="freshnessDays"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={freshnessDays}
+                  onChange={(e) => setFreshnessDays(e.target.value)}
+                  placeholder="5"
+                />
+                <p className="text-xs text-muted-foreground">{t.catalog.freshnessDaysHelp}</p>
+              </div>
             </>
           )}
+
+          <div className="space-y-2">
+            <Label htmlFor="lowStockThreshold">{t.catalog.lowStockThreshold}</Label>
+            <Input
+              id="lowStockThreshold"
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={lowStockThreshold}
+              onChange={(e) => setLowStockThreshold(e.target.value)}
+              placeholder="—"
+            />
+            <p className="text-xs text-muted-foreground">{t.catalog.lowStockThresholdHelp}</p>
+          </div>
 
           {isBox && (
             <div className="space-y-2">

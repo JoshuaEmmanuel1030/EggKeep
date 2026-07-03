@@ -16,6 +16,10 @@ export interface ItemType {
   // Box-only: packs-per-box keyed by pack SKU code, e.g. { "N15B": 8, "N6B": 20 }.
   // Undefined for non-box categories.
   boxCapacities?: Record<string, number>;
+  // Egg-only: days before this product counts as "at risk" (default 5 when unset).
+  freshnessDays?: number;
+  // Any category: dashboard low-stock alert threshold in butir/pcs (unset = no alert).
+  lowStockThreshold?: number;
 }
 
 export interface InflowEntry {

@@ -31,6 +31,10 @@ export function useItemTypes() {
           ((row as { box_capacities?: Record<string, number> | null }).box_capacities as
             | Record<string, number>
             | null) ?? undefined,
+        freshnessDays:
+          (row as { freshness_days?: number | null }).freshness_days ?? undefined,
+        lowStockThreshold:
+          (row as { low_stock_threshold?: number | null }).low_stock_threshold ?? undefined,
       }));
 
       setItemTypes(mapped);
@@ -58,12 +62,17 @@ export function useItemTypes() {
     [itemTypes]
   );
 
-  // Egg product names for dropdowns: catalog egg types plus any baseline names
-  // that aren't (yet) in the catalog, so nothing silently disappears.
-  const eggProductNames: string[] = useMemo(
-    () => Object.keys(conversionMap).sort(),
-    [conversionMap]
-  );
+  // Egg product names for dropdowns. Once the catalog has loaded, offer ONLY
+  // catalog names: keeping baseline CONVERSION_DICT names selectable would let a
+  // renamed egg's OLD name back into inflows/outflows (the split-inventory
+  // incident). The baseline is only the pre-load/offline fallback; conversionMap
+  // still layers it so historical rows keep converting.
+  const eggProductNames: string[] = useMemo(() => {
+    const catalogEggs = itemTypes
+      .filter((t) => t.category === "egg")
+      .map((t) => t.name);
+    return (catalogEggs.length > 0 ? catalogEggs : Object.keys(conversionMap)).sort();
+  }, [itemTypes, conversionMap]);
 
   // Authoritative box-capacity table: configured DB box rows over the baseline.
   const boxCapacityMap: BoxCapacityMap = useMemo(
@@ -78,12 +87,16 @@ export function useItemTypes() {
       unit,
       eggsPerUnit,
       boxCapacities,
+      freshnessDays,
+      lowStockThreshold,
     }: {
       name: string;
       category: InventoryCategory;
       unit?: "kg" | "btr";
       eggsPerUnit?: number;
       boxCapacities?: Record<string, number>;
+      freshnessDays?: number;
+      lowStockThreshold?: number;
     }) => {
       const { data, error } = await supabase
         .from("item_types")
@@ -93,6 +106,8 @@ export function useItemTypes() {
           unit: unit ?? null,
           eggs_per_unit: eggsPerUnit ?? null,
           box_capacities: boxCapacities ?? null,
+          freshness_days: freshnessDays ?? null,
+          low_stock_threshold: lowStockThreshold ?? null,
         })
         .select()
         .single();
@@ -112,12 +127,16 @@ export function useItemTypes() {
       unit,
       eggsPerUnit,
       boxCapacities,
+      freshnessDays,
+      lowStockThreshold,
     }: {
       id: string;
       name: string;
       unit?: "kg" | "btr";
       eggsPerUnit?: number;
       boxCapacities?: Record<string, number>;
+      freshnessDays?: number;
+      lowStockThreshold?: number;
     }) => {
       const { data, error } = await supabase
         .from("item_types")
@@ -126,6 +145,8 @@ export function useItemTypes() {
           unit: unit ?? null,
           eggs_per_unit: eggsPerUnit ?? null,
           box_capacities: boxCapacities ?? null,
+          freshness_days: freshnessDays ?? null,
+          low_stock_threshold: lowStockThreshold ?? null,
         })
         .eq("id", id)
         .select()

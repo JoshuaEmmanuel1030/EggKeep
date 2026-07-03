@@ -13,11 +13,13 @@ import { useInventorySync } from "@/hooks/useInventorySync";
 import { useActivityLogs } from "@/hooks/useActivityLogs";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useItemTypes } from "@/hooks/useItemTypes";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   calculateStockSummary,
   exportInflowsToCSV,
   downloadCSV,
+  getProductUnit,
 } from "@/lib/inventory";
 import { PackagePlus, PackageMinus, LayoutDashboard, Library, History, BarChart2, Users } from "lucide-react";
 import { InfosPage } from "@/components/InfosPage";
@@ -25,10 +27,11 @@ import { InventoryAssistant } from "@/components/InventoryAssistant";
 import { Badge } from "@/components/ui/badge";
 
 const Index = () => {
-  const { inflows, outflows, loading, addMultipleInflows, addOutflow, refetch: refetchInventory } = useInventorySync();
+  const { inflows, outflows, loading, addMultipleInflows, submitOrderOutflows, refetch: refetchInventory } = useInventorySync();
   const { logs, loading: logsLoading, pendingCount, isOnline, refetch: refetchLogs } = useActivityLogs();
   const { addActivityLog } = useOfflineSync();
   const { isAdmin } = useUserRole();
+  const { itemTypes, conversionMap } = useItemTypes();
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("dashboard");
 
@@ -59,36 +62,55 @@ const Index = () => {
 
   const handleOutflowSubmit = useCallback(
     async (entries: OutflowEntry[], userEmail: string, metadata?: ActivityLogMetadata) => {
+      // One atomic call for the whole order: eggs, packaging, labels, and boxes
+      // all go through together or none of them do.
+      const success = await submitOrderOutflows(entries);
+      if (!success) return false;
+
       for (const entry of entries) {
-        const success = await addOutflow(entry, entry.quantityInButir);
-        if (success) {
-          await addActivityLog({
-            action_type: 'outflow',
-            product: entry.product,
-            quantity_butir: entry.quantityInButir,
-            recorded_at: new Date().toISOString(),
-            category: entry.category,
-            invoice_supplier: entry.invoiceSupplier,
-            user_email: userEmail,
-            metadata: { ...metadata, relatedEntryId: entry.id },
-          });
-        } else {
-          return false;
-        }
+        await addActivityLog({
+          action_type: 'outflow',
+          product: entry.product,
+          quantity_butir: entry.quantityInButir,
+          recorded_at: new Date().toISOString(),
+          category: entry.category,
+          invoice_supplier: entry.invoiceSupplier,
+          user_email: userEmail,
+          metadata: { ...metadata, relatedEntryId: entry.id },
+        });
       }
       setActiveTab("dashboard");
       return true;
     },
-    [addOutflow, addActivityLog]
+    [submitOrderOutflows, addActivityLog]
   );
 
   const handleExport = useCallback(() => {
-    const csv = exportInflowsToCSV(inflows);
+    // Derive each egg row's unit from the catalog conversion map instead of the
+    // hardcoded product names baked into the DB row mapping.
+    const withUnits = inflows.map((i) =>
+      i.category === "egg" ? { ...i, unit: getProductUnit(i.product, conversionMap) } : i
+    );
+    const csv = exportInflowsToCSV(withUnits);
     const filename = `js-online-inflows-${new Date().toISOString().split("T")[0]}.csv`;
     downloadCSV(csv, filename);
-  }, [inflows]);
+  }, [inflows, conversionMap]);
 
-  const stockSummary = useMemo(() => calculateStockSummary(inflows), [inflows]);
+  // Per-egg freshness windows from the catalog (falls back to the 5-day default).
+  const freshnessDaysByProduct = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const t of itemTypes) {
+      if (t.category === "egg" && t.freshnessDays != null && t.freshnessDays > 0) {
+        map[t.name] = t.freshnessDays;
+      }
+    }
+    return map;
+  }, [itemTypes]);
+
+  const stockSummary = useMemo(
+    () => calculateStockSummary(inflows, conversionMap, freshnessDaysByProduct),
+    [inflows, conversionMap, freshnessDaysByProduct]
+  );
 
   return (
     <div className="min-h-screen bg-background">

@@ -439,6 +439,17 @@ function ItemRow({ item, index, category, productOptions, conversionMap, onRemov
         </div>
       </div>
 
+      {category === "egg" && item.product && !conversionMap[item.product] && (
+        <div className="flex items-center gap-2 p-2 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 rounded text-xs">
+          <Calculator className="h-3 w-3 shrink-0" />
+          <span>
+            No unit conversion configured for <strong>{item.product}</strong> — the
+            quantity will be recorded as butir 1:1. Set its unit in the Catalog if it
+            is sold by kg.
+          </span>
+        </div>
+      )}
+
       {showConversion && (
         <div className="flex items-center gap-2 p-2 bg-accent/50 rounded text-xs">
           <Calculator className="h-3 w-3 text-primary" />

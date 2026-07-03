@@ -126,6 +126,8 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
           unit: data.unit,
           eggsPerUnit: data.eggsPerUnit,
           boxCapacities: data.boxCapacities,
+          freshnessDays: data.freshnessDays,
+          lowStockThreshold: data.lowStockThreshold,
         });
         toast.success(t.catalog.updateSuccess);
       } else if (addItemType) {
@@ -135,6 +137,8 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
           unit: data.unit,
           eggsPerUnit: data.eggsPerUnit,
           boxCapacities: data.boxCapacities,
+          freshnessDays: data.freshnessDays,
+          lowStockThreshold: data.lowStockThreshold,
         });
         toast.success(t.catalog.addSuccess);
       }

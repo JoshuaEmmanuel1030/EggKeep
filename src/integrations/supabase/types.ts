@@ -207,7 +207,9 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           eggs_per_unit: number | null
+          freshness_days: number | null
           id: string
+          low_stock_threshold: number | null
           name: string
           unit: string | null
         }
@@ -217,7 +219,9 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           eggs_per_unit?: number | null
+          freshness_days?: number | null
           id?: string
+          low_stock_threshold?: number | null
           name: string
           unit?: string | null
         }
@@ -227,7 +231,9 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           eggs_per_unit?: number | null
+          freshness_days?: number | null
           id?: string
+          low_stock_threshold?: number | null
           name?: string
           unit?: string | null
         }
@@ -343,6 +349,12 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      record_order_outflows: {
+        Args: {
+          p_entries: Json
+        }
+        Returns: undefined
       }
       recalculate_inventory_fifo: {
         Args: never

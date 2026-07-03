@@ -33,23 +33,23 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
   );
   const [thresholdOpen, setThresholdOpen] = useState(false);
   
-  // Fetch all item types to show zero-stock items
-  const { itemTypes } = useItemTypes();
+  // Fetch all item types to show zero-stock items (and drive kg display + low-stock alerts)
+  const { itemTypes, conversionMap } = useItemTypes();
 
-  // Helper to check if product uses kg display
+  // kg display is catalog-driven: any egg whose conversion says it's sold by weight.
   const isKgProduct = (product: string) => {
-    return product === "NEGERI BIASA" || product === "NEGERI OMEGA";
+    const config = conversionMap[product];
+    return config?.unit === "kg" && config.eggs_per_unit > 0;
   };
 
-  // Convert butir to kg (15.5 eggs per kg for Negeri)
-  const butirToKg = (butir: number) => {
-    return (butir / 15.5).toFixed(2);
+  const butirToKg = (product: string, butir: number) => {
+    return (butir / conversionMap[product].eggs_per_unit).toFixed(2);
   };
 
-  // Format stock display based on product type
+  // Native-unit display with butir in parentheses for weight-sold eggs.
   const formatStock = (product: string, category: InventoryCategory, quantity: number) => {
     if (category === 'egg' && isKgProduct(product)) {
-      return `${butirToKg(quantity)} kg (${quantity.toLocaleString()} butir)`;
+      return `${butirToKg(product, quantity)} kg (${quantity.toLocaleString()} butir)`;
     }
     return `${quantity.toLocaleString()} ${category === 'egg' ? 'butir' : 'pcs'}`;
   };
@@ -136,6 +136,22 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
 
   const isLowStock = threshold > 0 && totalEggStock < threshold;
 
+  // Per-item low-stock alerts from catalog thresholds (synced via DB, unlike the
+  // per-device global threshold above). Covers boxes/packaging/labels too —
+  // running out of boxes blocks dispatches just like running out of eggs.
+  const lowStockItems = useMemo(() => {
+    return itemTypes
+      .filter((it) => it.lowStockThreshold != null && it.lowStockThreshold > 0)
+      .map((it) => {
+        const stock = mergedSummary.find(
+          (s) => s.product === it.name && s.category === it.category
+        );
+        return { item: it, stock: stock?.totalStock ?? 0 };
+      })
+      .filter(({ item, stock }) => stock < (item.lowStockThreshold as number))
+      .sort((a, b) => a.stock - b.stock);
+  }, [itemTypes, mergedSummary]);
+
   const saveThreshold = () => {
     const val = parseInt(thresholdInput, 10);
     if (!isNaN(val) && val >= 0) {
@@ -215,6 +231,26 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
         </Popover>
       </div>
 
+      {/* Per-item low-stock alerts (catalog thresholds) */}
+      {lowStockItems.length > 0 && (
+        <div className="rounded-lg border border-amber-400 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-amber-700 dark:text-amber-400 space-y-1">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span className="text-sm font-medium">Low stock items</span>
+          </div>
+          <ul className="text-sm pl-6 space-y-0.5">
+            {lowStockItems.map(({ item, stock }) => (
+              <li key={`${item.category}-${item.name}`}>
+                {item.name}: {formatStock(item.name, item.category, stock)}{" "}
+                <span className="text-xs opacity-80">
+                  (alert below {(item.lowStockThreshold as number).toLocaleString()})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Category Summary Cards */}
       <div className="grid grid-cols-2 gap-2 sm:gap-4">
         {(["egg", "box", "label", "packaging"] as InventoryCategory[]).map((cat) => {
@@ -257,8 +293,8 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
                       {totalAtRiskQuantity.toLocaleString()} butir
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {productsWithAtRisk > 0 
-                        ? `across ${productsWithAtRisk} product${productsWithAtRisk > 1 ? 's' : ''} • >5 days old • Click for details`
+                      {productsWithAtRisk > 0
+                        ? `across ${productsWithAtRisk} product${productsWithAtRisk > 1 ? 's' : ''} • past freshness window • Click for details`
                         : 'All eggs are fresh'}
                     </p>
                   </div>
@@ -299,7 +335,7 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
                           {batch.invoiceSupplier || "—"}
                         </td>
                         <td className="py-2 px-2 text-right tabular-nums font-medium">
-                          {batch.quantity.toLocaleString()} butir
+                          {formatStock(batch.product, 'egg', batch.quantity)}
                         </td>
                         <td className="py-2 px-2 text-right text-destructive font-medium">
                           {batch.daysInWarehouse} days
@@ -399,7 +435,7 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
                           {item.category === 'egg' && isKgProduct(item.product) ? (
                             <div className="flex flex-col items-end">
                               <span className={`text-xs sm:text-sm ${item.totalStock === 0 ? "text-muted-foreground" : "font-semibold"}`}>
-                                {butirToKg(item.totalStock)} kg
+                                {butirToKg(item.product, item.totalStock)} kg
                               </span>
                               <span className="text-[10px] text-muted-foreground">
                                 ({item.totalStock.toLocaleString()} butir)
@@ -418,9 +454,20 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
                         </td>
                         <td className="py-2 sm:py-3 px-1 sm:px-2 text-right tabular-nums hidden md:table-cell">
                           {item.category === 'egg' && item.atRiskQuantity > 0 ? (
-                            <span className="text-destructive font-medium text-sm">
-                              {item.atRiskQuantity.toLocaleString()}
-                            </span>
+                            isKgProduct(item.product) ? (
+                              <div className="flex flex-col items-end">
+                                <span className="text-destructive font-medium text-sm">
+                                  {butirToKg(item.product, item.atRiskQuantity)} kg
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  ({item.atRiskQuantity.toLocaleString()} butir)
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-destructive font-medium text-sm">
+                                {item.atRiskQuantity.toLocaleString()}
+                              </span>
+                            )
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -475,7 +522,7 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
                             {item.category === 'egg' && isKgProduct(item.product) ? (
                               <div className="flex flex-col items-end">
                                 <span className="font-medium text-xs sm:text-sm">
-                                  {butirToKg(batch.quantity)} kg
+                                  {butirToKg(item.product, batch.quantity)} kg
                                 </span>
                                 <span className="text-[10px] text-muted-foreground">
                                   ({batch.quantity.toLocaleString()} butir)

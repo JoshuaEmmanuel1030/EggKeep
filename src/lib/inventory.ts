@@ -85,9 +85,15 @@ export function processOutflowFIFO(
 
 export function calculateStockSummary(
   inflows: InflowEntry[],
-  conversionMap: ConversionMap = CONVERSION_DICT
+  conversionMap: ConversionMap = CONVERSION_DICT,
+  // Per-product freshness windows (days) from the catalog; anything not listed
+  // falls back to EGG_FRESHNESS_DAYS. Lets long-lived eggs (e.g. salted) stop
+  // showing as "at risk" after the generic 5 days.
+  freshnessDaysByProduct: Record<string, number> = {}
 ): StockSummary[] {
   const today = new Date();
+  const freshnessLimit = (product: string) =>
+    freshnessDaysByProduct[product] ?? EGG_FRESHNESS_DAYS;
   const productMap = new Map<string, { 
     total: number; 
     oldestDate: string | null; 
@@ -124,7 +130,7 @@ export function calculateStockSummary(
       
       const inflowDate = parseISO(inflow.date);
       const daysInWarehouse = Math.floor((today.getTime() - inflowDate.getTime()) / (1000 * 60 * 60 * 24));
-      const isAtRisk = inflow.category === 'egg' && daysInWarehouse > EGG_FRESHNESS_DAYS;
+      const isAtRisk = inflow.category === 'egg' && daysInWarehouse > freshnessLimit(inflow.product);
       
       const batch: BatchDetail = {
         id: inflow.id,
@@ -162,7 +168,7 @@ export function calculateStockSummary(
     }
 
     // Only eggs can be "at risk"
-    const isAtRisk = data.category === 'egg' && maxDays > EGG_FRESHNESS_DAYS;
+    const isAtRisk = data.category === 'egg' && maxDays > freshnessLimit(product);
     
     // Sort batches by date (oldest first - FIFO)
     const sortedBatches = data.batches.sort((a, b) => 
