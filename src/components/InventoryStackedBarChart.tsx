@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { StockSummary, InventoryCategory } from "@/types/inventory";
+import { butirEquivalent } from "@/lib/inventory";
+import { useItemTypes } from "@/hooks/useItemTypes";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ChartContainer,
@@ -54,6 +56,7 @@ const CATEGORY_ORDER: InventoryCategory[] = ["packaging", "egg", "box", "label"]
 
 export function InventoryStackedBarChart({ stockSummary }: InventoryStackedBarChartProps) {
   const { t } = useLanguage();
+  const { conversionMap } = useItemTypes();
 
   const { chartData, chartConfig, productsByCategory } = useMemo(() => {
     // Group products by category
@@ -68,7 +71,11 @@ export function InventoryStackedBarChart({ stockSummary }: InventoryStackedBarCh
       if (item.totalStock > 0) {
         grouped[item.category].push({
           product: item.product,
-          total: item.totalStock,
+          // kg-native: convert weight-sold eggs to a butir estimate so the egg
+          // bar stacks a single unit.
+          total: item.category === "egg"
+            ? butirEquivalent(item.product, item.totalStock, conversionMap)
+            : item.totalStock,
         });
       }
     });
@@ -126,7 +133,7 @@ export function InventoryStackedBarChart({ stockSummary }: InventoryStackedBarCh
       chartConfig: config,
       productsByCategory: productsByCat,
     };
-  }, [stockSummary, t]);
+  }, [stockSummary, t, conversionMap]);
 
   // Get all unique bar keys
   const allKeys = useMemo(() => {

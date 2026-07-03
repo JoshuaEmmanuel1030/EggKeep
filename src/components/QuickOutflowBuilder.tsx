@@ -691,6 +691,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
               aggregates={orderQueue.length > 0 ? totalAggregates : aggregates}
               shortages={shortages}
               boxMode={boxMode}
+              conversionMap={conversionMap}
             />
           </div>
         </div>

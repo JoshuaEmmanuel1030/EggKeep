@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { CATEGORY_LABELS } from "@/types/inventory";
 import { format, parseISO } from "date-fns";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useItemTypes } from "@/hooks/useItemTypes";
 import { useVoidEntry } from "@/hooks/useVoidEntry";
 import { useAuth } from "@/hooks/useAuth";
 import { VoidEntryDialog } from "./VoidEntryDialog";
@@ -26,6 +27,16 @@ import {
   Pencil
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Unit label for a logged quantity in the product's native stock unit
+// (kg-native: weight-sold eggs log kg, count eggs log butir, others pcs).
+function useStockUnitLabel() {
+  const { conversionMap } = useItemTypes();
+  return (product: string, category: string): string => {
+    if (category !== "egg") return "pcs";
+    return conversionMap[product]?.unit === "kg" ? "kg" : "butir";
+  };
+}
 
 interface GroupedActivityLogProps {
   logs: ActivityLog[];
@@ -353,6 +364,7 @@ interface BuyerOrderCardProps {
 
 function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick }: BuyerOrderCardProps) {
   const { t } = useLanguage();
+  const unitLabel = useStockUnitLabel();
   const [expanded, setExpanded] = useState(false);
   const formattedTime = format(parseISO(order.timestamp), "HH:mm");
   
@@ -491,7 +503,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
                     {item.type === 'box' && <Box className="h-3 w-3 text-blue-500" />}
                     <span className="text-muted-foreground">{item.product}:</span>
                     <span className="font-medium">{item.quantity.toLocaleString()}</span>
-                    <span className="text-muted-foreground">{item.type === 'egg' ? 'butir' : 'pcs'}</span>
+                    <span className="text-muted-foreground">{unitLabel(item.product, item.type)}</span>
                   </div>
                 ))}
               </div>
@@ -512,6 +524,7 @@ interface EntryProps {
 
 function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: EntryProps) {
   const { t } = useLanguage();
+  const unitLabel = useStockUnitLabel();
   const formattedTime = format(parseISO(log.recorded_at), "HH:mm");
   const canEditEntry = isEditable(log);
   const hoursRemaining = getEditWindowHours(log.created_at);
@@ -538,7 +551,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours }
             <span className="text-muted-foreground">:</span>
             <span className={cn("font-medium", isVoided && "line-through")}>{log.quantity_butir.toLocaleString()}</span>
             <span className="text-xs text-muted-foreground">
-              {log.category === 'egg' ? 'butir' : 'pcs'}
+              {unitLabel(log.product, log.category)}
             </span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -580,6 +593,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours }
 
 function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: EntryProps) {
   const { t } = useLanguage();
+  const unitLabel = useStockUnitLabel();
   const formattedTime = format(parseISO(log.recorded_at), "HH:mm");
   const canEditEntry = isEditable(log);
   const hoursRemaining = getEditWindowHours(log.created_at);
@@ -606,7 +620,7 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
             <span className="text-muted-foreground">:</span>
             <span className={cn("font-medium text-green-600", isVoided && "line-through")}>+{log.quantity_butir.toLocaleString()}</span>
             <span className="text-xs text-muted-foreground">
-              {log.category === 'egg' ? 'butir' : 'pcs'}
+              {unitLabel(log.product, log.category)}
             </span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -663,6 +677,7 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
 // Chronological view entry - unified display for all log types
 function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours }: EntryProps) {
   const { t } = useLanguage();
+  const unitLabel = useStockUnitLabel();
   const formattedDateTime = format(parseISO(log.recorded_at), "MMM d, yyyy HH:mm");
   const canEditEntry = isEditable(log);
   const hoursRemaining = getEditWindowHours(log.created_at);
@@ -718,7 +733,7 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours }
               {isInflow ? "+" : "-"}{log.quantity_butir.toLocaleString()}
             </span>
             <span className="text-xs text-muted-foreground shrink-0">
-              {log.category === 'egg' ? 'butir' : 'pcs'}
+              {unitLabel(log.product, log.category)}
             </span>
 
             {/* Buyer name for quick outflows */}

@@ -140,17 +140,17 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
 
       for (const item of data.items) {
         if (!item.product || !item.quantity) continue;
-        // Compare in butir: kg input must be converted before checking stock,
-        // otherwise a kg quantity slips past the gate (stock is stored in butir).
+        // Compare in the product's native stock unit (kg for weight-sold eggs):
+        // a butir entry on a kg product converts to estimated kg first.
         let qty = parseFloat(item.quantity) || 0;
-        if (category === "egg" && item.inputUnit === "kg") {
+        if (category === "egg" && item.inputUnit !== "kg") {
           const config = conversionMap[item.product];
-          if (config && config.unit === "kg") {
-            qty = Math.round(qty * config.eggs_per_unit);
+          if (config && config.unit === "kg" && config.eggs_per_unit > 0) {
+            qty = Math.round((qty / config.eggs_per_unit) * 100) / 100;
           }
         }
         const available = getAvailableStock(category, item.product);
-        if (qty > available) return true;
+        if (qty > available + 1e-9) return true;
       }
     }
     return false;
@@ -180,12 +180,14 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
         const quantityNum = parseFloat(item.quantity);
         if (quantityNum <= 0) continue;
 
-        // Convert kg to butir for weight-sold eggs if needed
+        // kg-native: deduct in the product's stock unit. kg input on a kg
+        // product passes through exactly; a butir entry on a kg product
+        // converts to estimated kg.
         let quantityInButir = quantityNum;
-        if (category === "egg" && item.inputUnit === "kg") {
+        if (category === "egg" && item.inputUnit !== "kg") {
           const config = conversionMap[item.product];
-          if (config && config.unit === "kg") {
-            quantityInButir = Math.round(quantityNum * config.eggs_per_unit);
+          if (config && config.unit === "kg" && config.eggs_per_unit > 0) {
+            quantityInButir = Math.round((quantityNum / config.eggs_per_unit) * 100) / 100;
           }
         }
 
@@ -410,19 +412,20 @@ function OutflowItemRow({
   // A product supports kg input when its catalog conversion says it's sold by weight.
   const isKgProduct = category === "egg" && conversionMap[item.product]?.unit === "kg";
   const inputUnit = item.inputUnit || "butir";
+  const factor = conversionMap[item.product]?.eggs_per_unit || 0;
 
-  // Calculate quantity in butir for stock validation
-  const getQuantityInButir = () => {
+  // Quantity in the product's NATIVE stock unit (kg for weight-sold eggs).
+  const getQuantityInStock = () => {
     const qty = parseFloat(item.quantity) || 0;
-    if (inputUnit === "kg" && isKgProduct) {
-      const config = conversionMap[item.product];
-      return Math.round(qty * (config?.eggs_per_unit || 15.5));
+    if (isKgProduct && inputUnit !== "kg" && factor > 0) {
+      return Math.round((qty / factor) * 100) / 100; // butir entry -> estimated kg
     }
     return qty;
   };
 
-  const quantityInButir = getQuantityInButir();
-  const isOverstock = item.product && quantityInButir > availableStock;
+  const quantityInStock = getQuantityInStock();
+  const isOverstock = item.product && quantityInStock > availableStock + 1e-9;
+  const stockUnit = category !== "egg" ? "pcs" : isKgProduct ? "kg" : "butir";
   const displayUnit = category === "egg" ? (isKgProduct && inputUnit === "kg" ? "kg" : "butir") : "pcs";
 
   return (
@@ -531,9 +534,11 @@ function OutflowItemRow({
           <span className={cn("text-xs font-medium", inputUnit === "kg" && "text-primary")}>
             Kg
           </span>
-          {inputUnit === "kg" && item.quantity && (
+          {item.quantity && (
             <span className="text-xs text-muted-foreground ml-2">
-              ≈ {quantityInButir.toLocaleString()} butir
+              {inputUnit === "kg"
+                ? `≈ ${Math.round((parseFloat(item.quantity) || 0) * factor).toLocaleString()} butir`
+                : `≈ ${quantityInStock.toLocaleString()} kg deducted`}
             </span>
           )}
         </div>
@@ -541,14 +546,14 @@ function OutflowItemRow({
 
       {item.product && (
         <div className="text-xs text-muted-foreground">
-          {t.common.available}: <strong className="text-foreground">{availableStock.toLocaleString()}</strong> butir
+          {t.common.available}: <strong className="text-foreground">{availableStock.toLocaleString()}</strong> {stockUnit}
         </div>
       )}
 
       {isOverstock && (
         <div className="flex items-center gap-2 p-2 bg-destructive/10 text-destructive rounded text-xs">
           <AlertCircle className="h-3 w-3" />
-          <span>{t.outflow.exceedsStock} {(quantityInButir - availableStock).toLocaleString()}</span>
+          <span>{t.outflow.exceedsStock} {(Math.round((quantityInStock - availableStock) * 100) / 100).toLocaleString()} {stockUnit}</span>
         </div>
       )}
     </div>

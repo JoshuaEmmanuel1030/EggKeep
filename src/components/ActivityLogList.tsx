@@ -3,7 +3,7 @@ import { Cloud, CloudOff, Filter, X, Search, Calendar, ChevronDown, Download } f
 import { ActivityLog } from "@/types/activityLog";
 
 function exportLogsToCSV(logs: ActivityLog[]): string {
-  const headers = ["Date", "Time", "Type", "Product", "Qty (butir)", "Buyer / Supplier", "Invoice", "User", "Voided"];
+  const headers = ["Date", "Time", "Type", "Product", "Qty (stock units)", "Buyer / Supplier", "Invoice", "User", "Voided"];
   const rows = logs.map(log => {
     const dt = new Date(log.recorded_at);
     return [

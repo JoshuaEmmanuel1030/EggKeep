@@ -283,7 +283,9 @@ export function OrderLineItem({
           <div className="flex items-center gap-2 text-muted-foreground">
             <Egg className="h-3.5 w-3.5" />
             <span>
-              → {materials.eggsButir.toLocaleString()} butir {materials.eggProduct}
+              → {materials.eggsButir.toLocaleString()}{" "}
+              {conversionMap[materials.eggProduct]?.unit === "kg" ? "kg" : "butir"}{" "}
+              {materials.eggProduct}
             </span>
           </div>
           

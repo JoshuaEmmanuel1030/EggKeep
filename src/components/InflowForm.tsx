@@ -138,9 +138,10 @@ export function InflowForm({ onSubmit }: InflowFormProps) {
         if (quantityNum <= 0) continue;
 
         const unit = category === "egg" ? getProductUnit(item.product, conversionMap) : "pcs";
-        const quantityInButir = category === "egg"
-          ? convertToButir(item.product, quantityNum, conversionMap)
-          : quantityNum;
+        // kg-native: stock is stored in the product's own unit. The form already
+        // takes input in that unit (kg for weight-sold eggs, butir otherwise),
+        // so the entered quantity IS the stock quantity — no conversion.
+        const quantityInButir = quantityNum;
 
         entries.push({
           id: crypto.randomUUID(),

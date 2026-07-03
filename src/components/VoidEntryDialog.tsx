@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useItemTypes } from "@/hooks/useItemTypes";
 import { ActivityLog } from "@/types/activityLog";
 
 interface VoidEntryDialogProps {
@@ -32,6 +33,7 @@ export function VoidEntryDialog({
   orderLogsCount,
 }: VoidEntryDialogProps) {
   const { t } = useLanguage();
+  const { conversionMap } = useItemTypes();
   const [reason, setReason] = useState("");
 
   const handleConfirm = async () => {
@@ -73,7 +75,12 @@ export function VoidEntryDialog({
           <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
             <p className="text-sm font-medium">{entryType}</p>
             <p className="text-sm text-muted-foreground">
-              {entry.product} • {entry.quantity_butir.toLocaleString()} {t.common.pcs}
+              {entry.product} • {entry.quantity_butir.toLocaleString()}{" "}
+              {entry.category !== "egg"
+                ? t.common.pcs
+                : conversionMap[entry.product]?.unit === "kg"
+                  ? "kg"
+                  : "butir"}
             </p>
             {entry.metadata?.buyerName && (
               <p className="text-sm text-muted-foreground">

@@ -40,13 +40,14 @@ interface ProductPickRow {
   shortfall: number;
 }
 
-// Format a butir quantity in its product's natural unit (kg for weight-sold eggs).
-function formatButir(product: string, butir: number, conversionMap: ConversionMap): string {
+// Format a stock quantity in its product's native unit. kg-native design:
+// weight-sold eggs already store and aggregate in kg, so no division here.
+function formatButir(product: string, qty: number, conversionMap: ConversionMap): string {
   const cfg = conversionMap[product];
   if (cfg?.unit === "kg") {
-    return `${(butir / cfg.eggs_per_unit).toFixed(1)} kg`;
+    return `${qty.toLocaleString()} kg`;
   }
-  return `${butir.toLocaleString()} butir`;
+  return `${qty.toLocaleString()} butir`;
 }
 
 function simulateFIFO(batches: StockSummary["batches"], needed: number): BatchAllocation[] {

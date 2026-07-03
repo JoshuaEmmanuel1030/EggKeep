@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { InflowEntry, OutflowEntry, InventoryCategory } from "@/types/inventory";
+import { butirEquivalent } from "@/lib/inventory";
+import { useItemTypes } from "@/hooks/useItemTypes";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ChartContainer,
@@ -40,6 +42,7 @@ const TIME_PERIOD_OPTIONS: { value: TimePeriod; labelKey: keyof typeof import("@
 
 export function InventoryTrendLineChart({ inflows, outflows }: InventoryTrendLineChartProps) {
   const { t } = useLanguage();
+  const { conversionMap } = useItemTypes();
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>("egg");
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>("month");
 
@@ -86,15 +89,19 @@ export function InventoryTrendLineChart({ inflows, outflows }: InventoryTrendLin
     // Sort dates
     const sortedDates = Array.from(allDates).sort();
 
-    // Aggregate by date
+    // Aggregate by date. kg-native: egg entries for weight-sold products store
+    // kg, so convert to butir-equivalent before summing across products.
+    const toEquiv = (product: string, qty: number) =>
+      selectedCategory === "egg" ? butirEquivalent(product, qty, conversionMap) : qty;
+
     const data = sortedDates.map((date) => {
       const dayInflows = filteredInflows
         .filter((i) => i.date === date)
-        .reduce((sum, i) => sum + i.quantityInButir, 0);
+        .reduce((sum, i) => sum + toEquiv(i.product, i.quantityInButir), 0);
 
       const dayOutflows = filteredOutflows
         .filter((o) => o.date === date)
-        .reduce((sum, o) => sum + o.quantityInButir, 0);
+        .reduce((sum, o) => sum + toEquiv(o.product, o.quantityInButir), 0);
 
       return {
         date,
@@ -106,7 +113,7 @@ export function InventoryTrendLineChart({ inflows, outflows }: InventoryTrendLin
     });
 
     return data;
-  }, [inflows, outflows, selectedCategory, selectedPeriod]);
+  }, [inflows, outflows, selectedCategory, selectedPeriod, conversionMap]);
 
   const chartConfig = {
     inflow: {

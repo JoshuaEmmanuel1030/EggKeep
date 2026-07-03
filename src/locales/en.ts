@@ -298,7 +298,7 @@ export const en = {
     freshnessDays: 'Freshness window (days)',
     freshnessDaysHelp: 'Days in the warehouse before this egg counts as at risk. Leave blank for the default (5 days). Salted eggs can be set much higher.',
     lowStockThreshold: 'Low-stock alert threshold',
-    lowStockThresholdHelp: 'Show a dashboard warning when stock drops below this amount (butir for eggs, pcs otherwise). Leave blank to disable.',
+    lowStockThresholdHelp: 'Show a dashboard warning when stock drops below this amount, in the item\'s stock unit (kg for weight-sold eggs, butir for other eggs, pcs otherwise). Leave blank to disable.',
     renameTitle: 'Rename in use',
     renameWarning: 'Renaming "{old}" to "{new}" only updates the catalog. Records are linked by name, so existing history keeps the old name and will be orphaned.',
     renameOrphans: 'This name is referenced by:',

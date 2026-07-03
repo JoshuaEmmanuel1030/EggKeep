@@ -128,8 +128,18 @@ export function calculateLineMaterials(
     if (!sku) return null;
 
     const effectiveBoxMode = line.boxModeOverride || boxMode;
-    const eggsButir = line.packQty * sku.eggsPerPack;
-    
+
+    // Egg deduction in the product's native stock unit. Packs are defined in
+    // eggs; for weight-sold eggs (stock in kg) convert count -> estimated kg
+    // via the catalog factor. Count-sold eggs deduct the count directly.
+    const eggCount = line.packQty * sku.eggsPerPack;
+    const eggConfig = conversionMap[sku.eggProduct];
+    const eggsButir =
+      eggConfig?.unit === "kg" && eggConfig.eggs_per_unit > 0
+        ? Math.round((eggCount / eggConfig.eggs_per_unit) * 100) / 100
+        : eggCount;
+
+
     let boxesPcs = 0;
     let boxType: string | null = null;
     let lastBoxFill: string | undefined;
@@ -167,18 +177,25 @@ export function calculateLineMaterials(
       return null;
     }
 
-    // Convert to butir if needed
+    // Deduct in the product's native stock unit (kg-native design):
+    // - kg product + kg input   -> exact, no conversion
+    // - kg product + butir input -> estimated kg (count / eggs_per_unit)
+    // - btr product + butir input -> exact count
+    const config = conversionMap[line.eggProduct];
+    const isKgStock = config?.unit === "kg" && config.eggs_per_unit > 0;
     let eggsButir = line.looseQty;
-    if (line.looseUnit === "kg") {
-      const config = conversionMap[line.eggProduct];
-      if (config && config.unit === "kg") {
-        eggsButir = Math.round(line.looseQty * config.eggs_per_unit);
+    let eggCount = line.looseQty; // butir estimate, used for tray logistics
+    if (isKgStock) {
+      if (line.looseUnit === "kg") {
+        eggCount = Math.round(line.looseQty * config.eggs_per_unit);
+      } else {
+        eggsButir = Math.round((line.looseQty / config.eggs_per_unit) * 100) / 100;
       }
     }
 
     // Tray calculation for loose eggs (30 eggs per tray)
     const effectiveBoxMode = line.boxModeOverride || boxMode;
-    const traysUsed = effectiveBoxMode === "tray" ? Math.ceil(eggsButir / 30) : 0;
+    const traysUsed = effectiveBoxMode === "tray" ? Math.ceil(eggCount / 30) : 0;
 
     return {
       eggsButir,
@@ -217,9 +234,12 @@ export function aggregateOrderMaterials(
     const materials = calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap);
     if (!materials) continue;
 
-    // Aggregate eggs
+    // Aggregate eggs (round to 2dp: kg quantities are decimal and float sums drift)
     const currentEggs = eggsByProduct.get(materials.eggProduct) || 0;
-    eggsByProduct.set(materials.eggProduct, currentEggs + materials.eggsButir);
+    eggsByProduct.set(
+      materials.eggProduct,
+      Math.round((currentEggs + materials.eggsButir) * 100) / 100
+    );
 
     // Aggregate packaging (only for pack lines)
     if (materials.packagingItem && materials.packagingPcs > 0) {
@@ -265,17 +285,17 @@ export function validateStockAgainstInventory(
 ): StockShortage[] {
   const shortages: StockShortage[] = [];
 
-  // Check eggs
+  // Check eggs (epsilon: kg stocks are decimal, float sums can drift by 1e-12)
   for (const [product, required] of aggregates.eggsByProduct) {
     const stock = stockSummary.find(s => s.product === product && s.category === "egg");
     const available = stock?.totalStock || 0;
-    if (required > available) {
+    if (required > available + 1e-9) {
       shortages.push({
         category: "egg",
         item: product,
         required,
         available,
-        shortage: required - available,
+        shortage: Math.round((required - available) * 100) / 100,
       });
     }
   }

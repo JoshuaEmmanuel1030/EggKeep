@@ -36,23 +36,29 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
   // Fetch all item types to show zero-stock items (and drive kg display + low-stock alerts)
   const { itemTypes, conversionMap } = useItemTypes();
 
-  // kg display is catalog-driven: any egg whose conversion says it's sold by weight.
+  // kg-native: weight-sold eggs STORE kg in the stock columns. The catalog
+  // factor is only used to show a butir estimate alongside.
   const isKgProduct = (product: string) => {
     const config = conversionMap[product];
     return config?.unit === "kg" && config.eggs_per_unit > 0;
   };
 
-  const butirToKg = (product: string, butir: number) => {
-    return (butir / conversionMap[product].eggs_per_unit).toFixed(2);
+  const butirEstimate = (product: string, kg: number) => {
+    return Math.round(kg * conversionMap[product].eggs_per_unit);
   };
 
-  // Native-unit display with butir in parentheses for weight-sold eggs.
+  // Native-unit display with an estimated butir count for weight-sold eggs.
   const formatStock = (product: string, category: InventoryCategory, quantity: number) => {
     if (category === 'egg' && isKgProduct(product)) {
-      return `${butirToKg(product, quantity)} kg (${quantity.toLocaleString()} butir)`;
+      return `${quantity.toLocaleString()} kg (≈ ${butirEstimate(product, quantity).toLocaleString()} butir)`;
     }
     return `${quantity.toLocaleString()} ${category === 'egg' ? 'butir' : 'pcs'}`;
   };
+
+  // Butir-equivalent for cross-product aggregates (cards, global threshold),
+  // where kg and butir products would otherwise be summed unit-mixed.
+  const toButirEquivalent = (product: string, category: InventoryCategory, quantity: number) =>
+    category === 'egg' && isKgProduct(product) ? butirEstimate(product, quantity) : quantity;
 
   // Merge stock summary with all item types to include zero-stock items
   const mergedSummary = useMemo(() => {
@@ -99,8 +105,8 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
   const totalAtRiskQuantity = useMemo(() =>
     stockSummary
       .filter((s) => s.category === 'egg')
-      .reduce((sum, s) => sum + s.atRiskQuantity, 0),
-    [stockSummary]
+      .reduce((sum, s) => sum + toButirEquivalent(s.product, s.category, s.atRiskQuantity), 0),
+    [stockSummary, conversionMap]
   );
 
   const productsWithAtRisk = useMemo(() =>
@@ -123,15 +129,18 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
   const categoryTotals = useMemo(() =>
     mergedSummary.reduce((acc, s) => {
       if (!acc[s.category]) acc[s.category] = 0;
-      acc[s.category] += s.totalStock;
+      // Egg card sums in butir-equivalent so kg and butir products can share a total.
+      acc[s.category] += toButirEquivalent(s.product, s.category, s.totalStock);
       return acc;
     }, {} as Record<InventoryCategory, number>),
-    [mergedSummary]
+    [mergedSummary, conversionMap]
   );
 
   const totalEggStock = useMemo(() =>
-    stockSummary.filter(s => s.category === 'egg').reduce((sum, s) => sum + s.totalStock, 0),
-    [stockSummary]
+    stockSummary
+      .filter(s => s.category === 'egg')
+      .reduce((sum, s) => sum + toButirEquivalent(s.product, s.category, s.totalStock), 0),
+    [stockSummary, conversionMap]
   );
 
   const isLowStock = threshold > 0 && totalEggStock < threshold;
@@ -435,10 +444,10 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
                           {item.category === 'egg' && isKgProduct(item.product) ? (
                             <div className="flex flex-col items-end">
                               <span className={`text-xs sm:text-sm ${item.totalStock === 0 ? "text-muted-foreground" : "font-semibold"}`}>
-                                {butirToKg(item.product, item.totalStock)} kg
+                                {item.totalStock.toLocaleString()} kg
                               </span>
                               <span className="text-[10px] text-muted-foreground">
-                                ({item.totalStock.toLocaleString()} butir)
+                                (≈ {butirEstimate(item.product, item.totalStock).toLocaleString()} butir)
                               </span>
                             </div>
                           ) : (
@@ -457,10 +466,10 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
                             isKgProduct(item.product) ? (
                               <div className="flex flex-col items-end">
                                 <span className="text-destructive font-medium text-sm">
-                                  {butirToKg(item.product, item.atRiskQuantity)} kg
+                                  {item.atRiskQuantity.toLocaleString()} kg
                                 </span>
                                 <span className="text-[10px] text-muted-foreground">
-                                  ({item.atRiskQuantity.toLocaleString()} butir)
+                                  (≈ {butirEstimate(item.product, item.atRiskQuantity).toLocaleString()} butir)
                                 </span>
                               </div>
                             ) : (
@@ -522,10 +531,10 @@ export function InventoryDashboard({ stockSummary, loading = false }: InventoryD
                             {item.category === 'egg' && isKgProduct(item.product) ? (
                               <div className="flex flex-col items-end">
                                 <span className="font-medium text-xs sm:text-sm">
-                                  {butirToKg(item.product, batch.quantity)} kg
+                                  {batch.quantity.toLocaleString()} kg
                                 </span>
                                 <span className="text-[10px] text-muted-foreground">
-                                  ({batch.quantity.toLocaleString()} butir)
+                                  (≈ {butirEstimate(item.product, batch.quantity).toLocaleString()} butir)
                                 </span>
                               </div>
                             ) : (

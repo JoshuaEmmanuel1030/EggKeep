@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { AggregatedMaterials, StockShortage, BoxModeType } from "@/types/quickOutflow";
+import { ConversionMap } from "@/types/inventory";
 import { isLogisticsOnlyMode } from "@/lib/outflowCalculator";
 import { AlertCircle, CheckCircle2, Egg, Package, Box, Truck, Tag } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -10,10 +11,13 @@ interface OrderSummaryPanelProps {
   aggregates: AggregatedMaterials;
   shortages: StockShortage[];
   boxMode: BoxModeType;
+  conversionMap?: ConversionMap;
 }
 
-export function OrderSummaryPanel({ aggregates, shortages, boxMode }: OrderSummaryPanelProps) {
+export function OrderSummaryPanel({ aggregates, shortages, boxMode, conversionMap = {} }: OrderSummaryPanelProps) {
   const { t } = useLanguage();
+  const eggUnit = (product: string) =>
+    conversionMap[product]?.unit === "kg" ? " kg" : "";
   
   const hasContent =
     aggregates.eggsByProduct.size > 0 ||
@@ -49,10 +53,10 @@ export function OrderSummaryPanel({ aggregates, shortages, boxMode }: OrderSumma
                       <div key={product} className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">{product}</span>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono">{qty.toLocaleString()}</span>
+                          <span className="font-mono">{qty.toLocaleString()}{eggUnit(product)}</span>
                           {shortage && (
                             <Badge variant="destructive" className="text-xs">
-                              -{shortage.shortage.toLocaleString()}
+                              -{shortage.shortage.toLocaleString()}{eggUnit(product)}
                             </Badge>
                           )}
                         </div>

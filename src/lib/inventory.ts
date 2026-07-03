@@ -24,6 +24,58 @@ export function saveOutflows(entries: OutflowEntry[]): void {
   localStorage.setItem(OUTFLOW_KEY, JSON.stringify(entries));
 }
 
+// ============================================================================
+// STOCK UNITS (kg-native design)
+// The quantity_butir / remaining_butir columns hold each product's NATIVE stock
+// unit: kg for weight-sold eggs, butir for count-sold eggs, pcs for everything
+// else. (Non-egg categories always worked this way; kg eggs joined them in the
+// 2026-07 kg-native cutover.) The conversion factor is only used at the edges:
+// pack sales of kg eggs (eggs -> estimated kg) and butir-equivalent estimates
+// on aggregate displays.
+// ============================================================================
+
+/** The unit a product's stock is stored and deducted in. */
+export function getStockUnit(
+  product: string,
+  category: InventoryCategory,
+  conversionMap: ConversionMap = CONVERSION_DICT
+): "kg" | "butir" | "pcs" {
+  if (category !== "egg") return "pcs";
+  return conversionMap[product]?.unit === "kg" ? "kg" : "butir";
+}
+
+/** Convert an entered quantity to the product's native stock units. */
+export function toStockUnits(
+  product: string,
+  quantity: number,
+  enteredUnit: "kg" | "butir",
+  conversionMap: ConversionMap = CONVERSION_DICT
+): number {
+  const config = conversionMap[product];
+  const isKgProduct = config?.unit === "kg" && config.eggs_per_unit > 0;
+  if (isKgProduct && enteredUnit === "butir") {
+    // Estimated weight of a counted quantity.
+    return Math.round((quantity / config.eggs_per_unit) * 100) / 100;
+  }
+  if (!isKgProduct && enteredUnit === "kg" && config && config.eggs_per_unit > 0) {
+    return Math.round(quantity * config.eggs_per_unit);
+  }
+  return quantity; // already native
+}
+
+/** Butir-equivalent estimate for aggregate displays (kg stock × eggs/kg). */
+export function butirEquivalent(
+  product: string,
+  stockQuantity: number,
+  conversionMap: ConversionMap = CONVERSION_DICT
+): number {
+  const config = conversionMap[product];
+  if (config?.unit === "kg" && config.eggs_per_unit > 0) {
+    return Math.round(stockQuantity * config.eggs_per_unit);
+  }
+  return stockQuantity;
+}
+
 export function convertToButir(
   product: string,
   quantity: number,
@@ -198,7 +250,7 @@ export function getTotalAvailableStock(inflows: InflowEntry[], product: string):
 }
 
 export function exportInflowsToCSV(inflows: InflowEntry[]): string {
-  const headers = ["ID", "Date", "Category", "Product", "Quantity", "Unit", "Quantity (Butir)", "Remaining (Butir)", "Invoice/Supplier", "Created At"];
+  const headers = ["ID", "Date", "Category", "Product", "Quantity", "Unit", "Stock Qty", "Remaining", "Invoice/Supplier", "Created At"];
   const rows = inflows.map((i) => [
     i.id,
     i.date,
