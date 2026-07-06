@@ -735,9 +735,12 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
             <AlertDialogTitle>{t.outflow.warningShortages}</AlertDialogTitle>
             <AlertDialogDescription>
               <ul className="mt-2 space-y-1 text-sm">
-                {shortages.map(s => (
-                  <li key={s.item}>• {s.item}: {t.outflow.need} {s.required}, {t.outflow.have} {s.available}</li>
-                ))}
+                {shortages.map(s => {
+                  const unit = s.category === "egg" && conversionMap[s.item]?.unit === "kg" ? " kg" : "";
+                  return (
+                    <li key={s.item}>• {s.item}: {t.outflow.need} {s.required.toLocaleString()}{unit}, {t.outflow.have} {s.available.toLocaleString()}{unit}</li>
+                  );
+                })}
               </ul>
               <span className="block mt-3 text-sm">{t.outflow.continueAnyway}</span>
             </AlertDialogDescription>

@@ -189,11 +189,14 @@ export function OrderSummaryPanel({ aggregates, shortages, boxMode, conversionMa
               
               {hasShortages && (
                 <div className="space-y-1 pl-6">
-                  {shortages.map((shortage, i) => (
-                    <div key={i} className="text-xs text-destructive">
-                      {shortage.item}: {t.outflow.need} {shortage.required.toLocaleString()}, {t.outflow.have} {shortage.available.toLocaleString()}
-                    </div>
-                  ))}
+                  {shortages.map((shortage, i) => {
+                    const unit = shortage.category === "egg" ? eggUnit(shortage.item) : "";
+                    return (
+                      <div key={i} className="text-xs text-destructive">
+                        {shortage.item}: {t.outflow.need} {shortage.required.toLocaleString()}{unit}, {t.outflow.have} {shortage.available.toLocaleString()}{unit}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
