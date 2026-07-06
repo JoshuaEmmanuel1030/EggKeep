@@ -185,7 +185,10 @@ export function useInventorySync() {
         return true;
       } catch (error) {
         console.error("Error recording order outflows:", error);
-        const message = error instanceof Error ? error.message : String(error);
+        // Supabase PostgrestError is a plain object in some versions — read
+        // .message directly rather than relying on instanceof Error.
+        const message =
+          (error as { message?: string })?.message ?? String(error);
         const shortStock = message.includes("INSUFFICIENT_STOCK");
         toast({
           title: shortStock ? "Insufficient Stock" : "Error",
