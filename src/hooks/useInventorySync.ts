@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { InflowEntry, OutflowEntry, InventoryCategory } from "@/types/inventory";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { captureError } from "@/lib/monitoring";
 
 export function useInventorySync() {
   const { user } = useAuth();
@@ -108,6 +109,7 @@ export function useInventorySync() {
         return true;
       } catch (error) {
         console.error("Error adding inflow:", error);
+        captureError(error, { operation: "inflow_insert", product: entry.product });
         toast({
           title: "Error",
           description: "Failed to save inflow",
@@ -145,6 +147,7 @@ export function useInventorySync() {
         return true;
       } catch (error) {
         console.error("Error adding multiple inflows:", error);
+        captureError(error, { operation: "inflow_insert_batch", count: entries.length });
         toast({
           title: "Error",
           description: "Failed to save inflows",
@@ -190,6 +193,11 @@ export function useInventorySync() {
         const message =
           (error as { message?: string })?.message ?? String(error);
         const shortStock = message.includes("INSUFFICIENT_STOCK");
+        captureError(error, {
+          operation: "rpc_record_order_outflows",
+          entryCount: entries.length,
+          insufficientStock: shortStock,
+        });
         toast({
           title: shortStock ? "Insufficient Stock" : "Error",
           description: shortStock
