@@ -326,6 +326,25 @@ export const en = {
     checkingDependencies: 'Checking usage...',
   },
 
+  // Offline outflow outbox
+  outbox: {
+    pendingOrders: 'outflow order(s) waiting to sync',
+    view: 'View',
+    queuedOutflows: 'Queued Outflow Orders',
+    queuedAt: 'Queued',
+    statusPending: 'Waiting to sync',
+    statusFailed: 'Sync failed',
+    savedOffline: 'Saved Offline',
+    savedOfflineDesc: 'No connection — the order was queued and will sync automatically when you are back online.',
+    syncedTitle: 'Queued outflows synced',
+    syncedDesc: 'queued order(s) recorded',
+    failedTitle: 'Queued outflow failed',
+    failedDesc: 'This order is blocking the sync queue. Fix the stock (void/adjust), then Retry — or Discard the order.',
+    retry: 'Retry',
+    discard: 'Discard',
+    discardConfirm: 'Discard this queued order? It will NOT be recorded in inventory.',
+  },
+
   // Language
   language: {
     english: 'English',

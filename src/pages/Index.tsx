@@ -12,6 +12,9 @@ import { ActivityLogMetadata } from "@/types/activityLog";
 import { useInventorySync } from "@/hooks/useInventorySync";
 import { useActivityLogs } from "@/hooks/useActivityLogs";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { useOutflowOutbox } from "@/hooks/useOutflowOutbox";
+import { OutflowOutboxBanner } from "@/components/OutflowOutboxBanner";
+import { toast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -34,6 +37,19 @@ const Index = () => {
   const { itemTypes, conversionMap } = useItemTypes();
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("dashboard");
+
+  // Offline outbox for outflow orders: refetch inventory + logs after a queued
+  // order is replayed successfully so this device shows the DB-computed stock.
+  const handleOutboxSynced = useCallback(() => {
+    refetchInventory();
+    refetchLogs();
+  }, [refetchInventory, refetchLogs]);
+  const {
+    orders: outboxOrders,
+    enqueue: enqueueOutflowOrder,
+    discard: discardOutboxOrder,
+    retry: retryOutboxOrder,
+  } = useOutflowOutbox({ onOrderSynced: handleOutboxSynced });
 
   const handleInflowSubmit = useCallback(async (entries: InflowEntry[], userEmail: string) => {
     const success = await addMultipleInflows(entries);
@@ -64,25 +80,43 @@ const Index = () => {
     async (entries: OutflowEntry[], userEmail: string, metadata?: ActivityLogMetadata) => {
       // One atomic call for the whole order: eggs, packaging, labels, and boxes
       // all go through together or none of them do.
-      const success = await submitOrderOutflows(entries);
-      if (!success) return false;
+      const result = await submitOrderOutflows(entries);
 
-      for (const entry of entries) {
-        await addActivityLog({
-          action_type: 'outflow',
-          product: entry.product,
-          quantity_butir: entry.quantityInButir,
-          recorded_at: new Date().toISOString(),
-          category: entry.category,
-          invoice_supplier: entry.invoiceSupplier,
-          user_email: userEmail,
-          metadata: { ...metadata, relatedEntryId: entry.id },
-        });
+      const logPayloads = entries.map((entry) => ({
+        action_type: 'outflow' as const,
+        product: entry.product,
+        quantity_butir: entry.quantityInButir,
+        recorded_at: new Date().toISOString(),
+        category: entry.category,
+        invoice_supplier: entry.invoiceSupplier,
+        user_email: userEmail,
+        metadata: { ...metadata, relatedEntryId: entry.id },
+      }));
+
+      if (!result.ok) {
+        if (result.kind === "network") {
+          // Offline / connection dropped: queue the whole order (entries + the
+          // activity logs to write after success) and replay it when back online.
+          // The RPC skips already-recorded entry ids, so a replay after a
+          // partially-observed success can never double-deduct stock.
+          enqueueOutflowOrder(entries, logPayloads);
+          toast({
+            title: t.outbox.savedOffline,
+            description: t.outbox.savedOfflineDesc,
+          });
+          setActiveTab("dashboard");
+          return true; // order accepted — forms clear, banner shows pending sync
+        }
+        return false; // server rejected (e.g. INSUFFICIENT_STOCK) — already toasted
+      }
+
+      for (const log of logPayloads) {
+        await addActivityLog(log);
       }
       setActiveTab("dashboard");
       return true;
     },
-    [submitOrderOutflows, addActivityLog]
+    [submitOrderOutflows, addActivityLog, enqueueOutflowOrder, t]
   );
 
   const handleExport = useCallback(() => {
@@ -117,6 +151,11 @@ const Index = () => {
       <Header onExport={handleExport} />
 
       <main className="container py-6 px-4 sm:px-6">
+        <OutflowOutboxBanner
+          orders={outboxOrders}
+          onDiscard={discardOutboxOrder}
+          onRetry={retryOutboxOrder}
+        />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className={`grid w-full h-auto sm:h-12 p-1 gap-1 ${isAdmin ? 'grid-cols-4 sm:grid-cols-7' : 'grid-cols-3 sm:grid-cols-6'}`}>
             <TabsTrigger value="dashboard" title={t.nav.dashboard} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
