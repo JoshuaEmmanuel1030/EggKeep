@@ -2,7 +2,12 @@ import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import App from "./App.tsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
+import { initMonitoring } from "./lib/monitoring.ts";
 import "./index.css";
+
+// Error monitoring must start before React renders so render-time crashes
+// are captured. No-op unless VITE_SENTRY_DSN is set.
+initMonitoring();
 
 // Register service worker with update prompt
 const updateSW = registerSW({
