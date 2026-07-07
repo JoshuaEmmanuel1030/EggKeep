@@ -11,6 +11,7 @@ import { ConversionMap } from "@/types/inventory";
 import {
   PackSKU,
   BoxCapacityMap,
+  LabelsPerPackMap,
   calculateLineMaterials,
   isSKUSupportedForBoxMode,
   isLogisticsOnlyMode
@@ -28,6 +29,7 @@ interface OrderLineItemProps {
   skus: PackSKU[];
   conversionMap: ConversionMap;
   boxCapacityMap: BoxCapacityMap;
+  labelsPerPackMap: LabelsPerPackMap;
   eggProductNames: string[];
   labelNames: string[];
   onUpdate: (updates: Partial<OrderLine>) => void;
@@ -43,6 +45,7 @@ export function OrderLineItem({
   skus,
   conversionMap,
   boxCapacityMap,
+  labelsPerPackMap,
   eggProductNames,
   labelNames,
   onUpdate,
@@ -54,8 +57,8 @@ export function OrderLineItem({
 
   // Calculate materials for this line
   const materials = useMemo(() => {
-    return calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap);
-  }, [line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap]);
+    return calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
+  }, [line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap]);
 
   // Check if current SKU is supported for box mode
   const skuSupported = useMemo(() => {

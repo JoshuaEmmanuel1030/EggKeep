@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { calculateLineMaterials } from "@/lib/outflowCalculator";
+import { calculateLineMaterials, buildLabelsPerPackMap } from "@/lib/outflowCalculator";
 import type { PackSKU } from "@/lib/outflowCalculator";
+import type { ItemType } from "@/types/inventory";
 import { toStockUnits, getStockUnit, butirEquivalent } from "@/lib/inventory";
 import { ConversionMap } from "@/types/inventory";
 import { OrderLine } from "@/types/quickOutflow";
@@ -102,5 +103,60 @@ describe("calculateLineMaterials under kg-native", () => {
     const m = calculateLineMaterials(line, "tray", false, SKUS, MAP)!;
     expect(m.traysUsed).toBe(6);
     expect(m.eggsButir).toBe(10);
+  });
+});
+
+describe("catalog-configurable labels per pack", () => {
+  const packLine = (packQty: number, labelSelection?: string): OrderLine => ({
+    id: "1",
+    lineType: "pack",
+    skuCode: "N15B",
+    packQty,
+    labelSelection,
+  });
+
+  it("defaults to 1 label per pack when no rate is configured", () => {
+    const m = calculateLineMaterials(packLine(12, "label astro"), "keranjang", false, SKUS, MAP)!;
+    expect(m.labelPcs).toBe(12);
+    expect(m.labelItem).toBe("label astro");
+  });
+
+  it("uses the catalog-configured rate when present", () => {
+    const m = calculateLineMaterials(packLine(12, "label astro"), "keranjang", false, SKUS, MAP, undefined, {
+      "label astro": 2,
+    })!;
+    expect(m.labelPcs).toBe(24);
+  });
+
+  it("a rate configured for a different label does not apply", () => {
+    const m = calculateLineMaterials(packLine(5, "label astro"), "keranjang", false, SKUS, MAP, undefined, {
+      "label osave": 3,
+    })!;
+    expect(m.labelPcs).toBe(5); // falls back to the default of 1
+  });
+
+  it("fractional rates round up — you can't consume part of a label", () => {
+    const m = calculateLineMaterials(packLine(5, "label astro"), "keranjang", false, SKUS, MAP, undefined, {
+      "label astro": 1.5,
+    })!;
+    expect(m.labelPcs).toBe(8); // 5 × 1.5 = 7.5 -> 8
+  });
+
+  it("no label selected means no label deduction regardless of rates", () => {
+    const m = calculateLineMaterials(packLine(5), "keranjang", false, SKUS, MAP, undefined, {
+      "label astro": 2,
+    })!;
+    expect(m.labelPcs).toBe(0);
+    expect(m.labelItem).toBeNull();
+  });
+
+  it("buildLabelsPerPackMap keeps configured label rates, drops unset/invalid/non-label rows", () => {
+    const items: ItemType[] = [
+      { id: "1", category: "label", name: "label astro", labelsPerPack: 2 },
+      { id: "2", category: "label", name: "label osave" }, // unset -> default 1 (omitted)
+      { id: "3", category: "label", name: "label zero", labelsPerPack: 0 }, // invalid -> omitted
+      { id: "4", category: "packaging", name: "not a label", labelsPerPack: 5 }, // wrong category
+    ];
+    expect(buildLabelsPerPackMap(items)).toEqual({ "label astro": 2 });
   });
 });

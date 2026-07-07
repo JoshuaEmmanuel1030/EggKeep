@@ -6,8 +6,11 @@ import {
 } from "../../../supabase/functions/inventory-assistant/conversions";
 
 // Drift guard: the inventory assistant Edge Function deploys separately from the app
-// and keeps its own copy of the conversion table. These must never disagree, or the
-// assistant will quote different kg<->butir factors than the app calculates with.
+// and keeps its own copy of the conversion table. Both sides now fetch live catalog
+// rows (item_types) at runtime and layer them OVER this dict, so the dict is the
+// shared FALLBACK BASELINE — it's what guarantees the original products still resolve
+// if the catalog fetch fails. The two baseline copies must never disagree, or the
+// assistant's fallback would quote different kg<->butir factors than the app's.
 // If this test fails, you changed a conversion in one place but not the other.
 describe("conversion table sync (app <-> edge function)", () => {
   it("the edge function dict matches the app dict exactly", () => {
