@@ -199,7 +199,13 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="dashboard" className="m-0">
-            <InventoryDashboard stockSummary={stockSummary} loading={loading} />
+            <InventoryDashboard
+              stockSummary={stockSummary}
+              inflows={inflows}
+              outflows={outflows}
+              freshnessDaysByProduct={freshnessDaysByProduct}
+              loading={loading}
+            />
           </TabsContent>
 
           <TabsContent value="inflow" className="m-0">

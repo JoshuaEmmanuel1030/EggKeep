@@ -249,6 +249,45 @@ export function getTotalAvailableStock(inflows: InflowEntry[], product: string):
     .reduce((sum, i) => sum + i.remainingButir, 0);
 }
 
+// ============================================================================
+// VELOCITY & DAYS-OF-COVER (dashboard reorder signal)
+// Outflow quantities are stored in each product's NATIVE unit (kg for kg-eggs,
+// butir for count-eggs, pcs otherwise) — the same unit as stockSummary.totalStock
+// — so velocity and stock share a unit per product and days-of-cover needs no
+// conversion. Cross-product comparison of the *number* isn't meaningful (kg-days
+// vs butir-days), but each product's own cover is.
+// ============================================================================
+
+/**
+ * Average daily outflow for a product over a trailing window, in the product's
+ * native stock unit. Voided outflows are excluded. Divides by the full window so
+ * a product that sold on only a few days still shows a realistic daily rate.
+ */
+export function averageDailyOutflow(
+  outflows: OutflowEntry[],
+  product: string,
+  windowDays = 14,
+  now: Date = new Date()
+): number {
+  if (windowDays <= 0) return 0;
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - windowDays);
+  const total = outflows
+    .filter((o) => o.product === product && !o.voidedAt && parseISO(o.date) >= cutoff)
+    .reduce((sum, o) => sum + o.quantityInButir, 0);
+  return total / windowDays;
+}
+
+/**
+ * Days of cover = current native stock / average daily outflow. Returns null when
+ * there's no recent outflow (velocity unknown → treat as "not a reorder risk"),
+ * so callers can distinguish "lots of cover" from "no sales data".
+ */
+export function daysOfCover(stock: number, avgDailyOutflow: number): number | null {
+  if (avgDailyOutflow <= 0) return null;
+  return stock / avgDailyOutflow;
+}
+
 export function exportInflowsToCSV(inflows: InflowEntry[]): string {
   const headers = ["ID", "Date", "Category", "Product", "Quantity", "Unit", "Stock Qty", "Remaining", "Invoice/Supplier", "Created At"];
   const rows = inflows.map((i) => [
