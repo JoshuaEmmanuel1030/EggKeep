@@ -93,7 +93,56 @@ serve(async (req) => {
     }
 
     const today = new Date();
-    
+
+    // ------------------------------------------------------------------
+    // Authoritative conversion map: catalog egg rows (item_types) layered
+    // over the hardcoded baseline, so newly added egg types (e.g. "Retakan")
+    // are included without a redeploy. The baseline guarantees the originals
+    // always resolve. Built FIRST because all quantity rendering below is
+    // unit-aware (kg-native stock design).
+    // ------------------------------------------------------------------
+    const conversionMap: Record<string, { unit: string; eggs_per_unit: number }> = {
+      ...CONVERSION_DICT,
+    };
+    const { data: eggTypes, error: eggTypesError } = await supabase
+      .from('item_types')
+      .select('name, unit, eggs_per_unit')
+      .eq('category', 'egg')
+      .is('deleted_at', null);
+    if (eggTypesError) {
+      console.error('Error fetching egg item types (using baseline conversions):', eggTypesError);
+    }
+    for (const row of eggTypes || []) {
+      if (row.unit && row.eggs_per_unit != null) {
+        conversionMap[row.name] = { unit: row.unit, eggs_per_unit: Number(row.eggs_per_unit) };
+      }
+    }
+
+    // kg-NATIVE STOCK DESIGN: the quantity_butir / remaining_butir columns hold
+    // each product's NATIVE stock unit — kg for weight-sold eggs, butir for
+    // count-sold eggs, pcs for boxes/labels/packaging. Mirrors
+    // src/lib/inventory.ts (getStockUnit / butirEquivalent).
+    const stockUnit = (product: string, category: string): 'kg' | 'butir' | 'pcs' => {
+      if (category !== 'egg') return 'pcs';
+      return conversionMap[product]?.unit === 'kg' ? 'kg' : 'butir';
+    };
+    // Estimated butir for kg-stocked eggs (display estimate only).
+    const butirEquivalent = (product: string, qty: number): number => {
+      const config = conversionMap[product];
+      if (config?.unit === 'kg' && config.eggs_per_unit > 0) {
+        return Math.round(qty * config.eggs_per_unit);
+      }
+      return qty;
+    };
+    // "120 kg (~1,860 butir estimated)" for kg eggs; "1,200 butir" / "300 pcs" otherwise.
+    const fmtQty = (product: string, category: string, qty: number): string => {
+      const unit = stockUnit(product, category);
+      if (unit === 'kg') {
+        return `${qty.toLocaleString()} kg (~${butirEquivalent(product, qty).toLocaleString()} butir estimated)`;
+      }
+      return `${qty.toLocaleString()} ${unit}`;
+    };
+
     // Calculate comprehensive inventory summary with batch details
     interface BatchInfo {
       date: string;
@@ -165,26 +214,30 @@ serve(async (req) => {
       monthlyOutflows[outflow.product].push(outflow.quantity_butir);
     }
 
-    // Build comprehensive inventory context
+    // Build comprehensive inventory context (all quantities in the product's
+    // NATIVE stock unit; kg eggs get an estimated-butir parenthetical).
     let inventoryContext = "CURRENT INVENTORY WITH RISK ANALYSIS:\n";
-    let totalAtRisk = 0;
-    
+    // At-risk quantities are stored per-product in native units (kg vs butir),
+    // so the grand total is expressed as an estimated butir-equivalent.
+    let totalAtRiskButirEquivalent = 0;
+
     for (const [product, data] of Object.entries(inventorySummary)) {
       if (data.remaining > 0) {
-        inventoryContext += `\n${product} (${data.category}):\n`;
-        inventoryContext += `  Total: ${data.remaining.toLocaleString()} ${data.category === 'egg' ? 'butir' : 'pcs'}\n`;
-        
+        const unit = stockUnit(product, data.category);
+        inventoryContext += `\n${product} (${data.category}, stock unit: ${unit}):\n`;
+        inventoryContext += `  Total: ${fmtQty(product, data.category, data.remaining)}\n`;
+
         if (data.category === 'egg') {
-          inventoryContext += `  At Risk (>5 days): ${data.atRiskQuantity.toLocaleString()} butir\n`;
-          inventoryContext += `  Safe (<5 days): ${data.safeQuantity.toLocaleString()} butir\n`;
-          totalAtRisk += data.atRiskQuantity;
-          
+          inventoryContext += `  At Risk (>5 days): ${fmtQty(product, data.category, data.atRiskQuantity)}\n`;
+          inventoryContext += `  Safe (<5 days): ${fmtQty(product, data.category, data.safeQuantity)}\n`;
+          totalAtRiskButirEquivalent += butirEquivalent(product, data.atRiskQuantity);
+
           if (data.batches.length > 0) {
             inventoryContext += `  Batches (oldest first):\n`;
             for (const batch of data.batches.slice(0, 5)) { // Show up to 5 batches
               const status = batch.isAtRisk ? '❌ AT RISK' : '✅ OK';
               const supplier = batch.invoiceSupplier ? ` (${batch.invoiceSupplier})` : '';
-              inventoryContext += `    - ${batch.date}${supplier}: ${batch.quantity.toLocaleString()} butir, ${batch.daysOld} days old ${status}\n`;
+              inventoryContext += `    - ${batch.date}${supplier}: ${fmtQty(product, data.category, batch.quantity)}, ${batch.daysOld} days old ${status}\n`;
             }
             if (data.batches.length > 5) {
               inventoryContext += `    ... and ${data.batches.length - 5} more batches\n`;
@@ -193,19 +246,21 @@ serve(async (req) => {
         }
       }
     }
-    
-    inventoryContext += `\nTOTAL EGGS AT RISK: ${totalAtRisk.toLocaleString()} butir\n`;
 
-    // Monthly averages context
-    let monthlyContext = "\nMONTHLY AVERAGES (Last 3 months):\n";
+    inventoryContext += `\nTOTAL EGGS AT RISK: ~${totalAtRiskButirEquivalent.toLocaleString()} butir (estimated butir-equivalent across kg and count eggs)\n`;
+
+    // Monthly averages context (native stock units per product)
+    let monthlyContext = "\nMONTHLY AVERAGES (Last 3 months, in each product's stock unit):\n";
     for (const [product, quantities] of Object.entries(monthlyInflows)) {
       const avgIn = Math.round(quantities.reduce((a, b) => a + b, 0) / 3);
       const outQuantities = monthlyOutflows[product] || [];
       const avgOut = outQuantities.length > 0 ? Math.round(outQuantities.reduce((a, b) => a + b, 0) / 3) : 0;
-      monthlyContext += `- ${product}: Avg Inflow ~${avgIn.toLocaleString()}/month, Avg Outflow ~${avgOut.toLocaleString()}/month\n`;
+      const unit = stockUnit(product, inventorySummary[product]?.category ?? (conversionMap[product] ? 'egg' : ''));
+      monthlyContext += `- ${product}: Avg Inflow ~${avgIn.toLocaleString()} ${unit}/month, Avg Outflow ~${avgOut.toLocaleString()} ${unit}/month\n`;
     }
 
-    // Stock velocity (days of stock remaining)
+    // Stock velocity (days of stock remaining) — native units cancel out, so
+    // the day counts are correct regardless of kg vs butir vs pcs.
     let velocityContext = "\nSTOCK VELOCITY (Days until depleted at current rate):\n";
     for (const [product, data] of Object.entries(inventorySummary)) {
       if (data.remaining > 0) {
@@ -218,50 +273,32 @@ serve(async (req) => {
       }
     }
 
-    // Recent activity
+    // Recent activity (quantities are stored in each product's native stock unit)
     let activityContext = "\nRECENT ACTIVITY (Last 20 transactions):\n";
     for (const log of activityLogs || []) {
       const date = new Date(log.recorded_at).toLocaleDateString();
       const action = log.action_type === 'inflow' ? '📥 IN' : '📤 OUT';
       const user = log.user_email ? ` by ${log.user_email}` : '';
       const invoice = log.invoice_supplier ? ` (${log.invoice_supplier})` : '';
-      activityContext += `- ${date}: ${action} ${log.quantity_butir.toLocaleString()} ${log.product}${invoice}${user}\n`;
+      const unit = stockUnit(log.product, log.category);
+      activityContext += `- ${date}: ${action} ${log.quantity_butir.toLocaleString()} ${unit} ${log.product}${invoice}${user}\n`;
     }
 
-    // Build the authoritative conversion map: catalog egg rows (item_types) layered
-    // over the hardcoded baseline, so newly added egg types (e.g. "Retakan") are
-    // included without a redeploy. The baseline guarantees the originals always resolve.
-    const conversionMap: Record<string, { unit: string; eggs_per_unit: number }> = {
-      ...CONVERSION_DICT,
-    };
-    const { data: eggTypes, error: eggTypesError } = await supabase
-      .from('item_types')
-      .select('name, unit, eggs_per_unit')
-      .eq('category', 'egg')
-      .is('deleted_at', null);
-    if (eggTypesError) {
-      console.error('Error fetching egg item types (using baseline conversions):', eggTypesError);
-    }
-    for (const row of eggTypes || []) {
-      if (row.unit && row.eggs_per_unit != null) {
-        conversionMap[row.name] = { unit: row.unit, eggs_per_unit: Number(row.eggs_per_unit) };
-      }
-    }
-
-    // Build the authoritative unit-conversion reference from the same table the app uses.
+    // Build the authoritative unit reference from the same table the app uses.
     const kgProducts = Object.entries(conversionMap).filter(([, c]) => c.unit === "kg");
     const btrProducts = Object.entries(conversionMap).filter(([, c]) => c.unit === "btr");
 
-    let conversionContext = "UNIT CONVERSION RULES (authoritative — these come directly from the system, NEVER estimate or guess a conversion factor):\n";
-    conversionContext += `- "butir" (btr) means one individual egg. All stock totals above are in butir.\n`;
-    conversionContext += `- Weight-sold eggs (priced per kg) and their EXACT kg→butir factor:\n`;
+    let conversionContext = "STOCK UNITS & CONVERSION RULES (authoritative — these come directly from the system, NEVER estimate or guess a conversion factor):\n";
+    conversionContext += `- Stock is tracked in each product's NATIVE unit: kg for weight-sold eggs, butir for count-sold eggs, pcs for boxes/labels/packaging. All quantities above are already in the product's native unit.\n`;
+    conversionContext += `- "butir" (btr) means one individual egg.\n`;
+    conversionContext += `- Weight-sold eggs (stock tracked in kg) and their EXACT kg→butir factor (an ESTIMATE of egg count, since egg sizes vary):\n`;
     for (const [product, c] of kgProducts) {
-      conversionContext += `    • ${product}: 1 kg = ${c.eggs_per_unit} butir (so X kg = X × ${c.eggs_per_unit} butir; X butir = X ÷ ${c.eggs_per_unit} kg)\n`;
+      conversionContext += `    • ${product}: 1 kg ≈ ${c.eggs_per_unit} butir (so X kg ≈ X × ${c.eggs_per_unit} butir; X butir ≈ X ÷ ${c.eggs_per_unit} kg)\n`;
     }
-    conversionContext += `- All other egg types are counted per egg (1 unit = 1 butir, no kg conversion): ${btrProducts.map(([p]) => p).join(", ")}.\n`;
+    conversionContext += `- Count-sold eggs (stock tracked in butir, 1 unit = 1 butir, no kg conversion): ${btrProducts.map(([p]) => p).join(", ")}.\n`;
     conversionContext += `- 1 tray = ${EGGS_PER_TRAY} butir.\n`;
-    conversionContext += `- Boxes, labels, and packaging are counted in pieces (pcs), not butir.\n`;
-    conversionContext += `- Worked example: 10 kg of NEGERI BIASA = 10 × 15.5 = 155 butir. 310 butir of NEGERI OMEGA = 310 ÷ 15.5 = 20 kg.\n`;
+    conversionContext += `- Boxes, labels, and packaging are counted in pieces (pcs), never butir or kg.\n`;
+    conversionContext += `- Worked example: 10 kg of NEGERI BIASA ≈ 10 × 15.5 = 155 butir (estimate). 310 butir of NEGERI OMEGA ≈ 310 ÷ 15.5 = 20 kg.\n`;
     conversionContext += `- If asked to convert a product not listed above, say you don't have a conversion factor for it rather than inventing one.\n`;
 
     const systemPrompt = `You are a highly capable warehouse inventory secretary/assistant. You have complete access to all inventory data and can answer any question about stock levels, batches, suppliers, transactions, and analytics.
@@ -280,7 +317,7 @@ YOUR CAPABILITIES:
 - Estimate when stock will run out based on usage patterns
 - Report recent transaction history
 - Identify slow-moving or fast-moving products
-- Convert between kg, butir, trays, and pieces using the UNIT CONVERSION RULES above — but ONLY when the user explicitly asks for a conversion or for a specific unit
+- Convert between kg, butir, trays, and pieces using the STOCK UNITS & CONVERSION RULES above — but ONLY when the user explicitly asks for a conversion or for a specific unit
 - Answer questions in the same language as the user
 
 GUIDELINES:
@@ -289,7 +326,7 @@ GUIDELINES:
 - If asked about trends, use the monthly averages
 - Proactively mention important issues like high at-risk quantities
 - Be concise but thorough
-- Report quantities in their native unit (butir for eggs, pcs for boxes/labels/packaging). Do NOT proactively convert to kg or trays — only convert when the user specifically asks for a different unit. When you do convert, use the exact factors from the UNIT CONVERSION RULES and never guess
+- Report quantities in their native stock unit: kg for weight-sold eggs (you may add the estimated butir count in parentheses, clearly marked as an estimate), butir for count-sold eggs, pcs for boxes/labels/packaging. Do NOT convert to trays or other units unless the user specifically asks. When you do convert, use the exact factors from the STOCK UNITS & CONVERSION RULES and never guess
 - If a product is not in inventory, say so clearly`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {

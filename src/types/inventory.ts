@@ -18,6 +18,9 @@ export interface ItemType {
   boxCapacities?: Record<string, number>;
   // Egg-only: days before this product counts as "at risk" (default 5 when unset).
   freshnessDays?: number;
+  // Label-only: labels deducted per pack when this label is selected on an
+  // order line (default 1 when unset).
+  labelsPerPack?: number;
   // Any category: dashboard low-stock alert threshold in butir/pcs (unset = no alert).
   lowStockThreshold?: number;
 }

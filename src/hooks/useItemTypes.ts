@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ItemType, InventoryCategory, ConversionMap, buildConversionMap } from "@/types/inventory";
-import { BoxCapacityMap, buildBoxCapacityMap } from "@/lib/outflowCalculator";
+import { BoxCapacityMap, buildBoxCapacityMap, LabelsPerPackMap, buildLabelsPerPackMap } from "@/lib/outflowCalculator";
 
 export function useItemTypes() {
   const [itemTypes, setItemTypes] = useState<ItemType[]>([]);
@@ -33,6 +33,9 @@ export function useItemTypes() {
             | null) ?? undefined,
         freshnessDays:
           (row as { freshness_days?: number | null }).freshness_days ?? undefined,
+        // Label-only labels-per-pack rate. Null/absent means the default of 1.
+        labelsPerPack:
+          (row as { labels_per_pack?: number | null }).labels_per_pack ?? undefined,
         lowStockThreshold:
           (row as { low_stock_threshold?: number | null }).low_stock_threshold ?? undefined,
       }));
@@ -80,6 +83,12 @@ export function useItemTypes() {
     [itemTypes]
   );
 
+  // Labels-per-pack rates from the catalog (unset labels default to 1).
+  const labelsPerPackMap: LabelsPerPackMap = useMemo(
+    () => buildLabelsPerPackMap(itemTypes.filter((t) => t.category === "label")),
+    [itemTypes]
+  );
+
   const addItemType = useMutation({
     mutationFn: async ({
       name,
@@ -88,6 +97,7 @@ export function useItemTypes() {
       eggsPerUnit,
       boxCapacities,
       freshnessDays,
+      labelsPerPack,
       lowStockThreshold,
     }: {
       name: string;
@@ -96,6 +106,7 @@ export function useItemTypes() {
       eggsPerUnit?: number;
       boxCapacities?: Record<string, number>;
       freshnessDays?: number;
+      labelsPerPack?: number;
       lowStockThreshold?: number;
     }) => {
       const { data, error } = await supabase
@@ -107,6 +118,7 @@ export function useItemTypes() {
           eggs_per_unit: eggsPerUnit ?? null,
           box_capacities: boxCapacities ?? null,
           freshness_days: freshnessDays ?? null,
+          labels_per_pack: labelsPerPack ?? null,
           low_stock_threshold: lowStockThreshold ?? null,
         })
         .select()
@@ -128,6 +140,7 @@ export function useItemTypes() {
       eggsPerUnit,
       boxCapacities,
       freshnessDays,
+      labelsPerPack,
       lowStockThreshold,
     }: {
       id: string;
@@ -136,6 +149,7 @@ export function useItemTypes() {
       eggsPerUnit?: number;
       boxCapacities?: Record<string, number>;
       freshnessDays?: number;
+      labelsPerPack?: number;
       lowStockThreshold?: number;
     }) => {
       const { data, error } = await supabase
@@ -146,6 +160,7 @@ export function useItemTypes() {
           eggs_per_unit: eggsPerUnit ?? null,
           box_capacities: boxCapacities ?? null,
           freshness_days: freshnessDays ?? null,
+          labels_per_pack: labelsPerPack ?? null,
           low_stock_threshold: lowStockThreshold ?? null,
         })
         .eq("id", id)
@@ -197,6 +212,7 @@ export function useItemTypes() {
     conversionMap,
     eggProductNames,
     boxCapacityMap,
+    labelsPerPackMap,
     refetch: fetchItemTypes,
     addItemType,
     updateItemType,

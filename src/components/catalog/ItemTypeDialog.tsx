@@ -27,6 +27,7 @@ export interface ItemTypeSaveData {
   eggsPerUnit?: number;
   boxCapacities?: Record<string, number>;
   freshnessDays?: number;
+  labelsPerPack?: number;
   lowStockThreshold?: number;
 }
 
@@ -37,6 +38,7 @@ interface ItemTypeDialogProps {
   categoryLabel: string;
   isEgg: boolean;
   isBox?: boolean;
+  isLabel?: boolean;
   skus?: PackSKU[];
   onSave: (data: ItemTypeSaveData) => Promise<void>;
   isLoading: boolean;
@@ -49,6 +51,7 @@ export function ItemTypeDialog({
   categoryLabel,
   isEgg,
   isBox = false,
+  isLabel = false,
   skus = [],
   onSave,
   isLoading,
@@ -58,6 +61,7 @@ export function ItemTypeDialog({
   const [unit, setUnit] = useState<"kg" | "btr">("btr");
   const [eggsPerUnit, setEggsPerUnit] = useState("");
   const [freshnessDays, setFreshnessDays] = useState("");
+  const [labelsPerPack, setLabelsPerPack] = useState("");
   const [lowStockThreshold, setLowStockThreshold] = useState("");
   // Per-SKU packs-per-box, kept as raw strings keyed by SKU code (blank = unset).
   const [caps, setCaps] = useState<Record<string, string>>({});
@@ -71,6 +75,7 @@ export function ItemTypeDialog({
       setUnit(item?.unit || "btr");
       setEggsPerUnit(item?.eggsPerUnit != null ? String(item.eggsPerUnit) : "");
       setFreshnessDays(item?.freshnessDays != null ? String(item.freshnessDays) : "");
+      setLabelsPerPack(item?.labelsPerPack != null ? String(item.labelsPerPack) : "");
       setLowStockThreshold(item?.lowStockThreshold != null ? String(item.lowStockThreshold) : "");
 
       if (isBox) {
@@ -108,6 +113,10 @@ export function ItemTypeDialog({
       lowStockThreshold: !isNaN(threshold) && threshold > 0 ? threshold : undefined,
     };
 
+    // Label-only: blank or non-positive means "unset" -> the default rate of 1.
+    const lpp = parseFloat(labelsPerPack);
+    const labelsPerPackValue = isLabel && !isNaN(lpp) && lpp > 0 ? lpp : undefined;
+
     if (isEgg) {
       // btr eggs are always 1:1; kg eggs carry their factor.
       await onSave({
@@ -123,6 +132,8 @@ export function ItemTypeDialog({
         if (!isNaN(n) && n > 0) boxCapacities[code] = n;
       }
       await onSave({ ...shared, boxCapacities });
+    } else if (isLabel) {
+      await onSave({ ...shared, labelsPerPack: labelsPerPackValue });
     } else {
       await onSave(shared);
     }
@@ -179,6 +190,7 @@ export function ItemTypeDialog({
                   {factorInvalid && (
                     <p className="text-xs text-destructive">{t.catalog.eggsPerKgRequired}</p>
                   )}
+                  <p className="text-xs text-muted-foreground">{t.catalog.eggsPerKgHelp}</p>
                 </div>
               )}
 
@@ -197,6 +209,23 @@ export function ItemTypeDialog({
                 <p className="text-xs text-muted-foreground">{t.catalog.freshnessDaysHelp}</p>
               </div>
             </>
+          )}
+
+          {isLabel && (
+            <div className="space-y-2">
+              <Label htmlFor="labelsPerPack">{t.catalog.labelsPerPack}</Label>
+              <Input
+                id="labelsPerPack"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={labelsPerPack}
+                onChange={(e) => setLabelsPerPack(e.target.value)}
+                placeholder="1"
+              />
+              <p className="text-xs text-muted-foreground">{t.catalog.labelsPerPackHelp}</p>
+            </div>
           )}
 
           <div className="space-y-2">

@@ -209,6 +209,7 @@ export type Database = {
           eggs_per_unit: number | null
           freshness_days: number | null
           id: string
+          labels_per_pack: number | null
           low_stock_threshold: number | null
           name: string
           unit: string | null
@@ -221,6 +222,7 @@ export type Database = {
           eggs_per_unit?: number | null
           freshness_days?: number | null
           id?: string
+          labels_per_pack?: number | null
           low_stock_threshold?: number | null
           name: string
           unit?: string | null
@@ -233,6 +235,7 @@ export type Database = {
           eggs_per_unit?: number | null
           freshness_days?: number | null
           id?: string
+          labels_per_pack?: number | null
           low_stock_threshold?: number | null
           name?: string
           unit?: string | null

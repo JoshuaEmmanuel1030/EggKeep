@@ -54,7 +54,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const { t } = useLanguage();
   const { buyers, isLoading: buyersLoading } = useBuyers();
   const { skus, isLoading: skusLoading } = usePackSKUs();
-  const { conversionMap, eggProductNames, boxCapacityMap, getTypesByCategory } = useItemTypes();
+  const { conversionMap, eggProductNames, boxCapacityMap, labelsPerPackMap, getTypesByCategory } = useItemTypes();
 
   // Label catalog names for the per-line label dropdown.
   const labelNames = useMemo(
@@ -124,8 +124,8 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
 
   // Calculate aggregated materials
   const aggregates = useMemo(() => {
-    return aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap);
-  }, [lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap]);
+    return aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap);
+  }, [lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap]);
 
   // Calculate total aggregates including queue
   const totalAggregates = useMemo(() => {
@@ -220,7 +220,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       boxMode,
       boxesRequired,
       lines: [...lines],
-      aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap),
+      aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap),
     };
 
     setOrderQueue(prev => [...prev, queuedOrder]);
@@ -431,7 +431,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
         boxMode,
         boxesRequired,
         lines: [...lines],
-        aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap),
+        aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap),
       });
     }
 
@@ -665,6 +665,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                     skus={packSKUs}
                     conversionMap={conversionMap}
                     boxCapacityMap={boxCapacityMap}
+                    labelsPerPackMap={labelsPerPackMap}
                     eggProductNames={eggProductNames}
                     labelNames={labelNames}
                     onUpdate={(updates) => updateLine(line.id, updates)}

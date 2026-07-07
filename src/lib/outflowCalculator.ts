@@ -43,6 +43,25 @@ export const BOX_CAPACITIES: Record<string, Record<string, number>> = {
 // Runtime box-capacity table: boxName -> skuCode -> packsPerBox. Same shape as BOX_CAPACITIES.
 export type BoxCapacityMap = Record<string, Record<string, number>>;
 
+// Runtime labels-per-pack table: labelName -> labels deducted per pack.
+// Any label not in the map uses the default rate of 1.
+export type LabelsPerPackMap = Record<string, number>;
+
+/**
+ * Build the labels-per-pack map from the catalog's label item types.
+ * Unconfigured labels are omitted and fall back to the default of 1
+ * (the historical hardcoded behavior). Mirror of buildConversionMap for eggs.
+ */
+export function buildLabelsPerPackMap(labelItems: ItemType[]): LabelsPerPackMap {
+  const map: LabelsPerPackMap = {};
+  for (const t of labelItems) {
+    if (t.category !== "label") continue;
+    if (t.labelsPerPack == null || t.labelsPerPack <= 0) continue; // unset -> default 1
+    map[t.name] = t.labelsPerPack;
+  }
+  return map;
+}
+
 /**
  * Build the authoritative box-capacity map from the catalog's box item types,
  * layered over the hardcoded BOX_CAPACITIES baseline. The baseline guarantees the
@@ -117,7 +136,8 @@ export function calculateLineMaterials(
   boxesRequired: boolean,
   skus: PackSKU[] = [],
   conversionMap: ConversionMap = CONVERSION_DICT,
-  boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES
+  boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES,
+  labelsPerPackMap: LabelsPerPackMap = {}
 ): LineMaterials | null {
   if (line.lineType === "pack") {
     if (!line.skuCode || !line.packQty || line.packQty <= 0) {
@@ -154,9 +174,12 @@ export function calculateLineMaterials(
       }
     }
 
-    // Optional label: one label per pack when the line picks one from the catalog.
+    // Optional label: catalog-configurable rate per pack (default 1 when the
+    // label item has no labels_per_pack configured). Rounded up — you can't
+    // consume a fraction of a physical label.
     const labelItem = line.labelSelection || null;
-    const labelPcs = labelItem ? line.packQty : 0;
+    const labelsPerPack = labelItem ? labelsPerPackMap[labelItem] ?? 1 : 1;
+    const labelPcs = labelItem ? Math.ceil(line.packQty * labelsPerPack) : 0;
 
     return {
       eggsButir,
@@ -221,7 +244,8 @@ export function aggregateOrderMaterials(
   boxesRequired: boolean,
   skus: PackSKU[] = [],
   conversionMap: ConversionMap = CONVERSION_DICT,
-  boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES
+  boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES,
+  labelsPerPackMap: LabelsPerPackMap = {}
 ): AggregatedMaterials {
   const eggsByProduct = new Map<string, number>();
   const packagingByItem = new Map<string, number>();
@@ -231,7 +255,7 @@ export function aggregateOrderMaterials(
   let totalTrays = 0;
 
   for (const line of lines) {
-    const materials = calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap);
+    const materials = calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
     if (!materials) continue;
 
     // Aggregate eggs (round to 2dp: kg quantities are decimal and float sums drift)

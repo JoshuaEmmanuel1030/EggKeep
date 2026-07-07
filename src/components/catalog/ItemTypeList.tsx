@@ -127,6 +127,7 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
           eggsPerUnit: data.eggsPerUnit,
           boxCapacities: data.boxCapacities,
           freshnessDays: data.freshnessDays,
+          labelsPerPack: data.labelsPerPack,
           lowStockThreshold: data.lowStockThreshold,
         });
         toast.success(t.catalog.updateSuccess);
@@ -138,6 +139,7 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
           eggsPerUnit: data.eggsPerUnit,
           boxCapacities: data.boxCapacities,
           freshnessDays: data.freshnessDays,
+          labelsPerPack: data.labelsPerPack,
           lowStockThreshold: data.lowStockThreshold,
         });
         toast.success(t.catalog.addSuccess);
@@ -250,6 +252,7 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
         categoryLabel={getCategoryLabel()}
         isEgg={category === "egg"}
         isBox={category === "box"}
+        isLabel={category === "label"}
         skus={skus}
         onSave={handleSave}
         isLoading={addItemType?.isPending || updateItemType?.isPending || false}
