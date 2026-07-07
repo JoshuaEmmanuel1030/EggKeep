@@ -326,6 +326,25 @@ export const id = {
     checkingDependencies: 'Memeriksa penggunaan...',
   },
 
+  // Offline outflow outbox
+  outbox: {
+    pendingOrders: 'pesanan keluar menunggu sinkronisasi',
+    view: 'Lihat',
+    queuedOutflows: 'Antrean Pesanan Keluar',
+    queuedAt: 'Diantrekan',
+    statusPending: 'Menunggu sinkronisasi',
+    statusFailed: 'Sinkronisasi gagal',
+    savedOffline: 'Disimpan Offline',
+    savedOfflineDesc: 'Tidak ada koneksi — pesanan masuk antrean dan akan disinkronkan otomatis saat kembali online.',
+    syncedTitle: 'Antrean pesanan keluar tersinkron',
+    syncedDesc: 'pesanan antrean tercatat',
+    failedTitle: 'Pesanan antrean gagal',
+    failedDesc: 'Pesanan ini memblokir antrean sinkronisasi. Perbaiki stok (batalkan/sesuaikan), lalu Coba Lagi — atau Buang pesanan ini.',
+    retry: 'Coba Lagi',
+    discard: 'Buang',
+    discardConfirm: 'Buang pesanan antrean ini? Pesanan TIDAK akan dicatat di inventaris.',
+  },
+
   // Language
   language: {
     english: 'English',

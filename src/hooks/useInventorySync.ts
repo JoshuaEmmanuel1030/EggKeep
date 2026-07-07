@@ -4,6 +4,8 @@ import { InflowEntry, OutflowEntry, InventoryCategory } from "@/types/inventory"
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { captureError } from "@/lib/monitoring";
+import { OutflowSubmitResult } from "@/lib/outflowOutbox";
+import { callRecordOrderOutflows } from "@/lib/outflowRpc";
 
 export function useInventorySync() {
   const { user } = useAuth();
@@ -165,35 +167,26 @@ export function useInventorySync() {
   // of it does — and concurrent submits from two devices can't overwrite each
   // other's deductions (the old client-side FIFO wrote stale absolute values).
   const submitOrderOutflows = useCallback(
-    async (entries: OutflowEntry[]) => {
-      if (!user || entries.length === 0) return false;
+    async (entries: OutflowEntry[]): Promise<OutflowSubmitResult> => {
+      if (!user || entries.length === 0) {
+        return { ok: false, kind: "server", message: "NO_ENTRIES" };
+      }
 
-      try {
-        const { error } = await supabase.rpc("record_order_outflows", {
-          p_entries: entries.map((entry) => ({
-            id: entry.id,
-            date: entry.date,
-            product: entry.product,
-            quantity_butir: entry.quantityInButir,
-            category: entry.category,
-            invoice_supplier: entry.invoiceSupplier || null,
-          })),
-        });
+      const result = await callRecordOrderOutflows(entries);
 
-        if (error) throw error;
-
+      if (result.ok) {
         // Refetch instead of patching local state: the DB computed the deductions,
         // so its remaining_butir values are the only correct ones.
         await fetchData();
-        return true;
-      } catch (error) {
-        console.error("Error recording order outflows:", error);
-        // Supabase PostgrestError is a plain object in some versions — read
-        // .message directly rather than relying on instanceof Error.
-        const message =
-          (error as { message?: string })?.message ?? String(error);
+        return result;
+      }
+
+      // Network failures are NOT toasted here: the caller queues the order in
+      // the offline outbox and shows its own "saved offline" toast instead.
+      if (result.kind === "server") {
+        const message = result.message ?? "";
         const shortStock = message.includes("INSUFFICIENT_STOCK");
-        captureError(error, {
+        captureError(new Error(message || "record_order_outflows failed"), {
           operation: "rpc_record_order_outflows",
           entryCount: entries.length,
           insufficientStock: shortStock,
@@ -205,8 +198,8 @@ export function useInventorySync() {
             : "Failed to save outflow — nothing was deducted.",
           variant: "destructive",
         });
-        return false;
       }
+      return result;
     },
     [user, fetchData]
   );
