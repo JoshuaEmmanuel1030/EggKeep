@@ -1,4 +1,6 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
@@ -85,5 +87,10 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  test: {
+    // Agent worktrees live under .claude/worktrees inside the repo — never
+    // pick up their test files when running the main suite.
+    exclude: [...configDefaults.exclude, ".claude/**"],
   },
 }));
