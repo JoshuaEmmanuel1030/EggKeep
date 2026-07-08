@@ -12,6 +12,7 @@ import {
   PackSKU,
   BoxCapacityMap,
   LabelsPerPackMap,
+  ALL_BOX_MODES,
   calculateLineMaterials,
   isSKUSupportedForBoxMode,
   isLogisticsOnlyMode
@@ -60,14 +61,15 @@ export function OrderLineItem({
     return calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
   }, [line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap]);
 
-  // Check if current SKU is supported for box mode
+  // The box mode actually applied to this line (per-line override wins over the
+  // order default). Used for the SKU-support warning so it tracks the override.
+  const effectiveBoxMode = line.boxModeOverride || boxMode;
+
+  // Check if current SKU is supported for the effective box mode
   const skuSupported = useMemo(() => {
     if (!line.skuCode) return true;
-    return isSKUSupportedForBoxMode(line.skuCode, boxMode, boxCapacityMap);
-  }, [line.skuCode, boxMode, boxCapacityMap]);
-
-  // Get available box mode overrides for Osave
-  const canOverrideBoxMode = selectedBuyer?.name === "Osave";
+    return isSKUSupportedForBoxMode(line.skuCode, effectiveBoxMode, boxCapacityMap);
+  }, [line.skuCode, effectiveBoxMode, boxCapacityMap]);
 
   return (
     <div className="space-y-3 p-4 border rounded-lg bg-card">
@@ -261,24 +263,24 @@ export function OrderLineItem({
         </div>
       )}
 
-      {/* Box mode override for Osave */}
-      {canOverrideBoxMode && line.lineType === "pack" && (
-        <div className="space-y-1">
-          <Label className="text-xs">{t.outflow.boxModeOverride}</Label>
-          <Select
-            value={line.boxModeOverride || boxMode}
-            onValueChange={(v) => onUpdate({ boxModeOverride: v as BoxModeType })}
-          >
-            <SelectTrigger className="h-10 w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="box osave">box osave</SelectItem>
-              <SelectItem value="box osave polos">box osave polos</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+      {/* Per-line box mode — free pick for any buyer/line. Defaults to the order's
+          mode; override it (e.g. trays) to mix packaging within a single order. */}
+      <div className="space-y-1">
+        <Label className="text-xs">{t.outflow.boxModeOverride}</Label>
+        <Select
+          value={line.boxModeOverride || boxMode}
+          onValueChange={(v) => onUpdate({ boxModeOverride: v as BoxModeType })}
+        >
+          <SelectTrigger className="h-10 w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ALL_BOX_MODES.map((mode) => (
+              <SelectItem key={mode} value={mode}>{mode}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Mini calculator display */}
       {materials && (
@@ -338,10 +340,10 @@ export function OrderLineItem({
         </div>
       )}
 
-      {/* SKU not supported warning */}
-      {line.skuCode && !skuSupported && !isLogisticsOnlyMode(boxMode) && (
+      {/* SKU not supported warning (tracks the effective per-line mode) */}
+      {line.skuCode && !skuSupported && !isLogisticsOnlyMode(effectiveBoxMode) && (
         <div className="text-xs text-amber-600 flex items-center gap-1">
-          ⚠️ {line.skuCode} {t.outflow.notConfiguredFor} {boxMode}. {t.outflow.considerKeranjang}
+          ⚠️ {line.skuCode} {t.outflow.notConfiguredFor} {effectiveBoxMode}. {t.outflow.considerKeranjang}
         </div>
       )}
 
