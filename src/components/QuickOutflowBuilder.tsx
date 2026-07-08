@@ -18,11 +18,11 @@ import { ActivityLogMetadata } from "@/types/activityLog";
 import { useBuyers } from "@/hooks/useBuyers";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { useItemTypes } from "@/hooks/useItemTypes";
-import { 
+import {
   PackSKU,
-  aggregateOrderMaterials, 
+  aggregateOrderMaterials,
   validateStockAgainstInventory,
-  getAvailableBoxModes,
+  ALL_BOX_MODES,
 } from "@/lib/outflowCalculator";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { PickListDialog } from "./PickListDialog";
@@ -96,11 +96,10 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     setBuyerOpen(false);
   };
 
-  // Get available box modes for selected buyer
-  const availableBoxModes = useMemo(() => {
-    if (!selectedBuyer) return ["box kecil"] as BoxModeType[];
-    return getAvailableBoxModes(selectedBuyer.name);
-  }, [selectedBuyer]);
+  // Box modes are free-pick now: the order defaults to the buyer's mode (set in
+  // handleBuyerSelect) but any mode can be chosen here, and per-line overrides
+  // can differ again within the order.
+  const availableBoxModes = ALL_BOX_MODES;
 
   // Create new order line
   const addLine = () => {

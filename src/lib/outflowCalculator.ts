@@ -96,6 +96,14 @@ export const BUYER_BOX_MODES: Record<string, BoxModeType> = {
 // Logistics-only box modes (no inventory deduction)
 export const LOGISTICS_ONLY_MODES: BoxModeType[] = ["keranjang", "tray", "plastic"];
 
+// Every box mode, free-pickable per order line regardless of the buyer's default.
+// Inventory boxes first, then logistics-only modes. A buyer's default_box_mode is
+// only a starting point now — any line may override to any of these (e.g. trays
+// for a tray-only product mixed into an otherwise boxed order).
+export const ALL_BOX_MODES: BoxModeType[] = [
+  "box kecil", "box osave", "box osave polos", "keranjang", "tray", "plastic",
+];
+
 // Get SKU by code - now accepts dynamic SKU list
 export function getSKUByCode(code: string, skus: PackSKU[]): PackSKU | undefined {
   return skus.find(sku => sku.code === code);
