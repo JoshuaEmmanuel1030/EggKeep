@@ -227,31 +227,46 @@ export function InventoryDashboard({
   const hasUrgent = urgentCount > 0;
   const anyExpiring = eggActions.some((a) => a.kind === "expiring");
 
-  // Per-focused-egg 7-day net-flow sparkline (butir-equivalent).
-  const focusSparks = useMemo(() => {
+  // Per-focused-egg 7-day STOCK LEVEL line + explicit in/out totals, in the
+  // product's native unit. The level is reconstructed backward from the current
+  // remaining stock (level today = current stock; each earlier day removes that
+  // day's net) so the line reflects actual on-hand over time — a sale dips it, a
+  // restock raises it. A net-flow line hid sales whenever a bigger inflow landed
+  // the same day; explicit in/out figures make a sale legible regardless of scale.
+  const focusFlows = useMemo(() => {
     const dayKeys: string[] = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       dayKeys.push(d.toISOString().split("T")[0]);
     }
-    const equiv = (product: string, qty: number) => butirEquivalent(product, qty, conversionMap);
-    const result: Record<string, number[]> = {};
+    const result: Record<string, { level: number[]; inTotal: number; outTotal: number }> = {};
     for (const p of focusList) {
-      const daily = dayKeys.map((key) => {
-        const inflow = inflows
+      const current = eggMetrics.get(p)?.stock ?? 0;
+      const dailyIn = dayKeys.map((key) =>
+        inflows
           .filter((i) => i.category === "egg" && !i.voidedAt && i.product === p && i.date === key)
-          .reduce((sum, i) => sum + equiv(i.product, i.quantityInButir), 0);
-        const outflow = outflows
+          .reduce((sum, i) => sum + i.quantityInButir, 0)
+      );
+      const dailyOut = dayKeys.map((key) =>
+        outflows
           .filter((o) => o.category === "egg" && !o.voidedAt && o.product === p && o.date === key)
-          .reduce((sum, o) => sum + equiv(o.product, o.quantityInButir), 0);
-        return inflow - outflow;
-      });
-      let running = 0;
-      result[p] = daily.map((n) => (running += n));
+          .reduce((sum, o) => sum + o.quantityInButir, 0)
+      );
+      const net = dailyIn.map((v, i) => v - dailyOut[i]);
+      const level = new Array<number>(dayKeys.length);
+      level[level.length - 1] = current;
+      for (let i = level.length - 1; i > 0; i--) {
+        level[i - 1] = Math.round((level[i] - net[i]) * 100) / 100;
+      }
+      result[p] = {
+        level,
+        inTotal: dailyIn.reduce((a, b) => a + b, 0),
+        outTotal: dailyOut.reduce((a, b) => a + b, 0),
+      };
     }
     return result;
-  }, [focusList, inflows, outflows, conversionMap, now]);
+  }, [focusList, inflows, outflows, eggMetrics, now]);
 
   // ---- Headline (readiness hero) ----------------------------------------
   const headline = useMemo(() => {
@@ -429,8 +444,12 @@ export function InventoryDashboard({
     const m = eggMetrics.get(product)!;
     const status = eggCardStatus(m);
     const kg = isKgProduct(product);
-    const spark = focusSparks[product] ?? [];
-    const trendUp = spark.length >= 2 && spark[spark.length - 1] >= spark[0];
+    const flow = focusFlows[product] ?? { level: [], inTotal: 0, outTotal: 0 };
+    const level = flow.level;
+    // Trend of on-hand stock across the window (down = net depletion).
+    const trendUp = level.length >= 2 && level[level.length - 1] >= level[0];
+    const unit = kg ? "kg" : "butir";
+    const fmtFlow = (v: number) => `${Math.round(v).toLocaleString()} ${unit}`;
     return (
       <Card className={`shadow-soft border-2 ${statusBorder(status)}`}>
         <CardContent className="p-3">
@@ -470,12 +489,20 @@ export function InventoryDashboard({
               )}
             </div>
           )}
-          {spark.length >= 2 && (
-            <svg width="100%" height="24" viewBox="0 0 120 24" preserveAspectRatio="none" className="mt-2 overflow-visible">
+          {/* Explicit 7-day in/out — legible even when a big restock dwarfs a sale */}
+          {(flow.inTotal > 0 || flow.outTotal > 0) && (
+            <div className="mt-2 flex items-center gap-2 text-[10px] font-medium tabular-nums">
+              <span className="text-success">▲ {fmtFlow(flow.inTotal)}</span>
+              <span className="text-destructive">▼ {fmtFlow(flow.outTotal)}</span>
+              <span className="text-muted-foreground">7d</span>
+            </div>
+          )}
+          {level.length >= 2 && (
+            <svg width="100%" height="24" viewBox="0 0 120 24" preserveAspectRatio="none" className="mt-1.5 overflow-visible">
               <polyline
                 fill="none" strokeWidth="1.75"
                 stroke={trendUp ? "hsl(var(--success))" : "hsl(var(--destructive))"}
-                points={sparkPoints(spark, 120, 24, 3)}
+                points={sparkPoints(level, 120, 24, 3)}
               />
             </svg>
           )}
