@@ -128,6 +128,12 @@ export const en = {
     eggTypesOk: 'egg types OK',
     lowestCover: 'lowest cover',
     expiringShort: 'expiring ≤2d',
+    focusEggs: 'Focus eggs',
+    coverLabel: 'cover',
+    atRisk: 'at risk',
+    perDay: '/day',
+    otherEggs: 'Other eggs',
+    noFocusEggs: 'No egg types selected — tap “Focus eggs” to choose which to track.',
   },
 
   // Inflow

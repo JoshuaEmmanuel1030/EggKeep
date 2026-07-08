@@ -1,8 +1,11 @@
-import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useMemo, useEffect } from "react";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -14,7 +17,7 @@ import {
 } from "@/lib/inventory";
 import {
   AlertTriangle, Clock, Filter, ChevronDown, ChevronRight, ChevronsUpDown,
-  FileText, CheckCircle2, TrendingDown, TrendingUp, Minus, Truck,
+  FileText, CheckCircle2, TrendingDown, TrendingUp, Minus, Truck, SlidersHorizontal,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { useItemTypes } from "@/hooks/useItemTypes";
@@ -34,6 +37,12 @@ const REORDER_DAYS = 4;     // below this a product enters the reorder watchlist
 const CRITICAL_DAYS = 2;    // below this it's critical (binding dispatch constraint)
 const EXPIRING_WINDOW = 2;  // eggs within N days of their freshness limit are "push out first"
 
+// The egg types the user tracks most closely. Persisted per device; editable in-UI.
+const FOCUS_KEY = "eggkeep_focus_eggs";
+const DEFAULT_FOCUS = [
+  "NEGERI BIASA", "NEGERI OMEGA", "KAMPUNG BIASA", "KAMPUNG MERAH", "ASIN MATENG",
+];
+
 type Severity = "crit" | "low";
 interface ActionItem {
   product: string;
@@ -43,8 +52,16 @@ interface ActionItem {
   cover: number | null;
   avgDaily: number;
   stock: number;
-  minDaysUntil: number; // expiring only (freshness − daysInWarehouse)
-  expiringQty: number;  // native units, expiring only
+  minDaysUntil: number;
+  expiringQty: number;
+}
+interface EggMetric {
+  stock: number;
+  cover: number | null;
+  avgDaily: number;
+  expiringQty: number;
+  minDaysUntil: number;
+  atRiskQty: number;
 }
 
 export function InventoryDashboard({
@@ -61,8 +78,18 @@ export function InventoryDashboard({
   const [sortBy, setSortBy] = useState<"stock" | "name" | "days">("stock");
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [focusOpen, setFocusOpen] = useState(false);
+  const [focusedEggs, setFocusedEggs] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(FOCUS_KEY);
+      if (stored) return JSON.parse(stored);
+    } catch { /* ignore malformed */ }
+    return DEFAULT_FOCUS;
+  });
+  useEffect(() => {
+    localStorage.setItem(FOCUS_KEY, JSON.stringify(focusedEggs));
+  }, [focusedEggs]);
 
-  // Stable "now" for this render pass so velocity/expiry math is consistent.
   const now = useMemo(() => new Date(), []);
 
   // ---- kg-native display helpers (load-bearing — see CLAUDE.md) ----------
@@ -78,13 +105,10 @@ export function InventoryDashboard({
     }
     return `${quantity.toLocaleString()} ${category === "egg" ? "butir" : "pcs"}`;
   };
-  const toButirEquivalent = (product: string, category: InventoryCategory, quantity: number) =>
-    category === "egg" && isKgProduct(product) ? butirEstimate(product, quantity) : quantity;
-
   const freshnessOf = (product: string) =>
     freshnessDaysByProduct[product] ?? EGG_FRESHNESS_DAYS;
 
-  // Merge stock with catalog so zero-stock items (and their low-stock thresholds) appear.
+  // Merge stock with catalog so zero-stock items (and low-stock thresholds) appear.
   const mergedSummary = useMemo(() => {
     const stockMap = new Map<string, StockSummary>();
     stockSummary.forEach((item) => stockMap.set(`${item.category}-${item.product}`, item));
@@ -101,6 +125,11 @@ export function InventoryDashboard({
     return Array.from(stockMap.values());
   }, [stockSummary, itemTypes]);
 
+  const allEggProducts = useMemo(
+    () => mergedSummary.filter((s) => s.category === "egg").map((s) => s.product).sort(),
+    [mergedSummary]
+  );
+
   const thresholdOf = useMemo(() => {
     const map: Record<string, number> = {};
     for (const it of itemTypes) {
@@ -111,27 +140,24 @@ export function InventoryDashboard({
     return map;
   }, [itemTypes]);
 
-  // ---- Derived analytics: cover, expiring, action lists ------------------
-  const { eggActions, supplyActions, binding, lowestCover, eggTypesOk } = useMemo(() => {
+  // ---- Derived analytics: cover, expiring, action lists, per-egg metrics --
+  const { eggActions, supplyActions, binding, eggMetrics } = useMemo(() => {
     const eggs: ActionItem[] = [];
     const supplies: ActionItem[] = [];
+    const metrics = new Map<string, EggMetric>();
     let bindingItem: { product: string; category: InventoryCategory; cover: number } | null = null;
     let minCover = Infinity;
-    let okEggTypes = 0;
 
     for (const s of mergedSummary) {
       const avgDaily = averageDailyOutflow(outflows, s.product, VELOCITY_WINDOW, now);
       const cover = daysOfCover(s.totalStock, avgDaily);
       const threshold = thresholdOf[`${s.category}-${s.product}`];
 
-      if (s.category === "egg" && s.totalStock > 0) okEggTypes += 1;
-
       if (cover != null && cover < minCover) {
         minCover = cover;
         bindingItem = { product: s.product, category: s.category, cover };
       }
 
-      // Expiring analysis (eggs only)
       let minDaysUntil = Infinity;
       let expiringQty = 0;
       if (s.category === "egg") {
@@ -142,11 +168,16 @@ export function InventoryDashboard({
             if (daysUntil < minDaysUntil) minDaysUntil = daysUntil;
           }
         }
+        metrics.set(s.product, {
+          stock: s.totalStock, cover, avgDaily, expiringQty, minDaysUntil,
+          atRiskQty: s.atRiskQuantity,
+        });
       }
+
       const hasExpiring = expiringQty > 0;
       const lowCover = cover != null && cover < REORDER_DAYS;
       const belowThreshold = threshold != null && s.totalStock < threshold;
-      if (!hasExpiring && !lowCover && !belowThreshold) continue; // healthy
+      if (!hasExpiring && !lowCover && !belowThreshold) continue;
 
       let item: ActionItem;
       if (hasExpiring) {
@@ -175,17 +206,52 @@ export function InventoryDashboard({
     supplies.sort((a, b) => rank(a) - rank(b));
 
     return {
-      eggActions: eggs,
-      supplyActions: supplies,
-      binding: bindingItem,
-      lowestCover: minCover === Infinity ? null : minCover,
-      eggTypesOk: okEggTypes,
+      eggActions: eggs, supplyActions: supplies, binding: bindingItem, eggMetrics: metrics,
     };
   }, [mergedSummary, outflows, thresholdOf, freshnessDaysByProduct, now]);
+
+  // Focus set restricted to egg types that actually exist, in the user's order.
+  const focusList = useMemo(
+    () => focusedEggs.filter((p) => eggMetrics.has(p)),
+    [focusedEggs, eggMetrics]
+  );
+  const focusSet = useMemo(() => new Set(focusList), [focusList]);
+
+  // Non-focused egg concerns (focused eggs already surface status in their cards).
+  const otherEggActions = useMemo(
+    () => eggActions.filter((a) => !focusSet.has(a.product)),
+    [eggActions, focusSet]
+  );
 
   const urgentCount = eggActions.length + supplyActions.length;
   const hasUrgent = urgentCount > 0;
   const anyExpiring = eggActions.some((a) => a.kind === "expiring");
+
+  // Per-focused-egg 7-day net-flow sparkline (butir-equivalent).
+  const focusSparks = useMemo(() => {
+    const dayKeys: string[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      dayKeys.push(d.toISOString().split("T")[0]);
+    }
+    const equiv = (product: string, qty: number) => butirEquivalent(product, qty, conversionMap);
+    const result: Record<string, number[]> = {};
+    for (const p of focusList) {
+      const daily = dayKeys.map((key) => {
+        const inflow = inflows
+          .filter((i) => i.category === "egg" && !i.voidedAt && i.product === p && i.date === key)
+          .reduce((sum, i) => sum + equiv(i.product, i.quantityInButir), 0);
+        const outflow = outflows
+          .filter((o) => o.category === "egg" && !o.voidedAt && o.product === p && o.date === key)
+          .reduce((sum, o) => sum + equiv(o.product, o.quantityInButir), 0);
+        return inflow - outflow;
+      });
+      let running = 0;
+      result[p] = daily.map((n) => (running += n));
+    }
+    return result;
+  }, [focusList, inflows, outflows, conversionMap, now]);
 
   // ---- Headline (readiness hero) ----------------------------------------
   const headline = useMemo(() => {
@@ -218,7 +284,7 @@ export function InventoryDashboard({
     };
   }, [hasUrgent, binding, anyExpiring, t]);
 
-  // ---- 7-day egg net-flow trajectory ------------------------------------
+  // ---- Global 7-day egg net-flow trajectory -----------------------------
   const trajectory = useMemo(() => {
     const dayKeys: string[] = [];
     for (let i = 6; i >= 0; i--) {
@@ -226,10 +292,8 @@ export function InventoryDashboard({
       d.setDate(d.getDate() - i);
       dayKeys.push(d.toISOString().split("T")[0]);
     }
-    const equiv = (product: string, qty: number) =>
-      butirEquivalent(product, qty, conversionMap);
-
-    const dailyNet: number[] = dayKeys.map((key) => {
+    const equiv = (product: string, qty: number) => butirEquivalent(product, qty, conversionMap);
+    const dailyNet = dayKeys.map((key) => {
       const inflow = inflows
         .filter((i) => i.category === "egg" && !i.voidedAt && i.date === key)
         .reduce((sum, i) => sum + equiv(i.product, i.quantityInButir), 0);
@@ -241,7 +305,6 @@ export function InventoryDashboard({
     const weeklyOut = outflows
       .filter((o) => o.category === "egg" && !o.voidedAt && dayKeys.includes(o.date))
       .reduce((sum, o) => sum + equiv(o.product, o.quantityInButir), 0);
-
     let running = 0;
     const cumulative = dailyNet.map((n) => (running += n));
     const net = cumulative[cumulative.length - 1] ?? 0;
@@ -281,6 +344,11 @@ export function InventoryDashboard({
     next.has(product) ? next.delete(product) : next.add(product);
     setExpandedProducts(next);
   };
+  const toggleFocus = (product: string) => {
+    setFocusedEggs((prev) =>
+      prev.includes(product) ? prev.filter((p) => p !== product) : [...prev, product]
+    );
+  };
 
   // ---- Presentational helpers -------------------------------------------
   const sevText = (sev: Severity) =>
@@ -290,27 +358,42 @@ export function InventoryDashboard({
     sev === "crit"
       ? "bg-destructive/10 text-destructive"
       : "bg-amber-500/15 text-amber-700 dark:text-amber-400";
+  const coverText = (c: number | null) =>
+    c == null ? "—" : `${c < 10 ? c.toFixed(1) : Math.round(c)}d`;
+  const expiringText = (minDaysUntil: number) => {
+    if (minDaysUntil <= 0) return t.dashboard.overdue;
+    if (minDaysUntil === 1) return `1 ${t.dashboard.dayLeft}`;
+    return `${minDaysUntil} ${t.dashboard.daysLeft}`;
+  };
 
-  const coverText = (c: number | null) => {
-    if (c == null) return "—";
-    const n = c < 10 ? c.toFixed(1) : Math.round(c).toString();
-    return `${n}${c === 1 ? "d" : "d"}`;
+  type CardStatus = "crit" | "low" | "ok";
+  const eggCardStatus = (m: EggMetric): CardStatus => {
+    const critExp = m.expiringQty > 0 && m.minDaysUntil <= 1;
+    const critCover = m.cover != null && m.cover < CRITICAL_DAYS;
+    if (critExp || critCover || m.atRiskQty > 0) return "crit";
+    const lowExp = m.expiringQty > 0;
+    const lowCover = m.cover != null && m.cover < REORDER_DAYS;
+    if (lowExp || lowCover) return "low";
+    return "ok";
   };
-  const expiringText = (a: ActionItem) => {
-    if (a.minDaysUntil <= 0) return t.dashboard.overdue;
-    if (a.minDaysUntil === 1) return `1 ${t.dashboard.dayLeft}`;
-    return `${a.minDaysUntil} ${t.dashboard.daysLeft}`;
-  };
+  const statusBorder = (s: CardStatus) =>
+    s === "crit" ? "border-destructive/50" : s === "low" ? "border-amber-400/70" : "border-border";
+  const statusDot = (s: CardStatus) =>
+    s === "crit" ? "bg-destructive" : s === "low" ? "bg-amber-500" : "bg-success";
+  const coverColor = (c: number | null) =>
+    c == null ? "text-muted-foreground"
+      : c < CRITICAL_DAYS ? "text-destructive"
+      : c < REORDER_DAYS ? "text-amber-600 dark:text-amber-400"
+      : "text-foreground";
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         <Skeleton className="h-16 w-full rounded-lg" />
-        <div className="grid grid-cols-3 gap-3">
-          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-lg" />)}
         </div>
         <Skeleton className="h-24 w-full rounded-lg" />
-        <Skeleton className="h-64 w-full rounded-lg" />
       </div>
     );
   }
@@ -330,7 +413,7 @@ export function InventoryDashboard({
       </div>
       <div className="text-right shrink-0">
         <div className={`font-display font-bold text-sm ${sevText(a.severity)}`}>
-          {a.kind === "expiring" ? expiringText(a) : coverText(a.cover)}
+          {a.kind === "expiring" ? expiringText(a.minDaysUntil) : coverText(a.cover)}
         </div>
         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold mt-0.5 ${pillClass(a.severity)}`}>
           <span className="w-1.5 h-1.5 rounded-full bg-current" />
@@ -341,6 +424,65 @@ export function InventoryDashboard({
       </div>
     </div>
   );
+
+  const EggCard = ({ product }: { product: string }) => {
+    const m = eggMetrics.get(product)!;
+    const status = eggCardStatus(m);
+    const kg = isKgProduct(product);
+    const spark = focusSparks[product] ?? [];
+    const trendUp = spark.length >= 2 && spark[spark.length - 1] >= spark[0];
+    return (
+      <Card className={`shadow-soft border-2 ${statusBorder(status)}`}>
+        <CardContent className="p-3">
+          <div className="flex items-start justify-between gap-1.5">
+            <span className="font-semibold text-[13px] leading-tight line-clamp-2">{product}</span>
+            <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${statusDot(status)}`} />
+          </div>
+          <div className="mt-1.5 flex items-baseline gap-1">
+            <span className="font-display font-bold text-xl">{m.stock.toLocaleString()}</span>
+            <span className="text-[11px] text-muted-foreground">{kg ? "kg" : "butir"}</span>
+          </div>
+          {kg && (
+            <div className="text-[10px] text-muted-foreground -mt-0.5">
+              ≈ {butirEstimate(product, m.stock).toLocaleString()} butir
+            </div>
+          )}
+          <div className="mt-2 flex items-center justify-between text-[11px]">
+            <span className="text-muted-foreground">
+              <span className={`font-display font-bold text-[13px] ${coverColor(m.cover)}`}>{coverText(m.cover)}</span> {t.dashboard.coverLabel}
+            </span>
+            <span className="text-muted-foreground">
+              {Math.round(m.avgDaily).toLocaleString()}{t.dashboard.perDay}
+            </span>
+          </div>
+          {(m.expiringQty > 0 || m.atRiskQty > 0) && (
+            <div className="mt-1.5">
+              {m.expiringQty > 0 ? (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pillClass(m.minDaysUntil <= 1 ? "crit" : "low")}`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  {formatStock(product, "egg", m.expiringQty)} · {expiringText(m.minDaysUntil)}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-destructive/10 text-destructive">
+                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  {m.atRiskQty.toLocaleString()} {t.dashboard.atRisk}
+                </span>
+              )}
+            </div>
+          )}
+          {spark.length >= 2 && (
+            <svg width="100%" height="24" viewBox="0 0 120 24" preserveAspectRatio="none" className="mt-2 overflow-visible">
+              <polyline
+                fill="none" strokeWidth="1.75"
+                stroke={trendUp ? "hsl(var(--success))" : "hsl(var(--destructive))"}
+                points={sparkPoints(spark, 120, 24, 3)}
+              />
+            </svg>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -358,12 +500,14 @@ export function InventoryDashboard({
 
       {/* Readiness hero */}
       {headline.tone === "clear" ? (
-        <div className="rounded-xl border border-success/35 bg-gradient-to-br from-success/[0.14] to-success/[0.04] px-4 py-5 text-center">
-          <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-success/[0.18] text-success">
-            <CheckCircle2 className="h-7 w-7" />
+        <div className="flex items-center gap-3 rounded-xl border border-success/35 bg-gradient-to-br from-success/[0.14] to-success/[0.04] px-4 py-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/[0.18] text-success shrink-0">
+            <CheckCircle2 className="h-5 w-5" />
           </div>
-          <p className="font-display font-semibold text-lg">{t.dashboard.allClearTitle}</p>
-          <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">{t.dashboard.allClearSub}</p>
+          <div className="min-w-0">
+            <p className="font-display font-semibold text-[15px] leading-tight">{t.dashboard.allClearTitle}</p>
+            <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">{t.dashboard.allClearSub}</p>
+          </div>
         </div>
       ) : (
         <div className="flex items-center gap-3.5 rounded-xl border border-warning/40 bg-gradient-to-br from-warning/[0.14] to-primary/[0.06] px-4 py-4">
@@ -377,36 +521,58 @@ export function InventoryDashboard({
         </div>
       )}
 
-      {/* All-clear summary stats */}
-      {!hasUrgent && (
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          <Card className="shadow-soft"><CardContent className="p-3 text-center">
-            <p className="font-display font-bold text-lg sm:text-xl">{eggTypesOk}</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">{t.dashboard.eggTypesOk}</p>
-          </CardContent></Card>
-          <Card className="shadow-soft"><CardContent className="p-3 text-center">
-            <p className="font-display font-bold text-lg sm:text-xl">{coverText(lowestCover)}</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">{t.dashboard.lowestCover}</p>
-          </CardContent></Card>
-          <Card className="shadow-soft"><CardContent className="p-3 text-center">
-            <p className="font-display font-bold text-lg sm:text-xl">0</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">{t.dashboard.expiringShort}</p>
-          </CardContent></Card>
+      {/* Focus eggs: per-type stat cards */}
+      <div>
+        <div className="flex items-center justify-between mb-2 px-0.5">
+          <h3 className="font-display font-semibold text-sm">{t.dashboard.focusEggs}</h3>
+          <Popover open={focusOpen} onOpenChange={setFocusOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {t.dashboard.focusEggs} ({focusList.length})
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-60 max-h-80 overflow-y-auto">
+              <p className="text-xs font-medium mb-2">{t.dashboard.focusEggs}</p>
+              <div className="space-y-1.5">
+                {allEggProducts.map((p) => (
+                  <label key={p} className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+                    <Checkbox
+                      checked={focusedEggs.includes(p)}
+                      onCheckedChange={() => toggleFocus(p)}
+                    />
+                    <span className="truncate">{p}</span>
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
-      )}
+        {focusList.length === 0 ? (
+          <Card className="shadow-soft"><CardContent className="p-6 text-center text-xs text-muted-foreground">
+            {t.dashboard.noFocusEggs}
+          </CardContent></Card>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
+            {focusList.map((p) => <EggCard key={p} product={p} />)}
+          </div>
+        )}
+      </div>
 
-      {/* Action groups */}
-      {eggActions.length > 0 && (
+      {/* Other (non-focused) eggs needing attention */}
+      {otherEggActions.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-2 px-0.5">
-            <h3 className="font-display font-semibold text-sm">{t.dashboard.eggs} · {t.dashboard.needAttention}</h3>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive">{eggActions.length}</span>
+            <h3 className="font-display font-semibold text-sm">{t.dashboard.otherEggs} · {t.dashboard.needAttention}</h3>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive">{otherEggActions.length}</span>
           </div>
           <Card className="shadow-soft overflow-hidden">
-            {eggActions.map((a) => <ActionRow key={`egg-${a.product}`} a={a} />)}
+            {otherEggActions.map((a) => <ActionRow key={`egg-${a.product}`} a={a} />)}
           </Card>
         </div>
       )}
+
+      {/* Supplies needing attention */}
       {supplyActions.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-2 px-0.5">
@@ -419,7 +585,7 @@ export function InventoryDashboard({
         </div>
       )}
 
-      {/* 7-day trajectory */}
+      {/* Global 7-day trajectory */}
       <Card className="shadow-soft">
         <CardContent className="p-4">
           <div className="flex items-baseline justify-between mb-1.5">
@@ -438,8 +604,7 @@ export function InventoryDashboard({
           </div>
           <svg width="100%" height="40" viewBox="0 0 380 40" preserveAspectRatio="none" className="overflow-visible">
             <polyline
-              fill="none"
-              strokeWidth="2"
+              fill="none" strokeWidth="2"
               stroke={trajectory.tone === "down" ? "hsl(var(--destructive))"
                 : trajectory.tone === "up" ? "hsl(38 92% 50%)" : "hsl(var(--success))"}
               points={sparkPoints(trajectory.cumulative)}

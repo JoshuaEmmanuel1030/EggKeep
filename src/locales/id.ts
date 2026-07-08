@@ -128,6 +128,12 @@ export const id = {
     eggTypesOk: 'jenis telur aman',
     lowestCover: 'cadangan terendah',
     expiringShort: 'kedaluwarsa ≤2h',
+    focusEggs: 'Fokus telur',
+    coverLabel: 'cadangan',
+    atRisk: 'berisiko',
+    perDay: '/hari',
+    otherEggs: 'Telur lain',
+    noFocusEggs: 'Belum ada jenis telur dipilih — ketuk “Fokus telur” untuk memilih.',
   },
 
   // Inflow
