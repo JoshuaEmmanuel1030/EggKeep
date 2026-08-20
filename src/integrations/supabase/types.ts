@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -162,6 +162,7 @@ export type Database = {
           date: string
           id: string
           invoice_supplier: string | null
+          item_type_id: string | null
           product: string
           quantity_butir: number
           quantity_original: number
@@ -176,6 +177,7 @@ export type Database = {
           date: string
           id?: string
           invoice_supplier?: string | null
+          item_type_id?: string | null
           product: string
           quantity_butir: number
           quantity_original: number
@@ -190,6 +192,7 @@ export type Database = {
           date?: string
           id?: string
           invoice_supplier?: string | null
+          item_type_id?: string | null
           product?: string
           quantity_butir?: number
           quantity_original?: number
@@ -198,12 +201,21 @@ export type Database = {
           void_reason?: string | null
           voided_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "inflows_item_type_id_fkey"
+            columns: ["item_type_id"]
+            isOneToOne: false
+            referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       item_types: {
         Row: {
           box_capacities: Json | null
           category: Database["public"]["Enums"]["inventory_category"]
+          count_tolerance: number | null
           created_at: string
           deleted_at: string | null
           eggs_per_unit: number | null
@@ -217,6 +229,7 @@ export type Database = {
         Insert: {
           box_capacities?: Json | null
           category: Database["public"]["Enums"]["inventory_category"]
+          count_tolerance?: number | null
           created_at?: string
           deleted_at?: string | null
           eggs_per_unit?: number | null
@@ -230,6 +243,7 @@ export type Database = {
         Update: {
           box_capacities?: Json | null
           category?: Database["public"]["Enums"]["inventory_category"]
+          count_tolerance?: number | null
           created_at?: string
           deleted_at?: string | null
           eggs_per_unit?: number | null
@@ -249,6 +263,7 @@ export type Database = {
           date: string
           id: string
           invoice_supplier: string | null
+          item_type_id: string | null
           product: string
           quantity_butir: number
           user_id: string
@@ -261,6 +276,7 @@ export type Database = {
           date: string
           id?: string
           invoice_supplier?: string | null
+          item_type_id?: string | null
           product: string
           quantity_butir: number
           user_id: string
@@ -273,13 +289,22 @@ export type Database = {
           date?: string
           id?: string
           invoice_supplier?: string | null
+          item_type_id?: string | null
           product?: string
           quantity_butir?: number
           user_id?: string
           void_reason?: string | null
           voided_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "outflows_item_type_id_fkey"
+            columns: ["item_type_id"]
+            isOneToOne: false
+            referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pack_skus: {
         Row: {
@@ -287,35 +312,326 @@ export type Database = {
           created_at: string | null
           deleted_at: string | null
           display_name: string
+          egg_item_type_id: string | null
           egg_product: string
           eggs_per_pack: number
           id: string
           is_active: boolean | null
           packaging_item: string | null
+          packaging_item_type_id: string | null
         }
         Insert: {
           code: string
           created_at?: string | null
           deleted_at?: string | null
           display_name: string
+          egg_item_type_id?: string | null
           egg_product: string
           eggs_per_pack: number
           id?: string
           is_active?: boolean | null
           packaging_item?: string | null
+          packaging_item_type_id?: string | null
         }
         Update: {
           code?: string
           created_at?: string | null
           deleted_at?: string | null
           display_name?: string
+          egg_item_type_id?: string | null
           egg_product?: string
           eggs_per_pack?: number
           id?: string
           is_active?: boolean | null
           packaging_item?: string | null
+          packaging_item_type_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pack_skus_egg_item_type_id_fkey"
+            columns: ["egg_item_type_id"]
+            isOneToOne: false
+            referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pack_skus_packaging_item_type_id_fkey"
+            columns: ["packaging_item_type_id"]
+            isOneToOne: false
+            referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pengiriman_scans: {
+        Row: {
+          corrected_rows: Json | null
+          created_at: string
+          created_by: string
+          form_version: string | null
+          id: string
+          image_path: string
+          model: string
+          outflow_entry_ids: string[] | null
+          raw_rows: Json
+          status: string
+        }
+        Insert: {
+          corrected_rows?: Json | null
+          created_at?: string
+          created_by: string
+          form_version?: string | null
+          id?: string
+          image_path: string
+          model: string
+          outflow_entry_ids?: string[] | null
+          raw_rows: Json
+          status?: string
+        }
+        Update: {
+          corrected_rows?: Json | null
+          created_at?: string
+          created_by?: string
+          form_version?: string | null
+          id?: string
+          image_path?: string
+          model?: string
+          outflow_entry_ids?: string[] | null
+          raw_rows?: Json
+          status?: string
         }
         Relationships: []
+      }
+      poker_players: {
+        Row: {
+          archived: boolean
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          archived?: boolean
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          archived?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      poker_session_players: {
+        Row: {
+          carry_in: number
+          created_at: string
+          final_chips: number | null
+          id: string
+          player_id: string
+          session_id: string
+        }
+        Insert: {
+          carry_in?: number
+          created_at?: string
+          final_chips?: number | null
+          id?: string
+          player_id: string
+          session_id: string
+        }
+        Update: {
+          carry_in?: number
+          created_at?: string
+          final_chips?: number | null
+          id?: string
+          player_id?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poker_session_players_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "poker_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "poker_session_players_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "poker_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      poker_sessions: {
+        Row: {
+          created_at: string
+          fee: number
+          id: string
+          name: string
+          settled_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          fee?: number
+          id?: string
+          name: string
+          settled_at?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          fee?: number
+          id?: string
+          name?: string
+          settled_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      poker_settlements: {
+        Row: {
+          amount: number
+          created_at: string
+          from_player: string
+          id: string
+          session_id: string
+          to_player: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          from_player: string
+          id?: string
+          session_id: string
+          to_player: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          from_player?: string
+          id?: string
+          session_id?: string
+          to_player?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poker_settlements_from_player_fkey"
+            columns: ["from_player"]
+            isOneToOne: false
+            referencedRelation: "poker_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "poker_settlements_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "poker_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "poker_settlements_to_player_fkey"
+            columns: ["to_player"]
+            isOneToOne: false
+            referencedRelation: "poker_players"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      poker_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          player_id: string
+          session_id: string
+          type: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          player_id: string
+          session_id: string
+          type: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          player_id?: string
+          session_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poker_transactions_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "poker_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "poker_transactions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "poker_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_counts: {
+        Row: {
+          category: string
+          count_date: string
+          counted_by: string | null
+          created_at: string
+          id: string
+          item_type_id: string
+          location: string
+          product: string
+          quantity: number
+          system_qty: number | null
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          count_date?: string
+          counted_by?: string | null
+          created_at?: string
+          id?: string
+          item_type_id: string
+          location: string
+          product: string
+          quantity: number
+          system_qty?: number | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          count_date?: string
+          counted_by?: string | null
+          created_at?: string
+          id?: string
+          item_type_id?: string
+          location?: string
+          product?: string
+          quantity?: number
+          system_qty?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_counts_item_type_id_fkey"
+            columns: ["item_type_id"]
+            isOneToOne: false
+            referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -353,12 +669,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      record_order_outflows: {
-        Args: {
-          p_entries: Json
-        }
-        Returns: undefined
-      }
       recalculate_inventory_fifo: {
         Args: never
         Returns: {
@@ -368,6 +678,7 @@ export type Database = {
           total_deducted: number
         }[]
       }
+      record_order_outflows: { Args: { p_entries: Json }; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "user"
