@@ -14,6 +14,7 @@ export const id = {
     infos: 'Info',
     activity: 'Aktivitas',
     catalog: 'Katalog',
+    stockCount: 'Stok Fisik',
   },
 
   // Common

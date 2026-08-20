@@ -14,6 +14,7 @@ export const en = {
     infos: 'Infos',
     activity: 'Activity',
     catalog: 'Catalog',
+    stockCount: 'Physical Stock',
   },
 
   // Common

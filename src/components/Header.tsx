@@ -1,19 +1,21 @@
-import { Egg, Download, LogOut } from "lucide-react";
+import { Egg, Download, LogOut, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { InstallButton } from "@/components/InstallButton";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useStockCountStatus } from "@/hooks/useStockCountStatus";
 
 interface HeaderProps {
-  onExport: () => void;
+  onExport?: () => void;
 }
 
 export function Header({ onExport }: HeaderProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const { countedToday } = useStockCountStatus();
 
   const handleLogout = async () => {
     await signOut();
@@ -36,10 +38,25 @@ export function Header({ onExport }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2">
-          <Button variant="outline" size="sm" onClick={onExport} className="gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3">
-            <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            <span className="hidden sm:inline">{t.header.exportCsv}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/stock-count")}
+            title={t.nav.stockCount}
+            className="relative gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3"
+          >
+            <ClipboardList className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">{t.nav.stockCount}</span>
+            {!countedToday && (
+              <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary" />
+            )}
           </Button>
+          {onExport && (
+            <Button variant="outline" size="sm" onClick={onExport} className="gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3">
+              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">{t.header.exportCsv}</span>
+            </Button>
+          )}
           <InstallButton />
           <LanguageToggle />
           <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3">

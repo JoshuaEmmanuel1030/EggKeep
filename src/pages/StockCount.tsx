@@ -37,7 +37,7 @@ export default function StockCount() {
 
   const [countDate, setCountDate] = useState<string>(todayStr());
   const isToday = countDate === todayStr();
-  const { records, loading, saveCounts } = useStockCounts(countDate);
+  const { records, saveCounts } = useStockCounts(countDate);
   const [draft, setDraft] = useState<Draft>({});
   const [saving, setSaving] = useState(false);
 
@@ -60,7 +60,6 @@ export default function StockCount() {
     const next: Draft = {};
     for (const r of records) next[`${r.itemTypeId}:${r.location}`] = String(r.quantity);
     setDraft(next);
-     
   }, [countDate, records]);
 
   const draftValue = (itemTypeId: string, loc: StockLocation): number | null =>
@@ -94,7 +93,7 @@ export default function StockCount() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header onExport={() => {}} />
+      <Header />
       <main className="container py-6 px-4 sm:px-6 max-w-2xl">
         <div className="flex items-center gap-2 mb-4">
           <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-1.5">
