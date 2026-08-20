@@ -85,6 +85,25 @@ export const id = {
     passwordMin: 'Kata sandi minimal 6 karakter',
   },
 
+  stockCount: {
+    title: 'Stok Fisik',
+    subtitle: 'Hitungan pagi',
+    back: 'Kembali',
+    locationJs: 'JS',
+    locationTst: 'TST',
+    locationLoaded: 'Dimuat',
+    totalOnHand: 'Total di tangan',
+    grandTotal: 'Total (≈ butir)',
+    matches: 'cocok dgn sistem',
+    off: 'vs sistem',
+    save: 'Simpan hitungan',
+    saved: 'Hitungan disimpan',
+    saveError: 'Gagal menyimpan — coba lagi',
+    readOnly: 'Tanggal lampau — hanya lihat',
+    changeDate: 'Ganti tanggal',
+    empty: 'Belum ada produk telur di katalog.',
+  },
+
   // Dashboard
   dashboard: {
     title: 'Dasbor Inventaris',

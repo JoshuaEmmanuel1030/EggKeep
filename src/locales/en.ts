@@ -85,6 +85,25 @@ export const en = {
     passwordMin: 'Password must be at least 6 characters',
   },
 
+  stockCount: {
+    title: 'Physical Stock',
+    subtitle: 'Morning count',
+    back: 'Back',
+    locationJs: 'JS',
+    locationTst: 'TST',
+    locationLoaded: 'Loaded',
+    totalOnHand: 'Total on hand',
+    grandTotal: 'Total (≈ butir)',
+    matches: 'matches system',
+    off: 'vs system',
+    save: 'Save count',
+    saved: 'Count saved',
+    saveError: 'Could not save — try again',
+    readOnly: 'Past date — view only',
+    changeDate: 'Change date',
+    empty: 'No egg products in the catalog yet.',
+  },
+
   // Dashboard
   dashboard: {
     title: 'Inventory Dashboard',
