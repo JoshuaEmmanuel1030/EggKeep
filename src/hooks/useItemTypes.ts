@@ -38,6 +38,8 @@ export function useItemTypes() {
           (row as { labels_per_pack?: number | null }).labels_per_pack ?? undefined,
         lowStockThreshold:
           (row as { low_stock_threshold?: number | null }).low_stock_threshold ?? undefined,
+        countTolerance:
+          (row as { count_tolerance?: number | null }).count_tolerance ?? undefined,
       }));
 
       setItemTypes(mapped);
@@ -99,6 +101,7 @@ export function useItemTypes() {
       freshnessDays,
       labelsPerPack,
       lowStockThreshold,
+      countTolerance,
     }: {
       name: string;
       category: InventoryCategory;
@@ -108,6 +111,7 @@ export function useItemTypes() {
       freshnessDays?: number;
       labelsPerPack?: number;
       lowStockThreshold?: number;
+      countTolerance?: number;
     }) => {
       const { data, error } = await supabase
         .from("item_types")
@@ -120,6 +124,7 @@ export function useItemTypes() {
           freshness_days: freshnessDays ?? null,
           labels_per_pack: labelsPerPack ?? null,
           low_stock_threshold: lowStockThreshold ?? null,
+          count_tolerance: countTolerance ?? null,
         })
         .select()
         .single();
@@ -142,6 +147,7 @@ export function useItemTypes() {
       freshnessDays,
       labelsPerPack,
       lowStockThreshold,
+      countTolerance,
     }: {
       id: string;
       name: string;
@@ -151,6 +157,7 @@ export function useItemTypes() {
       freshnessDays?: number;
       labelsPerPack?: number;
       lowStockThreshold?: number;
+      countTolerance?: number;
     }) => {
       const { data, error } = await supabase
         .from("item_types")
@@ -162,6 +169,7 @@ export function useItemTypes() {
           freshness_days: freshnessDays ?? null,
           labels_per_pack: labelsPerPack ?? null,
           low_stock_threshold: lowStockThreshold ?? null,
+          count_tolerance: countTolerance ?? null,
         })
         .eq("id", id)
         .select()

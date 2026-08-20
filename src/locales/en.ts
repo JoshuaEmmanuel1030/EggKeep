@@ -344,6 +344,8 @@ export const en = {
     freshnessDaysHelp: 'Days in the warehouse before this egg counts as at risk. Leave blank for the default (5 days). Salted eggs can be set much higher.',
     lowStockThreshold: 'Low-stock alert threshold',
     lowStockThresholdHelp: 'Show a dashboard warning when stock drops below this amount, in the item\'s stock unit (kg for weight-sold eggs, butir for other eggs, pcs otherwise). Leave blank to disable.',
+    countTolerance: 'Count match tolerance',
+    countToleranceHelp: "Morning physical count is flagged as matching system stock when it's within this much of the JS-warehouse ledger, in the item's stock unit (kg for weight-sold eggs, butir otherwise). Blank uses the default (1 kg for kg eggs, exact for the rest).",
     renameTitle: 'Rename in use',
     renameWarning: 'Renaming "{old}" to "{new}" only updates the catalog. Records are linked by name, so existing history keeps the old name and will be orphaned.',
     renameOrphans: 'This name is referenced by:',

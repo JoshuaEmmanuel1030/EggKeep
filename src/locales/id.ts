@@ -344,6 +344,8 @@ export const id = {
     freshnessDaysHelp: 'Berapa hari di gudang sebelum telur ini dianggap berisiko. Kosongkan untuk default (5 hari). Telur asin bisa diatur jauh lebih lama.',
     lowStockThreshold: 'Batas peringatan stok rendah',
     lowStockThresholdHelp: 'Tampilkan peringatan di dashboard saat stok di bawah jumlah ini, dalam satuan stok item (kg untuk telur kiloan, butir untuk telur lain, pcs untuk lainnya). Kosongkan untuk menonaktifkan.',
+    countTolerance: 'Toleransi kecocokan hitungan',
+    countToleranceHelp: 'Hitungan fisik pagi dianggap cocok dengan stok sistem jika selisihnya tidak lebih dari nilai ini terhadap catatan gudang JS, dalam satuan stok barang (kg untuk telur timbang, butir untuk lainnya). Kosongkan untuk memakai default (1 kg untuk telur kg, tepat untuk lainnya).',
     renameTitle: 'Ganti nama yang dipakai',
     renameWarning: 'Mengganti nama "{old}" menjadi "{new}" hanya memperbarui katalog. Data terhubung lewat nama, jadi riwayat lama tetap memakai nama lama dan akan terputus.',
     renameOrphans: 'Nama ini dipakai oleh:',

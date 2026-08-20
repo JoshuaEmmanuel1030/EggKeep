@@ -23,6 +23,9 @@ export interface ItemType {
   labelsPerPack?: number;
   // Any category: dashboard low-stock alert threshold in butir/pcs (unset = no alert).
   lowStockThreshold?: number;
+  // Egg-only (v1): physical-count variance tolerance in the item's native unit
+  // (unset = code default: kg -> 1, else 0). See src/lib/stockCount.ts.
+  countTolerance?: number;
 }
 
 export interface InflowEntry {

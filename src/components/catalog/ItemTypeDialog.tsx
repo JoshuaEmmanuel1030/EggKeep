@@ -29,6 +29,7 @@ export interface ItemTypeSaveData {
   freshnessDays?: number;
   labelsPerPack?: number;
   lowStockThreshold?: number;
+  countTolerance?: number;
 }
 
 interface ItemTypeDialogProps {
@@ -63,6 +64,7 @@ export function ItemTypeDialog({
   const [freshnessDays, setFreshnessDays] = useState("");
   const [labelsPerPack, setLabelsPerPack] = useState("");
   const [lowStockThreshold, setLowStockThreshold] = useState("");
+  const [countTolerance, setCountTolerance] = useState("");
   // Per-SKU packs-per-box, kept as raw strings keyed by SKU code (blank = unset).
   const [caps, setCaps] = useState<Record<string, string>>({});
 
@@ -77,6 +79,7 @@ export function ItemTypeDialog({
       setFreshnessDays(item?.freshnessDays != null ? String(item.freshnessDays) : "");
       setLabelsPerPack(item?.labelsPerPack != null ? String(item.labelsPerPack) : "");
       setLowStockThreshold(item?.lowStockThreshold != null ? String(item.lowStockThreshold) : "");
+      setCountTolerance(item?.countTolerance != null ? String(item.countTolerance) : "");
 
       if (isBox) {
         // Seed each SKU from the box's saved map, falling back to the hardcoded
@@ -117,12 +120,17 @@ export function ItemTypeDialog({
     const lpp = parseFloat(labelsPerPack);
     const labelsPerPackValue = isLabel && !isNaN(lpp) && lpp > 0 ? lpp : undefined;
 
+    // Egg-only: blank or negative means "unset" -> code default. An explicit 0 is valid.
+    const tol = parseFloat(countTolerance);
+    const countToleranceValue = !isNaN(tol) && tol >= 0 ? tol : undefined;
+
     if (isEgg) {
       // btr eggs are always 1:1; kg eggs carry their factor.
       await onSave({
         ...shared,
         unit,
         eggsPerUnit: unit === "kg" ? factorNum : 1,
+        countTolerance: countToleranceValue,
       });
     } else if (isBox) {
       // Collect positive-integer entries; blanks are omitted (fall back to baseline).
@@ -207,6 +215,21 @@ export function ItemTypeDialog({
                   placeholder="5"
                 />
                 <p className="text-xs text-muted-foreground">{t.catalog.freshnessDaysHelp}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="countTolerance">{t.catalog.countTolerance}</Label>
+                <Input
+                  id="countTolerance"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  inputMode="decimal"
+                  value={countTolerance}
+                  onChange={(e) => setCountTolerance(e.target.value)}
+                  placeholder={unit === "kg" ? "1" : "0"}
+                />
+                <p className="text-xs text-muted-foreground">{t.catalog.countToleranceHelp}</p>
               </div>
             </>
           )}
