@@ -70,5 +70,32 @@ export function useStockCounts(countDate: string) {
     [countDate, fetchCounts]
   );
 
-  return { records, loading, saveCounts, refetch: fetchCounts };
+  // Delete rows for this countDate matching the given (item_type_id, location)
+  // pairs, then refetch. Used to remove a saved count that a staffer cleared.
+  const deleteCounts = useCallback(
+    async (
+      keys: { itemTypeId: string; location: StockLocation }[]
+    ): Promise<boolean> => {
+      if (keys.length === 0) return true;
+      try {
+        for (const k of keys) {
+          const { error } = await supabase
+            .from("stock_counts")
+            .delete()
+            .eq("count_date", countDate)
+            .eq("item_type_id", k.itemTypeId)
+            .eq("location", k.location);
+          if (error) throw error;
+        }
+      } catch (e) {
+        console.error("Error deleting stock counts:", e);
+        return false;
+      }
+      await fetchCounts();
+      return true;
+    },
+    [countDate, fetchCounts]
+  );
+
+  return { records, loading, saveCounts, deleteCounts, refetch: fetchCounts };
 }

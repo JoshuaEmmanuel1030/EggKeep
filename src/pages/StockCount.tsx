@@ -37,7 +37,7 @@ export default function StockCount() {
 
   const [countDate, setCountDate] = useState<string>(todayStr());
   const isToday = countDate === todayStr();
-  const { records, saveCounts } = useStockCounts(countDate);
+  const { records, saveCounts, deleteCounts } = useStockCounts(countDate);
   const [draft, setDraft] = useState<Draft>({});
   const [saving, setSaving] = useState(false);
 
@@ -71,10 +71,18 @@ export default function StockCount() {
   const handleSave = async () => {
     setSaving(true);
     const entries: StockCountSaveEntry[] = [];
+    const clears: { itemTypeId: string; location: StockLocation }[] = [];
     for (const it of eggs) {
       for (const loc of STOCK_LOCATIONS) {
         const val = draftValue(it.id, loc);
-        if (val == null) continue; // blank = not counted -> no row
+        if (val == null) {
+          // blank = not counted -> no row; also remove any prior saved count.
+          const hadSaved = records.some(
+            (r) => r.itemTypeId === it.id && r.location === loc
+          );
+          if (hadSaved) clears.push({ itemTypeId: it.id, location: loc });
+          continue;
+        }
         entries.push({
           itemTypeId: it.id,
           product: it.name,
@@ -86,7 +94,8 @@ export default function StockCount() {
         });
       }
     }
-    const ok = await saveCounts(entries, user?.email ?? "");
+    let ok = await saveCounts(entries, user?.email ?? "");
+    if (ok && clears.length > 0) ok = await deleteCounts(clears);
     setSaving(false);
     toast(ok ? { title: t.stockCount.saved } : { title: t.stockCount.saveError });
   };
@@ -169,11 +178,15 @@ export default function StockCount() {
                           className={`px-2 py-0.5 rounded-full font-semibold ${
                             variance.status === "off"
                               ? "bg-destructive/10 text-destructive"
+                              : variance.status === "within"
+                              ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
                               : "bg-success/15 text-success"
                           }`}
                         >
                           {variance.status === "off"
                             ? `${t.stockCount.off} ${variance.delta > 0 ? "+" : ""}${variance.delta.toLocaleString()}`
+                            : variance.status === "within"
+                            ? `≈ ${t.stockCount.withinTolerance} ${variance.delta > 0 ? "+" : ""}${variance.delta.toLocaleString()}`
                             : `✓ ${t.stockCount.matches}`}
                         </span>
                       )}

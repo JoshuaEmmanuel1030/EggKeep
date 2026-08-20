@@ -96,6 +96,7 @@ export const id = {
     totalOnHand: 'Total di tangan',
     grandTotal: 'Total (≈ butir)',
     matches: 'cocok dgn sistem',
+    withinTolerance: 'dalam toleransi',
     off: 'vs sistem',
     save: 'Simpan hitungan',
     saved: 'Hitungan disimpan',

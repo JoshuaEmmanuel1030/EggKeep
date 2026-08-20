@@ -96,6 +96,7 @@ export const en = {
     totalOnHand: 'Total on hand',
     grandTotal: 'Total (≈ butir)',
     matches: 'matches system',
+    withinTolerance: 'within tolerance',
     off: 'vs system',
     save: 'Save count',
     saved: 'Count saved',
