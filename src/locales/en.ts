@@ -94,7 +94,6 @@ export const en = {
     locationTst: 'TST',
     locationLoaded: 'Loaded',
     totalOnHand: 'Total on hand',
-    grandTotal: 'Total (≈ butir)',
     matches: 'matches system',
     withinTolerance: 'within tolerance',
     off: 'vs system',
@@ -104,6 +103,11 @@ export const en = {
     readOnly: 'Past date — view only',
     changeDate: 'Change date',
     empty: 'No egg products in the catalog yet.',
+    addLine: 'Add line',
+    addItemPlaceholder: 'Select an egg…',
+    noItemsYet: 'No items yet — add one to start counting.',
+    noCountForDate: 'No count recorded for this date.',
+    removeLine: 'Remove',
   },
 
   // Dashboard

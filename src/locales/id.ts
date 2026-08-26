@@ -94,7 +94,6 @@ export const id = {
     locationTst: 'TST',
     locationLoaded: 'Dimuat',
     totalOnHand: 'Total di tangan',
-    grandTotal: 'Total (≈ butir)',
     matches: 'cocok dgn sistem',
     withinTolerance: 'dalam toleransi',
     off: 'vs sistem',
@@ -104,6 +103,11 @@ export const id = {
     readOnly: 'Tanggal lampau — hanya lihat',
     changeDate: 'Ganti tanggal',
     empty: 'Belum ada produk telur di katalog.',
+    addLine: 'Tambah baris',
+    addItemPlaceholder: 'Pilih telur…',
+    noItemsYet: 'Belum ada barang — tambahkan untuk mulai menghitung.',
+    noCountForDate: 'Tidak ada hitungan untuk tanggal ini.',
+    removeLine: 'Hapus',
   },
 
   // Dashboard
