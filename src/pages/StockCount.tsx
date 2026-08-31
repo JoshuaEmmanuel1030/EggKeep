@@ -99,7 +99,6 @@ export default function StockCount() {
 
   // Count-quality summary (never pools stock across products/units).
   const summary = useMemo(() => {
-    const counted = rows.filter((r) => r.anyVal).length;
     const withJs = rows.filter((r) => r.variance);
     const offCount = withJs.filter((r) => r.variance!.status === "off").length;
     const meanDev =
@@ -110,7 +109,7 @@ export default function StockCount() {
     for (const r of withJs) {
       if (!worst || Math.abs(r.pct ?? 0) > Math.abs(worst.pct ?? 0)) worst = r;
     }
-    return { counted, jsCounted: withJs.length, offCount, meanDev, worst };
+    return { jsCounted: withJs.length, offCount, meanDev, worst };
   }, [rows]);
 
   const handleSave = async () => {
@@ -189,13 +188,7 @@ export default function StockCount() {
         ) : (
           <>
             {/* Count-quality summary — three stats, never pooled stock */}
-            <div className="grid grid-cols-3 gap-px bg-border rounded-xl overflow-hidden border">
-              <div className="bg-card p-2.5 text-center">
-                <div className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{t.stockCount.sumCounted}</div>
-                <div className="font-display font-semibold text-lg tabular-nums mt-0.5">
-                  {summary.counted}<span className="text-xs text-muted-foreground"> / {eggs.length}</span>
-                </div>
-              </div>
+            <div className="grid grid-cols-2 gap-px bg-border rounded-xl overflow-hidden border">
               <div className="bg-card p-2.5 text-center">
                 <div className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{t.stockCount.sumOutOfTol}</div>
                 <div className={`font-display font-semibold text-lg tabular-nums mt-0.5 ${summary.offCount > 0 ? "text-destructive" : ""}`}>

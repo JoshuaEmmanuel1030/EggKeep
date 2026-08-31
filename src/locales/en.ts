@@ -103,7 +103,6 @@ export const en = {
     empty: 'No egg products in the catalog yet.',
     colItem: 'Item · expected',
     colDev: 'Dev.',
-    sumCounted: 'Counted',
     sumOutOfTol: 'Out of tol.',
     sumMeanDev: 'Mean abs dev',
     expShort: 'exp',

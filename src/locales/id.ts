@@ -103,7 +103,6 @@ export const id = {
     empty: 'Belum ada produk telur di katalog.',
     colItem: 'Barang · perkiraan',
     colDev: 'Dev.',
-    sumCounted: 'Terhitung',
     sumOutOfTol: 'Di luar tol.',
     sumMeanDev: 'Rata2 dev',
     expShort: 'perk.',
