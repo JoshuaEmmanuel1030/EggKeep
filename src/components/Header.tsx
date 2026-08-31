@@ -40,13 +40,13 @@ export function Header({ onExport }: HeaderProps) {
         <div className="flex items-center gap-1 sm:gap-2">
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
             onClick={() => navigate("/stock-count")}
             title={t.nav.stockCount}
-            className="relative gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3"
+            aria-label={t.nav.stockCount}
+            className="relative h-8 w-8 sm:h-9 sm:w-9"
           >
             <ClipboardList className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            <span className="hidden sm:inline">{t.nav.stockCount}</span>
             {!countedToday && (
               <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary" />
             )}
