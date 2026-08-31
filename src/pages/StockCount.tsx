@@ -1,18 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, X } from "lucide-react";
+import { ChevronLeft, Calendar, AlertTriangle } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -25,7 +17,6 @@ import {
   StockLocation,
   resolveTolerance,
   computeVariance,
-  totalOnHand,
   parseCountInput,
 } from "@/lib/stockCount";
 import { StockCountSaveEntry } from "@/types/stockCount";
@@ -34,6 +25,8 @@ import { StockCountSaveEntry } from "@/types/stockCount";
 type Draft = Record<string, string>;
 
 const todayStr = () => format(new Date(), "yyyy-MM-dd");
+const fmt = (n: number) => n.toLocaleString();
+const signed = (n: number) => `${n > 0 ? "+" : ""}${n.toLocaleString()}`;
 
 export default function StockCount() {
   const { t } = useLanguage();
@@ -46,23 +39,15 @@ export default function StockCount() {
   const isToday = countDate === todayStr();
   const { records, saveCounts, deleteCounts } = useStockCounts(countDate);
   const [draft, setDraft] = useState<Draft>({});
-  // itemType ids shown as count lines (only the items the staffer chose to count).
-  const [lines, setLines] = useState<string[]>([]);
-  const [toAdd, setToAdd] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
-  // Egg products only in v1.
+  // Egg products only in v1 — the full roster shown as ledger rows.
   const eggs = useMemo(
     () => itemTypes.filter((it) => it.category === "egg"),
     [itemTypes]
   );
-  const eggById = useMemo(() => {
-    const m: Record<string, (typeof eggs)[number]> = {};
-    for (const it of eggs) m[it.id] = it;
-    return m;
-  }, [eggs]);
 
-  // System (ledger) stock per product — the JS-warehouse perpetual number.
+  // Live system (ledger) stock per product — the JS-warehouse perpetual number.
   const systemStock = useMemo(() => {
     const summary = calculateStockSummary(inflows, conversionMap, {});
     const map: Record<string, number> = {};
@@ -70,22 +55,12 @@ export default function StockCount() {
     return map;
   }, [inflows, conversionMap]);
 
-  // Seed the draft AND the visible lines from saved rows whenever the date's
-  // records load. Lines = the distinct egg products that have a saved count for
-  // this date (in catalog order for stability); on a past date this is the whole
-  // read-only snapshot, on today it's the starting point the staffer adds to.
+  // Seed the draft from saved rows whenever the date's records load.
   useEffect(() => {
     const next: Draft = {};
-    const seeded: string[] = [];
-    for (const it of eggs) {
-      const recs = records.filter((r) => r.itemTypeId === it.id);
-      if (recs.length === 0) continue;
-      seeded.push(it.id);
-      for (const r of recs) next[`${r.itemTypeId}:${r.location}`] = String(r.quantity);
-    }
+    for (const r of records) next[`${r.itemTypeId}:${r.location}`] = String(r.quantity);
     setDraft(next);
-    setLines(seeded);
-  }, [countDate, records, eggs]);
+  }, [countDate, records]);
 
   const draftValue = (itemTypeId: string, loc: StockLocation): number | null =>
     parseCountInput(draft[`${itemTypeId}:${loc}`] ?? "");
@@ -93,36 +68,57 @@ export default function StockCount() {
   const setDraftValue = (itemTypeId: string, loc: StockLocation, v: string) =>
     setDraft((prev) => ({ ...prev, [`${itemTypeId}:${loc}`]: v }));
 
-  // Eggs not yet added as a line — the dropdown's options.
-  const available = useMemo(
-    () => eggs.filter((it) => !lines.includes(it.id)),
-    [eggs, lines]
-  );
-
-  const addLine = () => {
-    if (!toAdd || lines.includes(toAdd)) return;
-    setLines((prev) => [...prev, toAdd]);
-    setToAdd("");
+  // JS-warehouse system stock to reconcile against. On a past date we use the
+  // value snapshotted at save time (honest history); today we use live stock.
+  const systemFor = (itemTypeId: string, product: string): number => {
+    if (!isToday) {
+      const rec = records.find(
+        (r) => r.itemTypeId === itemTypeId && r.location === "js_warehouse"
+      );
+      if (rec && rec.systemQty != null) return rec.systemQty;
+    }
+    return systemStock[product] ?? 0;
   };
 
-  const removeLine = (id: string) => {
-    setLines((prev) => prev.filter((x) => x !== id));
-    setDraft((prev) => {
-      const next = { ...prev };
-      for (const loc of STOCK_LOCATIONS) delete next[`${id}:${loc}`];
-      return next;
+  // Per-row derived state: counts, JS-only variance, and % deviation.
+  const rows = useMemo(() => {
+    return eggs.map((it) => {
+      const unit = getStockUnit(it.name, "egg", conversionMap);
+      const js = draftValue(it.id, "js_warehouse");
+      const tst = draftValue(it.id, "tst_warehouse");
+      const loaded = draftValue(it.id, "loaded");
+      const anyVal = js != null || tst != null || loaded != null;
+      const sys = systemFor(it.id, it.name);
+      const tol = resolveTolerance(it.countTolerance, unit);
+      const variance = js != null ? computeVariance(js, sys, tol) : null;
+      const pct = js != null && sys > 0 ? ((js - sys) / sys) * 100 : null;
+      return { it, unit, js, tst, loaded, anyVal, sys, variance, pct };
     });
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eggs, draft, records, systemStock, isToday, conversionMap]);
+
+  // Count-quality summary (never pools stock across products/units).
+  const summary = useMemo(() => {
+    const counted = rows.filter((r) => r.anyVal).length;
+    const withJs = rows.filter((r) => r.variance);
+    const offCount = withJs.filter((r) => r.variance!.status === "off").length;
+    const meanDev =
+      withJs.length > 0
+        ? withJs.reduce((s, r) => s + Math.abs(r.pct ?? 0), 0) / withJs.length
+        : 0;
+    let worst: (typeof rows)[number] | null = null;
+    for (const r of withJs) {
+      if (!worst || Math.abs(r.pct ?? 0) > Math.abs(worst.pct ?? 0)) worst = r;
+    }
+    return { counted, jsCounted: withJs.length, offCount, meanDev, worst };
+  }, [rows]);
 
   const handleSave = async () => {
     setSaving(true);
     const entries: StockCountSaveEntry[] = [];
-    // Only the items currently shown as lines get (re)saved.
-    for (const id of lines) {
-      const it = eggById[id];
-      if (!it) continue;
+    for (const it of eggs) {
       for (const loc of STOCK_LOCATIONS) {
-        const val = draftValue(id, loc);
+        const val = draftValue(it.id, loc);
         if (val == null) continue; // blank = not counted -> no row
         entries.push({
           itemTypeId: it.id,
@@ -130,166 +126,167 @@ export default function StockCount() {
           category: it.category,
           location: loc,
           quantity: val,
-          // Snapshot the ledger for the JS bucket only.
           systemQty: loc === "js_warehouse" ? systemStock[it.name] ?? 0 : null,
         });
       }
     }
-    // Any previously-saved cell that is now blank (cell cleared OR its whole line
-    // removed) gets deleted so a correction actually sticks.
+    // Any previously-saved cell now blank gets deleted so a correction sticks.
     const clears: { itemTypeId: string; location: StockLocation }[] = [];
     for (const r of records) {
       if (draftValue(r.itemTypeId, r.location) == null) {
         clears.push({ itemTypeId: r.itemTypeId, location: r.location });
       }
     }
-
     let ok = await saveCounts(entries, user?.email ?? "");
     if (ok && clears.length > 0) ok = await deleteCounts(clears);
     setSaving(false);
     toast(ok ? { title: t.stockCount.saved } : { title: t.stockCount.saveError });
   };
 
+  const devColor = (status: "match" | "within" | "off") =>
+    status === "off"
+      ? "text-destructive"
+      : status === "within"
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-success";
+
+  const locLabel = (loc: StockLocation) =>
+    loc === "js_warehouse" ? t.stockCount.locationJs
+      : loc === "tst_warehouse" ? t.stockCount.locationTst
+      : t.stockCount.locationLoaded;
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container py-6 px-4 sm:px-6 max-w-2xl">
-        <div className="flex items-center gap-2 mb-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-1.5">
-            <ChevronLeft className="h-4 w-4" /> {t.stockCount.back}
+        {/* Top bar: back + title + compact date chip */}
+        <div className="flex items-center gap-2 mb-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="h-9 w-9 shrink-0">
+            <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="ml-1">
+          <div className="min-w-0">
             <h1 className="font-display font-bold text-lg leading-tight">{t.stockCount.title}</h1>
             <p className="text-xs text-muted-foreground">{t.stockCount.subtitle}</p>
           </div>
+          <div className="flex-1" />
+          <div className="flex items-center gap-1.5 rounded-lg border bg-card px-2 h-9 shrink-0">
+            <Calendar className="h-3.5 w-3.5 text-primary" />
+            <input
+              type="date"
+              value={countDate}
+              max={todayStr()}
+              onChange={(e) => setCountDate(e.target.value || todayStr())}
+              className="bg-transparent text-xs font-semibold outline-none w-[104px]"
+            />
+          </div>
         </div>
-
-        <div className="mb-4">
-          <Input
-            type="date"
-            value={countDate}
-            max={todayStr()}
-            onChange={(e) => setCountDate(e.target.value || todayStr())}
-            className="w-full sm:w-56"
-          />
-          {!isToday && (
-            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{t.stockCount.readOnly}</p>
-          )}
-        </div>
+        {!isToday && (
+          <p className="text-xs text-amber-700 dark:text-amber-400 mb-3">{t.stockCount.readOnly}</p>
+        )}
 
         {eggs.length === 0 ? (
           <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">{t.stockCount.empty}</CardContent></Card>
         ) : (
-          <div className="space-y-2.5">
-            {/* Add-line control (today only) */}
-            {isToday && (
-              <div className="flex items-center gap-2">
-                <Select value={toAdd} onValueChange={setToAdd}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder={t.stockCount.addItemPlaceholder} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {available.map((it) => (
-                      <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button onClick={addLine} disabled={!toAdd}>{t.stockCount.addLine}</Button>
+          <>
+            {/* Count-quality summary — three stats, never pooled stock */}
+            <div className="grid grid-cols-3 gap-px bg-border rounded-xl overflow-hidden border">
+              <div className="bg-card p-2.5 text-center">
+                <div className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{t.stockCount.sumCounted}</div>
+                <div className="font-display font-semibold text-lg tabular-nums mt-0.5">
+                  {summary.counted}<span className="text-xs text-muted-foreground"> / {eggs.length}</span>
+                </div>
+              </div>
+              <div className="bg-card p-2.5 text-center">
+                <div className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{t.stockCount.sumOutOfTol}</div>
+                <div className={`font-display font-semibold text-lg tabular-nums mt-0.5 ${summary.offCount > 0 ? "text-destructive" : ""}`}>
+                  {summary.offCount}<span className="text-xs text-muted-foreground"> / {summary.jsCounted}</span>
+                </div>
+              </div>
+              <div className="bg-card p-2.5 text-center">
+                <div className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{t.stockCount.sumMeanDev}</div>
+                <div className={`font-display font-semibold text-lg tabular-nums mt-0.5 ${summary.meanDev > 2 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                  {summary.meanDev.toFixed(1)}<span className="text-xs text-muted-foreground">%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Largest deviation callout */}
+            {summary.worst && summary.worst.variance!.status !== "match" && (
+              <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-destructive/[0.07] text-xs text-destructive font-medium">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {t.stockCount.largestDev}: <b className="font-bold">{summary.worst.it.name} {summary.worst.pct! > 0 ? "+" : ""}{summary.worst.pct!.toFixed(1)}%</b>
+                  {" "}({signed(summary.worst.variance!.delta)} {summary.worst.unit} {t.stockCount.ofWord} {fmt(summary.worst.sys)})
+                </span>
               </div>
             )}
 
-            {lines.length === 0 ? (
-              <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">
-                {isToday ? t.stockCount.noItemsYet : t.stockCount.noCountForDate}
-              </CardContent></Card>
-            ) : (
-              lines.map((id) => {
-                const it = eggById[id];
-                if (!it) return null;
-                const unit = getStockUnit(it.name, "egg", conversionMap);
-                const counts: Partial<Record<StockLocation, number | null>> = {};
-                for (const loc of STOCK_LOCATIONS) counts[loc] = draftValue(id, loc);
-                const total = totalOnHand(counts);
-                const physicalJs = counts.js_warehouse;
-                const tol = resolveTolerance(it.countTolerance, unit);
-                const sys = systemStock[it.name] ?? 0;
-                const variance =
-                  physicalJs != null ? computeVariance(physicalJs, sys, tol) : null;
+            {/* Ledger */}
+            <div className="rounded-xl border bg-card overflow-hidden mt-3">
+              <div className="grid grid-cols-[1fr_44px_44px_44px_60px] bg-muted">
+                <span className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground px-3 py-2">{t.stockCount.colItem}</span>
+                <span className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground py-2 text-center">{locLabel("js_warehouse")}</span>
+                <span className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground py-2 text-center">{locLabel("tst_warehouse")}</span>
+                <span className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground py-2 text-center">{locLabel("loaded")}</span>
+                <span className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground py-2 text-center">{t.stockCount.colDev}</span>
+              </div>
 
-                return (
-                  <Card key={id}>
-                    <CardContent className="p-3">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="font-semibold text-sm">{it.name}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[11px] text-muted-foreground">{unit}</span>
-                          {isToday && (
-                            <button
-                              type="button"
-                              onClick={() => removeLine(id)}
-                              title={t.stockCount.removeLine}
-                              aria-label={t.stockCount.removeLine}
-                              className="text-muted-foreground hover:text-destructive"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-2 grid grid-cols-3 gap-2">
-                        {STOCK_LOCATIONS.map((loc) => (
-                          <div key={loc}>
-                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-                              {loc === "js_warehouse" ? t.stockCount.locationJs
-                                : loc === "tst_warehouse" ? t.stockCount.locationTst
-                                : t.stockCount.locationLoaded}
-                            </div>
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              disabled={!isToday}
-                              value={draft[`${id}:${loc}`] ?? ""}
-                              onChange={(e) => setDraftValue(id, loc, e.target.value)}
-                              className="h-9 text-center"
-                              placeholder="—"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-2.5 flex items-center justify-between text-[11px] pt-2 border-t border-dashed">
-                        <span className="font-semibold">
-                          {t.stockCount.totalOnHand}: {total.toLocaleString()} {unit}
+              {rows.map(({ it, unit, sys, variance, pct }) => (
+                <div key={it.id} className="grid grid-cols-[1fr_44px_44px_44px_60px] border-t">
+                  <div className="px-3 py-2 min-w-0 self-center">
+                    <div className="text-[12.5px] font-semibold truncate">{it.name}</div>
+                    <div className="text-[10px] text-muted-foreground tabular-nums">
+                      {unit} · {t.stockCount.expShort} {fmt(sys)}
+                    </div>
+                  </div>
+                  {STOCK_LOCATIONS.map((loc) => (
+                    <div key={loc} className="border-l">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        disabled={!isToday}
+                        value={draft[`${it.id}:${loc}`] ?? ""}
+                        onChange={(e) => setDraftValue(it.id, loc, e.target.value)}
+                        placeholder="—"
+                        className="w-full h-12 bg-transparent text-center text-[13px] font-semibold tabular-nums outline-none focus:bg-primary/5 placeholder:text-muted-foreground/50 disabled:cursor-default"
+                      />
+                    </div>
+                  ))}
+                  <div className="border-l flex flex-col items-center justify-center gap-0.5 px-1">
+                    {variance ? (
+                      <>
+                        <span className={`text-[12px] font-bold tabular-nums leading-none ${devColor(variance.status)}`}>
+                          {signed(variance.delta)}
                         </span>
-                        {variance && (
-                          <span
-                            className={`px-2 py-0.5 rounded-full font-semibold ${
-                              variance.status === "off"
-                                ? "bg-destructive/10 text-destructive"
-                                : variance.status === "within"
-                                ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                                : "bg-success/15 text-success"
-                            }`}
-                          >
-                            {variance.status === "off"
-                              ? `${t.stockCount.off} ${variance.delta > 0 ? "+" : ""}${variance.delta.toLocaleString()}`
-                              : variance.status === "within"
-                              ? `≈ ${t.stockCount.withinTolerance} ${variance.delta > 0 ? "+" : ""}${variance.delta.toLocaleString()}`
-                              : `✓ ${t.stockCount.matches}`}
+                        {pct != null && (
+                          <span className="text-[9px] text-muted-foreground tabular-nums leading-none">
+                            {pct > 0 ? "+" : ""}{pct.toFixed(1)}%
                           </span>
                         )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })
-            )}
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground text-sm leading-none">·</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
 
-            {isToday && lines.length > 0 && (
-              <Button className="w-full mt-2" onClick={handleSave} disabled={saving}>
+            {/* Tolerance legend */}
+            <div className="flex items-center gap-3 mt-2.5 px-1 text-[10.5px] text-muted-foreground">
+              <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-success" />{t.stockCount.matches}</span>
+              <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />{t.stockCount.withinTolerance}</span>
+              <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-destructive" />{t.stockCount.off}</span>
+            </div>
+
+            {isToday && (
+              <Button className="w-full mt-3 h-12" onClick={handleSave} disabled={saving}>
                 {t.stockCount.save}
               </Button>
             )}
-          </div>
+
+            <p className="text-[11px] text-muted-foreground text-center mt-3">{t.stockCount.footNote}</p>
+          </>
         )}
       </main>
     </div>
