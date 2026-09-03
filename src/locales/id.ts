@@ -314,6 +314,25 @@ export const id = {
     confirmVoid: 'Konfirmasi Pembatalan',
     editWindowExpired: 'Jendela edit telah berakhir (48 jam)',
     withinEditWindow: 'Dapat diedit selama {hours} jam lagi',
+    // Timeline
+    entries: 'entri',
+    entry: 'entri',
+    // Record return (retur)
+    recordReturn: 'Catat retur',
+    returnDescription: 'Catat telur yang dikembalikan pelanggan pada pesanan ini.',
+    returnDescriptionBuyer: 'Catat telur yang dikembalikan {buyer} pada pesanan ini.',
+    returnNoEggLines: 'Pesanan ini tidak punya baris telur untuk diretur.',
+    returnSold: 'Terjual',
+    returnQuantity: 'Diretur',
+    returnDisposition: 'Tindakan',
+    returnRestock: 'Masuk stok',
+    returnWriteOff: 'Hapus',
+    returnReason: 'Alasan',
+    returnReasonPlaceholder: 'mis. pecah di jalan, kelas salah...',
+    confirmReturn: 'Catat retur',
+    returnRecorded: 'Retur dicatat',
+    returnFailed: 'Gagal mencatat retur',
+    returnLineUnresolved: 'Tidak menemukan baris pesanan asli untuk {product}.',
   },
 
   // Install

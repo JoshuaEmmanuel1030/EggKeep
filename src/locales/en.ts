@@ -314,6 +314,25 @@ export const en = {
     confirmVoid: 'Confirm Void',
     editWindowExpired: 'Edit window expired (48 hours)',
     withinEditWindow: 'Editable for {hours} more hours',
+    // Timeline
+    entries: 'entries',
+    entry: 'entry',
+    // Record return
+    recordReturn: 'Record return',
+    returnDescription: 'Log eggs the customer sent back on this order.',
+    returnDescriptionBuyer: 'Log eggs {buyer} sent back on this order.',
+    returnNoEggLines: 'This order has no egg lines to return.',
+    returnSold: 'Sold',
+    returnQuantity: 'Returned',
+    returnDisposition: 'What happens to it',
+    returnRestock: 'Restock',
+    returnWriteOff: 'Write off',
+    returnReason: 'Reason',
+    returnReasonPlaceholder: 'e.g. broken in transit, wrong grade...',
+    confirmReturn: 'Record return',
+    returnRecorded: 'Return recorded',
+    returnFailed: 'Could not record return',
+    returnLineUnresolved: 'Could not find the original order line for {product}.',
   },
 
   // Install
