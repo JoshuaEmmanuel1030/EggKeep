@@ -238,7 +238,9 @@ Run these via MCP `execute_sql` on the branch, each in its own transaction with 
 -- Setup: one inflow (100), one outflow (40) consuming it via fifo_deductions.
 -- A) restock 10  -> inflow.remaining +10; returns row disp=restock; return_restocks 10 on that batch.
 -- B) restock 10 then 10 -> total restored 20, never exceeds the 40 deducted.
--- C) restock 41 -> RESTOCK_EXCEEDS_DEDUCTED (bounded by Σ deducted, not just outflow qty).
+-- C) restock 41 -> RETURN_EXCEEDS_OUTFLOW (cumulative cap fires first, since Σdeducted
+--    always == outflow qty for all-or-nothing outflows). RESTOCK_EXCEEDS_DEDUCTED is a
+--    defensive guard that only triggers on data anomalies (e.g. a deducted batch voided).
 -- C2) return-qty 41 total (any disposition) -> RETURN_EXCEEDS_OUTFLOW (cumulative cap).
 -- D) writeoff 10 -> returns row; inflow.remaining UNCHANGED; consumes cumulative headroom.
 -- E) replay same line id -> no-op (no second returns row, no double restore).
