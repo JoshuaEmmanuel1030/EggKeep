@@ -2,6 +2,9 @@
 
 Live React/TS + Supabase PWA for an Indonesian egg-distribution business (real warehouse, real users on phones). Treat production data as sacred.
 
+## Skills
+- **Reading a photo of a hand-filled paper form** (Formulir Penerimaan/Pengiriman, "barang masuk/keluar", daftar ambil) → use the `read-egg-form` skill (`.claude/skills/read-egg-form/`). It OCRs the handwriting, snaps values to the catalog, enforces Osave box math, and returns a reviewable table with per-cell confidence flags. It never writes to the DB — data entry is a separate, human-confirmed step.
+
 ## Deploy model
 - Frontend: push to `main` → Vercel auto-builds (egg-keep.vercel.app). PWA auto-updates on focus.
 - Edge Functions (`supabase/functions/inventory-assistant`): deploy separately (Supabase MCP `deploy_edge_function` or CLI). Git push does NOT touch them.
