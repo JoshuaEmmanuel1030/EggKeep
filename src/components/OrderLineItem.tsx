@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ import {
   isSKUSupportedForBoxMode,
   isLogisticsOnlyMode
 } from "@/lib/outflowCalculator";
+import { parseCountInput } from "@/lib/stockCount";
 import { Trash2, ChevronsUpDown, Check, Tag, Egg, Package, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -55,6 +56,20 @@ export function OrderLineItem({
   const { t } = useLanguage();
   const [skuOpen, setSkuOpen] = useState(false);
   const [eggOpen, setEggOpen] = useState(false);
+
+  // Raw text buffer for the loose-qty field so it accepts the Indonesian
+  // decimal comma (e.g. "52,89") and keeps a trailing separator while typing;
+  // the numeric value is parsed up to the parent. Re-syncs if looseQty is
+  // changed externally (e.g. a reset) rather than by our own keystroke.
+  const [looseQtyRaw, setLooseQtyRaw] = useState(
+    line.looseQty != null ? String(line.looseQty) : ""
+  );
+  useEffect(() => {
+    if ((parseCountInput(looseQtyRaw) ?? undefined) !== line.looseQty) {
+      setLooseQtyRaw(line.looseQty != null ? String(line.looseQty) : "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.looseQty]);
 
   // Calculate materials for this line
   const materials = useMemo(() => {
@@ -228,16 +243,12 @@ export function OrderLineItem({
           <div className="space-y-1">
             <Label className="text-xs">{t.common.quantity}</Label>
             <Input
-              type="number"
-              min="1"
-              step={line.looseUnit === "kg" ? "0.1" : "1"}
-              value={line.looseQty || ""}
-              onChange={(e) => onUpdate({ looseQty: parseFloat(e.target.value) || undefined })}
-              onWheel={(e) => e.currentTarget.blur()}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                  e.preventDefault();
-                }
+              type="text"
+              inputMode="decimal"
+              value={looseQtyRaw}
+              onChange={(e) => {
+                setLooseQtyRaw(e.target.value);
+                onUpdate({ looseQty: parseCountInput(e.target.value) ?? undefined });
               }}
               placeholder={t.outflow.enterQty}
               className="h-10"

@@ -15,6 +15,7 @@ import {
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { convertToButir, getProductUnit } from "@/lib/inventory";
+import { parseCountInput } from "@/lib/stockCount";
 import { PackagePlus, Plus, Trash2, ChevronsUpDown, Check, Calculator } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -134,8 +135,8 @@ export function InflowForm({ onSubmit }: InflowFormProps) {
       for (const item of data.items) {
         if (!item.product || !item.quantity) continue;
 
-        const quantityNum = parseFloat(item.quantity);
-        if (quantityNum <= 0) continue;
+        const quantityNum = parseCountInput(item.quantity);
+        if (quantityNum == null || quantityNum <= 0) continue;
 
         const unit = category === "egg" ? getProductUnit(item.product, conversionMap) : "pcs";
         // kg-native: stock is stored in the product's own unit. The form already
@@ -352,7 +353,7 @@ function ItemRow({ item, index, category, productOptions, conversionMap, onRemov
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
-  const quantityNum = parseFloat(item.quantity) || 0;
+  const quantityNum = parseCountInput(item.quantity) ?? 0;
   const showConversion = category === "egg" && item.product && quantityNum > 0;
   const convertedButir = showConversion ? convertToButir(item.product, quantityNum, conversionMap) : 0;
   const unit = category === "egg" && item.product ? getProductUnit(item.product, conversionMap) : "pcs";
@@ -417,9 +418,8 @@ function ItemRow({ item, index, category, productOptions, conversionMap, onRemov
         <div className="space-y-1">
           <Label className="text-xs">{t.common.quantity} {unit && `(${unit})`}</Label>
           <Input
-            type="number"
-            step={unit === "kg" ? "0.01" : "1"}
-            min="0"
+            type="text"
+            inputMode="decimal"
             value={item.quantity}
             onChange={(e) => onUpdate("quantity", e.target.value)}
             placeholder={t.outflow.enterQty}

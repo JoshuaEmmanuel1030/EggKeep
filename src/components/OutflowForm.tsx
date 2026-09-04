@@ -17,6 +17,7 @@ import {
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { getTotalAvailableStock } from "@/lib/inventory";
+import { parseCountInput } from "@/lib/stockCount";
 import { PackageMinus, Plus, Trash2, ChevronsUpDown, Check, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -142,7 +143,7 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
         if (!item.product || !item.quantity) continue;
         // Compare in the product's native stock unit (kg for weight-sold eggs):
         // a butir entry on a kg product converts to estimated kg first.
-        let qty = parseFloat(item.quantity) || 0;
+        let qty = parseCountInput(item.quantity) ?? 0;
         if (category === "egg" && item.inputUnit !== "kg") {
           const config = conversionMap[item.product];
           if (config && config.unit === "kg" && config.eggs_per_unit > 0) {
@@ -177,8 +178,8 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
       for (const item of data.items) {
         if (!item.product || !item.quantity) continue;
 
-        const quantityNum = parseFloat(item.quantity);
-        if (quantityNum <= 0) continue;
+        const quantityNum = parseCountInput(item.quantity);
+        if (quantityNum == null || quantityNum <= 0) continue;
 
         // kg-native: deduct in the product's stock unit. kg input on a kg
         // product passes through exactly; a butir entry on a kg product
@@ -416,7 +417,7 @@ function OutflowItemRow({
 
   // Quantity in the product's NATIVE stock unit (kg for weight-sold eggs).
   const getQuantityInStock = () => {
-    const qty = parseFloat(item.quantity) || 0;
+    const qty = parseCountInput(item.quantity) ?? 0;
     if (isKgProduct && inputUnit !== "kg" && factor > 0) {
       return Math.round((qty / factor) * 100) / 100; // butir entry -> estimated kg
     }
@@ -492,17 +493,10 @@ function OutflowItemRow({
         <div className="space-y-1">
           <Label className="text-xs">{t.common.quantity} ({displayUnit})</Label>
           <Input
-            type="number"
-            min={inputUnit === "kg" ? "0.1" : "1"}
-            step={inputUnit === "kg" ? "0.1" : "1"}
+            type="text"
+            inputMode="decimal"
             value={item.quantity}
             onChange={(e) => onUpdate("quantity", e.target.value)}
-            onWheel={(e) => e.currentTarget.blur()}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                e.preventDefault();
-              }
-            }}
             placeholder={t.outflow.enterQty}
             className={cn("h-10", isOverstock && "border-destructive focus-visible:ring-destructive")}
           />
@@ -537,7 +531,7 @@ function OutflowItemRow({
           {item.quantity && (
             <span className="text-xs text-muted-foreground ml-2">
               {inputUnit === "kg"
-                ? `≈ ${Math.round((parseFloat(item.quantity) || 0) * factor).toLocaleString()} butir`
+                ? `≈ ${Math.round((parseCountInput(item.quantity) ?? 0) * factor).toLocaleString()} butir`
                 : `≈ ${quantityInStock.toLocaleString()} kg deducted`}
             </span>
           )}
