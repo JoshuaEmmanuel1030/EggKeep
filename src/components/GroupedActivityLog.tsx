@@ -835,7 +835,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
       {/* Action row: quiet, right-aligned. Return is a secondary outline button
           (not a full-width solid) so it doesn't compete with the feed's hierarchy. */}
       {!isVoided && (canReturn || canEditOrder) && (
-        <div className="flex items-center justify-end gap-1 pt-1">
+        <div className="flex flex-wrap items-center justify-end gap-1 pt-1">
           {canReturn && (
             <Button
               size="sm"
@@ -957,7 +957,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
       )}
 
       {!isVoided && (canReturn || canEditEntry) && (
-        <div className="flex items-center justify-end gap-1 pt-2.5">
+        <div className="flex flex-wrap items-center justify-end gap-1 pt-2.5">
           {canReturn && (
             <Button
               size="sm"
@@ -1141,7 +1141,7 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
       )}
 
       {!isVoided && (canReturn || canEditEntry) && (
-        <div className="flex items-center justify-end gap-1 pt-2.5">
+        <div className="flex flex-wrap items-center justify-end gap-1 pt-2.5">
           {canReturn && (
             <Button
               size="sm"

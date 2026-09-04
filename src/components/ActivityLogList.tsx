@@ -220,13 +220,13 @@ export function ActivityLogList({
       {/* Main Card */}
       <Card>
         {/* Header */}
-        <CardHeader className="pb-4 border-b">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-xl">
+        <CardHeader className="pb-4 border-b px-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
               <Clock className="h-5 w-5" />
               {t.activity.title}
             </CardTitle>
-            
+
             <div className="flex items-center gap-2">
               {/* Export Button */}
               <Button
@@ -251,21 +251,21 @@ export function ActivityLogList({
               onValueChange={(value) => value && setViewMode(value as "grouped" | "chronological")}
               className="bg-muted rounded-lg p-1"
             >
-              <ToggleGroupItem 
-                value="grouped" 
+              <ToggleGroupItem
+                value="grouped"
                 aria-label="Grouped view"
-                className="text-xs px-3 py-1.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm"
+                className="text-xs px-2.5 sm:px-3 py-1.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm"
               >
-                <Layers className="h-3.5 w-3.5 mr-1.5" />
-                {t.activity.groupedView}
+                <Layers className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">{t.activity.groupedView}</span>
               </ToggleGroupItem>
-              <ToggleGroupItem 
-                value="chronological" 
+              <ToggleGroupItem
+                value="chronological"
                 aria-label="Chronological view"
-                className="text-xs px-3 py-1.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm"
+                className="text-xs px-2.5 sm:px-3 py-1.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm"
               >
-                <LayoutList className="h-3.5 w-3.5 mr-1.5" />
-                {t.activity.chronologicalView}
+                <LayoutList className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">{t.activity.chronologicalView}</span>
               </ToggleGroupItem>
             </ToggleGroup>
           </div>
@@ -273,40 +273,40 @@ export function ActivityLogList({
         </CardHeader>
 
         {/* Filter Section */}
-        <div className="px-6 py-4 bg-muted/20 border-b">
+        <div className="px-4 sm:px-6 py-4 bg-muted/20 border-b">
           {/* Primary Row: Action Type + Filter Toggle */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <ToggleGroup
               type="single"
               value={actionTypeFilter}
               onValueChange={(value) => value && setActionTypeFilter(value as ActionTypeFilter)}
-              className="bg-background border rounded-lg p-1"
+              className="bg-background border rounded-lg p-1 w-full sm:w-auto"
             >
-              <ToggleGroupItem 
-                value="all" 
-                size="sm" 
-                className="text-sm px-4 py-1.5 rounded-md data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              <ToggleGroupItem
+                value="all"
+                size="sm"
+                className="flex-1 sm:flex-none text-xs sm:text-sm px-2 sm:px-4 py-1.5 rounded-md data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
               >
                 {t.activity.all}
               </ToggleGroupItem>
-              <ToggleGroupItem 
-                value="inflow" 
-                size="sm" 
-                className="text-sm px-4 py-1.5 rounded-md data-[state=on]:bg-green-600 data-[state=on]:text-white"
+              <ToggleGroupItem
+                value="inflow"
+                size="sm"
+                className="flex-1 sm:flex-none text-xs sm:text-sm px-2 sm:px-4 py-1.5 rounded-md data-[state=on]:bg-green-600 data-[state=on]:text-white"
               >
                 {t.activity.inflows}
               </ToggleGroupItem>
-              <ToggleGroupItem 
-                value="outflow" 
-                size="sm" 
-                className="text-sm px-4 py-1.5 rounded-md data-[state=on]:bg-orange-600 data-[state=on]:text-white"
+              <ToggleGroupItem
+                value="outflow"
+                size="sm"
+                className="flex-1 sm:flex-none text-xs sm:text-sm px-2 sm:px-4 py-1.5 rounded-md data-[state=on]:bg-orange-600 data-[state=on]:text-white"
               >
                 {t.activity.outflows}
               </ToggleGroupItem>
-              <ToggleGroupItem 
-                value="voided" 
-                size="sm" 
-                className="text-sm px-4 py-1.5 rounded-md data-[state=on]:bg-red-600 data-[state=on]:text-white"
+              <ToggleGroupItem
+                value="voided"
+                size="sm"
+                className="flex-1 sm:flex-none text-xs sm:text-sm px-2 sm:px-4 py-1.5 rounded-md data-[state=on]:bg-red-600 data-[state=on]:text-white"
               >
                 {t.activity.voided}
               </ToggleGroupItem>
@@ -462,7 +462,7 @@ export function ActivityLogList({
         </div>
 
         {/* Content */}
-        <CardContent className="pt-4">
+        <CardContent className="px-4 sm:px-6 pt-4">
           {filteredLogs.length === 0 ? (
             // Designed empty state (icon + headline + hint), filter-aware.
             <GroupedActivityLog
@@ -472,7 +472,7 @@ export function ActivityLogList({
               viewMode={viewMode}
             />
           ) : (
-            <ScrollArea className="h-[calc(100vh-420px)] min-h-[300px] max-h-[600px] pr-4">
+            <ScrollArea className="h-auto sm:h-[calc(100vh-420px)] min-h-0 sm:min-h-[300px] max-h-none sm:max-h-[600px] pr-2 sm:pr-4">
               <GroupedActivityLog logs={filteredLogs} showVoided={actionTypeFilter === "voided"} viewMode={viewMode} onVoided={onVoided} />
             </ScrollArea>
           )}
