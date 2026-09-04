@@ -1,8 +1,18 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { ActivityLog } from "@/types/activityLog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { CATEGORY_LABELS } from "@/types/inventory";
 import { format, parseISO } from "date-fns";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -21,11 +31,14 @@ import {
   Store,
   Cloud,
   CloudOff,
+  CloudUpload,
+  Truck,
   FileText,
   Pencil,
   Undo2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { orderBucketKey } from "@/lib/activityGrouping";
 
 // Unit label for a logged quantity in the product's native stock unit
 // (kg-native: weight-sold eggs log kg, count eggs log butir, others pcs).
@@ -88,6 +101,48 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnRequest, setReturnRequest] = useState<ReturnRequest | null>(null);
 
+  // Confirm-void-order lives here so the destructive action is gated by an
+  // AlertDialog before the reason step.
+  const [confirmVoidOrderOpen, setConfirmVoidOrderOpen] = useState(false);
+  const [pendingVoidOrderLogs, setPendingVoidOrderLogs] = useState<ActivityLog[]>([]);
+
+  // Entrance animation should play on the FIRST mount only — not on every
+  // refetch/void, which would re-shimmer the whole feed.
+  const hasAnimatedRef = useRef(false);
+  const animateEntrance = !hasAnimatedRef.current;
+  useEffect(() => {
+    hasAnimatedRef.current = true;
+  }, []);
+
+  // At-a-glance summary of the currently displayed activity.
+  const summary = useMemo(() => {
+    let orders = 0;
+    let inflows = 0;
+    let pending = 0;
+    const seenOrderKeys = new Set<string>();
+    logs.forEach((log) => {
+      if (!log.isSynced) pending += 1;
+      if (log.action_type === "inflow") {
+        inflows += 1;
+      } else if (log.metadata?.orderType === "quick_outflow" && log.metadata?.buyerName) {
+        // Count distinct orders, not line rows.
+        const key = orderBucketKey({
+          buyerName: log.metadata.buyerName,
+          orderLines: log.metadata.orderLines || [],
+          outflowDate: log.metadata.outflowDate,
+          recordedAt: log.recorded_at,
+        });
+        if (!seenOrderKeys.has(key)) {
+          seenOrderKeys.add(key);
+          orders += 1;
+        }
+      } else {
+        orders += 1;
+      }
+    });
+    return { orders, inflows, pending };
+  }, [logs]);
+
   // Group logs by date, then by type (quick outflow, manual outflow, inflow)
   const groupedData = useMemo(() => {
     const groups = new Map<string, DateGroup>();
@@ -112,11 +167,15 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
       if (log.action_type === "inflow") {
         group.inflows.push(log);
       } else if (log.metadata?.orderType === "quick_outflow" && log.metadata?.buyerName) {
-        // Quick outflow - group by buyer + order content + outflow date + time bucket
-        // Use 30-second buckets to group materials from the same order together,
-        // but separate orders placed minutes/hours apart
-        const timeBucket = Math.floor(new Date(log.recorded_at).getTime() / 30000); // 30-second bucket
-        const orderKey = `${log.metadata.buyerName}_${JSON.stringify(log.metadata.orderLines || [])}_${log.metadata.outflowDate || 'null'}_${timeBucket}`;
+        // Quick outflow - group by buyer + order content + outflow date + a
+        // 30-second time bucket (see orderBucketKey): materials from the same
+        // order collapse together, orders placed minutes apart stay separate.
+        const orderKey = orderBucketKey({
+          buyerName: log.metadata.buyerName,
+          orderLines: log.metadata.orderLines || [],
+          outflowDate: log.metadata.outflowDate,
+          recordedAt: log.recorded_at,
+        });
 
         if (!group.quickOutflows.has(orderKey)) {
           group.quickOutflows.set(orderKey, {
@@ -182,8 +241,15 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
     }
   };
 
+  // Destructive: first confirm intent, then collect a reason.
   const handleVoidOrderClick = (logs: ActivityLog[]) => {
-    setVoidOrderLogs(logs);
+    setPendingVoidOrderLogs(logs);
+    setConfirmVoidOrderOpen(true);
+  };
+
+  const handleVoidOrderConfirmed = () => {
+    setVoidOrderLogs(pendingVoidOrderLogs);
+    setConfirmVoidOrderOpen(false);
     setVoidOrderDialogOpen(true);
   };
 
@@ -235,6 +301,28 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
         eggLogs={returnRequest?.eggLogs ?? []}
         onRecorded={onVoided}
       />
+      <AlertDialog open={confirmVoidOrderOpen} onOpenChange={setConfirmVoidOrderOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.activity.voidOrderConfirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t.activity.voidOrderConfirmBody.replace(
+                "{count}",
+                String(pendingVoidOrderLogs.length)
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-11">{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleVoidOrderConfirmed}
+            >
+              {t.activity.voidOrder}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 
@@ -253,21 +341,24 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
     );
 
     return (
-      <div className="relative pl-6">
-        {/* Continuous rail */}
-        <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gradient-to-b from-primary/40 via-border to-transparent" />
-        <div className="space-y-2.5">
-          {sortedLogs.map((log, i) => (
-            <TimelineRow key={log.id} index={i} tone={rowTone(log)}>
-              <ChronologicalEntry
-                log={log}
-                onEditClick={handleEditClick}
-                isEditable={isEditable}
-                getEditWindowHours={getEditWindowHours}
-                onReturnClick={handleReturnClick}
-              />
-            </TimelineRow>
-          ))}
+      <div className="space-y-4">
+        <StatusStrip summary={summary} />
+        <div className="relative pl-6">
+          {/* Continuous rail */}
+          <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gradient-to-b from-primary/40 via-border to-transparent" />
+          <div className="space-y-2.5">
+            {sortedLogs.map((log, i) => (
+              <TimelineRow key={log.id} index={i} tone={rowTone(log)} animate={animateEntrance}>
+                <ChronologicalEntry
+                  log={log}
+                  onEditClick={handleEditClick}
+                  isEditable={isEditable}
+                  getEditWindowHours={getEditWindowHours}
+                  onReturnClick={handleReturnClick}
+                />
+              </TimelineRow>
+            ))}
+          </div>
         </div>
         {dialogs}
       </div>
@@ -276,19 +367,83 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
 
   // Grouped view - hierarchical by date and type on a vivid timeline.
   return (
-    <div className="space-y-8">
-      {groupedData.map((dateGroup, idx) => (
-        <DateSection
-          key={idx}
-          group={dateGroup}
-          onEditClick={handleEditClick}
-          isEditable={isEditable}
-          getEditWindowHours={getEditWindowHours}
-          onVoidOrderClick={handleVoidOrderClick}
-          onReturnClick={handleReturnClick}
-        />
-      ))}
+    <div className="space-y-6">
+      <StatusStrip summary={summary} />
+      <div className="space-y-8">
+        {groupedData.map((dateGroup, idx) => (
+          <DateSection
+            key={idx}
+            group={dateGroup}
+            animate={animateEntrance}
+            onEditClick={handleEditClick}
+            isEditable={isEditable}
+            getEditWindowHours={getEditWindowHours}
+            onVoidOrderClick={handleVoidOrderClick}
+            onReturnClick={handleReturnClick}
+          />
+        ))}
+      </div>
       {dialogs}
+    </div>
+  );
+}
+
+// ── Live status strip ────────────────────────────────────────────────────────
+// A compact dispatch-board summary of the currently displayed activity, so the
+// feed reads as an active operations board. Uses theme tokens for dark mode.
+// NOTE: no "returns" tile — real return data doesn't exist yet, and counting
+// voids as returns (as an earlier draft did) is wrong. Add it when returns ship.
+interface StatusStripProps {
+  summary: { orders: number; inflows: number; pending: number };
+}
+
+function StatusStrip({ summary }: StatusStripProps) {
+  const { t } = useLanguage();
+  const tiles = [
+    {
+      label: t.activity.todayOrders,
+      value: summary.orders,
+      icon: Truck,
+      rail: "border-l-primary",
+      fg: "text-primary",
+    },
+    {
+      label: t.activity.todayInflows,
+      value: summary.inflows,
+      icon: PackagePlus,
+      rail: "border-l-emerald-500",
+      fg: "text-emerald-600 dark:text-emerald-400",
+    },
+    {
+      label: t.activity.todayPending,
+      value: summary.pending,
+      icon: CloudUpload,
+      rail: summary.pending > 0 ? "border-l-amber-500" : "border-l-border",
+      fg: summary.pending > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {tiles.map((tile, i) => (
+        <div
+          key={i}
+          className={cn(
+            "rounded-lg border border-l-[3px] bg-card px-3 py-2.5 flex flex-col gap-0.5",
+            tile.rail
+          )}
+        >
+          <div className="flex items-center gap-1.5">
+            <tile.icon className={cn("h-3.5 w-3.5", tile.fg)} />
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground truncate">
+              {tile.label}
+            </span>
+          </div>
+          <span className={cn("text-2xl font-bold tabular-nums leading-none", tile.fg)}>
+            {tile.value.toLocaleString()}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -328,15 +483,17 @@ function TimelineRow({
   children,
   index,
   tone = "quick",
+  animate = false,
 }: {
   children: React.ReactNode;
   index: number;
   tone?: Tone;
+  animate?: boolean;
 }) {
   return (
     <div
-      className="relative animate-timeline-rise"
-      style={{ animationDelay: `${Math.min(index * 45, 400)}ms` }}
+      className={cn("relative", animate && "animate-timeline-rise")}
+      style={animate ? { animationDelay: `${Math.min(index * 45, 400)}ms` } : undefined}
     >
       {/* Node dot centered on the rail (rail sits at left-[7px] in the parent) */}
       <span
@@ -353,6 +510,7 @@ function TimelineRow({
 
 interface DateSectionProps {
   group: DateGroup;
+  animate?: boolean;
   onEditClick: (log: ActivityLog) => void;
   isEditable: (log: ActivityLog) => boolean;
   getEditWindowHours: (createdAt: string) => number;
@@ -360,7 +518,7 @@ interface DateSectionProps {
   onReturnClick: (req: ReturnRequest) => void;
 }
 
-function DateSection({ group, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick }: DateSectionProps) {
+function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick }: DateSectionProps) {
   const { t } = useLanguage();
   const hasQuickOutflows = group.quickOutflows.size > 0;
   const hasManualOutflows = group.manualOutflows.length > 0;
@@ -395,7 +553,7 @@ function DateSection({ group, onEditClick, isEditable, getEditWindowHours, onVoi
                 {t.activity.quickOutflows || "Quick Outflows"}
               </SectionLabel>
               {Array.from(group.quickOutflows.values()).map((order, idx) => (
-                <TimelineRow key={idx} index={rowIndex++} tone="quick">
+                <TimelineRow key={idx} index={rowIndex++} tone="quick" animate={animate}>
                   <BuyerOrderCard
                     order={order}
                     onEditClick={onEditClick}
@@ -416,7 +574,7 @@ function DateSection({ group, onEditClick, isEditable, getEditWindowHours, onVoi
                 {t.activity.manualOutflows || "Manual Outflows"}
               </SectionLabel>
               {group.manualOutflows.map((entry, idx) => (
-                <TimelineRow key={idx} index={rowIndex++} tone="outflow">
+                <TimelineRow key={idx} index={rowIndex++} tone="outflow" animate={animate}>
                   <ManualOutflowEntry
                     log={entry.log}
                     onEditClick={onEditClick}
@@ -436,7 +594,7 @@ function DateSection({ group, onEditClick, isEditable, getEditWindowHours, onVoi
                 {t.activity.inflows || "Inflows"}
               </SectionLabel>
               {group.inflows.map((log) => (
-                <TimelineRow key={log.id} index={rowIndex++} tone="inflow">
+                <TimelineRow key={log.id} index={rowIndex++} tone="inflow" animate={animate}>
                   <InflowEntry
                     log={log}
                     onEditClick={onEditClick}
@@ -601,13 +759,15 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
         </div>
       )}
 
-      {/* Primary action row: Record return is the first-class CTA */}
+      {/* Action row: quiet, right-aligned. Return is a secondary outline button
+          (not a full-width solid) so it doesn't compete with the feed's hierarchy. */}
       {!isVoided && (canReturn || canEditOrder) && (
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center justify-end gap-1 pt-1">
           {canReturn && (
             <Button
               size="sm"
-              className="h-9 gap-1.5 flex-1 sm:flex-none"
+              variant="outline"
+              className="h-11 gap-1.5"
               onClick={() => onReturnClick({ buyerName: order.buyerName, eggLogs })}
             >
               <Undo2 className="h-4 w-4" />
@@ -619,7 +779,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9"
+                className="h-11 w-11"
                 onClick={() => onEditClick(firstLog)}
                 title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
                 aria-label={t.activity.editEntry}
@@ -630,11 +790,10 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-9 text-xs text-destructive hover:text-destructive px-2"
-                  aria-label={t.activity.voidEntry}
+                  className="h-11 text-xs text-destructive hover:text-destructive px-3"
                   onClick={() => onVoidOrderClick(order.logs)}
                 >
-                  {t.activity.voided}
+                  {t.activity.voidOrder}
                 </Button>
               )}
             </>
@@ -725,11 +884,12 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
       )}
 
       {!isVoided && (canReturn || canEditEntry) && (
-        <div className="flex items-center gap-2 pt-2.5">
+        <div className="flex items-center justify-end gap-1 pt-2.5">
           {canReturn && (
             <Button
               size="sm"
-              className="h-9 gap-1.5 flex-1 sm:flex-none"
+              variant="outline"
+              className="h-11 gap-1.5"
               onClick={() => onReturnClick({ eggLogs: [log] })}
             >
               <Undo2 className="h-4 w-4" />
@@ -740,7 +900,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-11 w-11"
               onClick={() => onEditClick(log)}
               title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
               aria-label={t.activity.editEntry}
@@ -804,11 +964,11 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
       </div>
 
       {canEditEntry && !isVoided && (
-        <div className="pt-2.5">
+        <div className="flex justify-end pt-2.5">
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9"
+            className="h-11 w-11"
             onClick={() => onEditClick(log)}
             title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
             aria-label={t.activity.editEntry}
@@ -908,11 +1068,12 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
       )}
 
       {!isVoided && (canReturn || canEditEntry) && (
-        <div className="flex items-center gap-2 pt-2.5">
+        <div className="flex items-center justify-end gap-1 pt-2.5">
           {canReturn && (
             <Button
               size="sm"
-              className="h-9 gap-1.5"
+              variant="outline"
+              className="h-11 gap-1.5"
               onClick={() =>
                 onReturnClick({ buyerName: log.metadata?.buyerName, eggLogs: [log] })
               }
@@ -925,7 +1086,7 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-11 w-11"
               onClick={() => onEditClick(log)}
               title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
               aria-label={t.activity.editEntry}
