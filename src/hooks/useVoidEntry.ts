@@ -6,14 +6,6 @@ import { useUserRole } from "./useUserRole";
 import { toast } from "sonner";
 import { ActivityLog } from "@/types/activityLog";
 
-interface FifoDeduction {
-  id: string;
-  outflow_id: string;
-  inflow_id: string;
-  quantity_deducted: number;
-  created_at: string;
-}
-
 export function useVoidEntry() {
   const { user } = useAuth();
   const { isAdmin } = useUserRole();
@@ -55,61 +47,22 @@ export function useVoidEntry() {
     reason: string
   ): Promise<boolean> => {
     try {
-      // 1. Fetch FIFO deductions for this outflow
-      const { data: deductions, error: deductionsError } = await supabase
-        .from('fifo_deductions')
-        .select('*')
-        .eq('outflow_id', outflowId);
+      // 1. Atomic server-side void: row-locks the outflow + its inflow batches and
+      // restores only the NOT-yet-returned remainder per batch (return×void safe).
+      // Replaces the old client-side read-modify-write, which used absolute writes
+      // and could double-restore stock that a return had already put back.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: voidError } = await (supabase.rpc as any)('void_outflow', {
+        p_outflow_id: outflowId,
+        p_reason: reason,
+      });
 
-      if (deductionsError) {
-        console.error("Error fetching FIFO deductions:", deductionsError);
-        throw deductionsError;
+      if (voidError) {
+        console.error("Error voiding outflow:", voidError);
+        throw voidError;
       }
 
-      // 2. Restore each inflow batch's remaining_butir
-      if (deductions && deductions.length > 0) {
-        for (const deduction of deductions as FifoDeduction[]) {
-          const { data: inflow, error: inflowError } = await supabase
-            .from('inflows')
-            .select('remaining_butir')
-            .eq('id', deduction.inflow_id)
-            .single();
-
-          if (inflowError) {
-            console.error("Error fetching inflow:", inflowError);
-            continue;
-          }
-
-          const newRemaining = (inflow?.remaining_butir || 0) + deduction.quantity_deducted;
-
-          const { error: restoreError } = await supabase
-            .from('inflows')
-            .update({ remaining_butir: newRemaining })
-            .eq('id', deduction.inflow_id);
-
-          if (restoreError) {
-            // Don't silently swallow — a failed restore must not report success.
-            console.error("Error restoring inflow stock:", restoreError);
-            throw restoreError;
-          }
-        }
-      }
-
-      // 3. Mark outflow as voided
-      const { error: outflowError } = await supabase
-        .from('outflows')
-        .update({ 
-          voided_at: new Date().toISOString(), 
-          void_reason: reason 
-        })
-        .eq('id', outflowId);
-
-      if (outflowError) {
-        console.error("Error voiding outflow:", outflowError);
-        throw outflowError;
-      }
-
-      // 4. Mark activity log as voided
+      // 2. Mark activity log as voided (feed display only; stock handled above)
       const { error: activityError } = await supabase
         .from('activity_logs')
         .update({ 
