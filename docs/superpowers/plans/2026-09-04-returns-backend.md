@@ -114,6 +114,9 @@ declare
   v_remaining numeric;
   v_restore numeric;
   v_already numeric;
+  v_total_deducted numeric;
+  v_total_restored numeric;
+  v_eps constant numeric := 1e-9;  -- single tolerance for all qty comparisons (kg decimals)
   v_return_date date := (p_return->>'return_date')::date;
   v_buyer text := nullif(p_return->>'buyer_name','');
   v_reason text := nullif(p_return->>'reason','');
@@ -156,15 +159,17 @@ begin
 
     -- Cumulative cap: prior returns + this line must not exceed the outflow qty.
     select coalesce(sum(quantity),0) into v_returned from returns where outflow_id = v_outflow_id;
-    if v_returned + v_qty > v_outflow.quantity_butir + 1e-9 then
+    if v_returned + v_qty > v_outflow.quantity_butir + v_eps then
       raise exception 'RETURN_EXCEEDS_OUTFLOW: % returned + % > % sold',
         v_returned, v_qty, v_outflow.quantity_butir;
     end if;
 
+    -- item_type_id resolved by name (returns table isn't covered by the Stage-A
+    -- resolver trigger); client payload doesn't send it. Names are still the key.
     insert into returns (id, outflow_id, return_date, product, item_type_id, category,
                          quantity, disposition, buyer_name, reason, user_id)
     values (v_id, v_outflow_id, v_return_date, v_line->>'product',
-            nullif(v_line->>'item_type_id','')::uuid,
+            (select id from item_types where name = v_line->>'product' limit 1),
             (v_line->>'category')::inventory_category,
             v_qty, v_disp, v_buyer, v_reason, v_user);
 
@@ -172,23 +177,39 @@ begin
       continue; -- logged only, no stock change
     end if;
 
-    -- RESTOCK: reverse this outflow's deductions, OLDEST inflow first, capped per batch.
+    -- RESTOCK. Bound the WHOLE restock by what actually left surviving batches:
+    -- Σ deducted − Σ already-restored (across ALL prior returns of this outflow).
+    -- This single up-front cap is the anti-inflation guarantee; the per-batch caps
+    -- below only decide WHERE the (already-bounded) amount lands. No phantom inflow.
+    select coalesce(sum(fd.quantity_deducted),0) into v_total_deducted
+      from fifo_deductions fd where fd.outflow_id = v_outflow_id;
+    select coalesce(sum(rr.quantity_restored),0) into v_total_restored
+      from return_restocks rr join returns r on r.id = rr.return_id
+      where r.outflow_id = v_outflow_id;   -- includes THIS line's row? No: inserted below, none yet
+    if v_qty > (v_total_deducted - v_total_restored) + v_eps then
+      raise exception 'RESTOCK_EXCEEDS_DEDUCTED: % > deductible % (deducted % − restored %)',
+        v_qty, v_total_deducted - v_total_restored, v_total_deducted, v_total_restored;
+    end if;
+
+    -- Distribute OLDEST-first over LIVE deducted batches, capped per batch at
+    -- (deducted − already-restored to THAT batch). Every return_restocks row now
+    -- points at a real deducted batch, so the per-batch subquery is complete.
     v_remaining := v_qty;
     for ded in
-      select fd.inflow_id, fd.quantity_deducted, i.remaining_butir, i.date
+      select fd.inflow_id, fd.quantity_deducted
       from fifo_deductions fd
       join inflows i on i.id = fd.inflow_id
-      where fd.outflow_id = v_outflow_id
+      where fd.outflow_id = v_outflow_id and i.voided_at is null
       order by i.date asc, i.created_at asc
       for update of i
     loop
-      exit when v_remaining <= 0;
-      select coalesce(sum(quantity_restored),0) into v_already
+      exit when v_remaining <= v_eps;
+      select coalesce(sum(rr.quantity_restored),0) into v_already
         from return_restocks rr
         join returns r on r.id = rr.return_id
         where r.outflow_id = v_outflow_id and rr.inflow_id = ded.inflow_id;
       v_restore := least(v_remaining, ded.quantity_deducted - v_already);
-      if v_restore <= 0 then continue; end if;
+      if v_restore <= v_eps then continue; end if;
 
       update inflows set remaining_butir = remaining_butir + v_restore where id = ded.inflow_id;
       insert into return_restocks (return_id, inflow_id, quantity_restored)
@@ -196,15 +217,11 @@ begin
       v_remaining := v_remaining - v_restore;
     end loop;
 
-    -- Fallback: batches were voided/insufficient cap -> fresh inflow at the ORIGINAL
-    -- batch date (preserve age), or return_date if no deduction rows exist at all.
-    if v_remaining > 1e-9 then
-      insert into inflows (id, date, product, quantity_butir, remaining_butir, category, user_id)
-      values (gen_random_uuid(),
-              coalesce((select min(i.date) from fifo_deductions fd join inflows i on i.id=fd.inflow_id
-                        where fd.outflow_id = v_outflow_id), v_return_date),
-              v_line->>'product', v_remaining, v_remaining,
-              (v_line->>'category')::inventory_category, v_user);
+    -- Defensive: leftover can only occur if a DEDUCTED batch was voided (rare —
+    -- voidInflow blocks voiding a consumed inflow). Fail loud; NEVER mint a phantom
+    -- inflow to absorb it (that was a silent-inflation vector). Operator handles manually.
+    if v_remaining > v_eps then
+      raise exception 'RESTOCK_UNALLOCATED: % butir has no live batch to restore to (voided batch?)', v_remaining;
     end if;
   end loop;
 end;
@@ -221,10 +238,15 @@ Run these via MCP `execute_sql` on the branch, each in its own transaction with 
 -- Setup: one inflow (100), one outflow (40) consuming it via fifo_deductions.
 -- A) restock 10  -> inflow.remaining +10; returns row disp=restock; return_restocks 10 on that batch.
 -- B) restock 10 then 10 -> total restored 20, never exceeds the 40 deducted.
--- C) restock 41 -> RETURN_EXCEEDS_OUTFLOW.
--- D) writeoff 10 -> returns row; inflow.remaining UNCHANGED.
+-- C) restock 41 -> RESTOCK_EXCEEDS_DEDUCTED (bounded by Σ deducted, not just outflow qty).
+-- C2) return-qty 41 total (any disposition) -> RETURN_EXCEEDS_OUTFLOW (cumulative cap).
+-- D) writeoff 10 -> returns row; inflow.remaining UNCHANGED; consumes cumulative headroom.
 -- E) replay same line id -> no-op (no second returns row, no double restore).
 -- F) outflow voided -> OUTFLOW_VOIDED.
+-- G) multi-batch outflow (30 from old batch + 10 from new): restock 35 lands 30 on old
+--    then 5 on new (oldest-first, per-batch capped); neither batch exceeds its deducted.
+-- H) [needs Task 3] restock 15, then void the outflow -> total stock restored == 40 exactly
+--    (void restores 40 − 15 = 25); NOT 55. No double-restore.
 ```
 
 - [ ] **Step 3: Commit**
@@ -236,68 +258,105 @@ git commit -m "feat(returns): atomic record_return RPC (FIFO restock / writeoff)
 
 ---
 
-### Task 3: Harden `void` against the return×void double-restore
+### Task 3: Move void server-side (`void_outflow` RPC) + return×void safety
+
+**Why an RPC (not the client helper):** the review found that the current `voidOutflow`
+in `useVoidEntry.ts:59-110` is a client-side read-modify-write with **absolute** writes
+(`remaining_butir: newRemaining`) and no lock. Once `record_return` (atomic, locking)
+can also raise `remaining_butir`, the client void will interleave and **clobber** the
+return's increment — a lost update, the exact silent-inflation anti-pattern CLAUDE.md
+forbids. Changing only the math (a pure JS helper) does NOT fix this; it just writes a
+different wrong number. Void must be atomic, with the SAME lock order as `record_return`.
 
 **Files:**
-- Modify: `src/hooks/useVoidEntry.ts` (`voidOutflow`, ~lines 52–133)
+- Modify: `supabase/migrations/20260904000000_returns.sql` (append `void_outflow`)
+- Modify: `src/hooks/useVoidEntry.ts` (`voidOutflow` calls the RPC; delete the absolute-write loop)
 
 **Interfaces:**
-- Consumes: `returns`, `return_restocks`, `fifo_deductions`.
-- Produces: `voidOutflow` restores only `quantity_deducted − Σ return_restocks.quantity_restored` per batch.
+- Produces: `void_outflow(p_outflow_id uuid, p_reason text) returns void`. Raises
+  `AUTH_REQUIRED`, `OUTFLOW_NOT_FOUND`, `ALREADY_VOIDED`.
+- Consumes: `outflows`, `inflows`, `fifo_deductions`, `return_restocks`, `returns`.
 
-- [ ] **Step 1: Write the failing test (unit, pure helper)**
+- [ ] **Step 1: Write the `void_outflow` function SQL**
 
-Extract the per-batch net-restore math into a pure helper so it's testable without the DB.
+```sql
+create or replace function public.void_outflow(p_outflow_id uuid, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_outflow outflows%rowtype;
+  v_already numeric;
+  v_restore numeric;
+  v_eps constant numeric := 1e-9;
+  ded record;
+begin
+  if v_user is null then
+    raise exception 'AUTH_REQUIRED: must be signed in to void';
+  end if;
 
-```ts
-// src/lib/voidRestore.ts
-export function netRestorePerBatch(
-  deductions: { inflow_id: string; quantity_deducted: number }[],
-  restocked: Record<string, number> // inflow_id -> already restored via returns
-): { inflow_id: string; restore: number }[] {
-  return deductions
-    .map((d) => ({ inflow_id: d.inflow_id, restore: d.quantity_deducted - (restocked[d.inflow_id] ?? 0) }))
-    .filter((r) => r.restore > 0);
-}
+  -- Same lock order as record_return: outflow row first, then inflow rows.
+  select * into v_outflow from outflows where id = p_outflow_id for update;
+  if not found then raise exception 'OUTFLOW_NOT_FOUND: %', p_outflow_id; end if;
+  if v_outflow.voided_at is not null then
+    raise exception 'ALREADY_VOIDED: %', p_outflow_id;
+  end if;
+
+  for ded in
+    select fd.inflow_id, fd.quantity_deducted
+    from fifo_deductions fd
+    join inflows i on i.id = fd.inflow_id
+    where fd.outflow_id = p_outflow_id and i.voided_at is null
+    order by i.date asc, i.created_at asc   -- identical order → no deadlock vs record_return
+    for update of i
+  loop
+    -- Restore only the NOT-yet-returned remainder of this batch (return×void safety).
+    select coalesce(sum(rr.quantity_restored),0) into v_already
+      from return_restocks rr
+      join returns r on r.id = rr.return_id
+      where r.outflow_id = p_outflow_id and rr.inflow_id = ded.inflow_id;
+    v_restore := ded.quantity_deducted - v_already;
+    if v_restore <= v_eps then continue; end if;
+    update inflows set remaining_butir = remaining_butir + v_restore where id = ded.inflow_id;  -- relative
+  end loop;
+
+  update outflows set voided_at = now(), void_reason = p_reason where id = p_outflow_id;
+end;
+$$;
+
+grant execute on function public.void_outflow(uuid, text) to authenticated;
 ```
 
-```ts
-// src/lib/__tests__/voidRestore.test.ts
-import { describe, it, expect } from "vitest";
-import { netRestorePerBatch } from "../voidRestore";
-describe("netRestorePerBatch", () => {
-  it("subtracts already-returned stock so void never double-restores", () => {
-    const out = netRestorePerBatch(
-      [{ inflow_id: "a", quantity_deducted: 40 }],
-      { a: 15 }
-    );
-    expect(out).toEqual([{ inflow_id: "a", restore: 25 }]);
-  });
-  it("drops fully-returned batches", () => {
-    expect(netRestorePerBatch([{ inflow_id: "a", quantity_deducted: 10 }], { a: 10 })).toEqual([]);
-  });
-});
+- [ ] **Step 2: Test on the Supabase branch (SQL)**
+
+```sql
+-- Using the record_return setup (inflow 100, outflow 40):
+-- A) void with no returns -> inflow.remaining +40; outflow.voided_at set.
+-- B) restock 15 then void -> inflow.remaining net +40 total (15 by return + 25 by void), NOT +55.
+-- C) writeoff 15 then void -> inflow.remaining +40 (writeoff restored nothing).
+-- D) void twice -> ALREADY_VOIDED on the 2nd.
 ```
 
-- [ ] **Step 2: Run test, verify it fails**
+- [ ] **Step 3: Point `voidOutflow` at the RPC**
 
-Run: `npm test -- --run src/lib/__tests__/voidRestore.test.ts`
-Expected: FAIL (module not found).
+In `src/hooks/useVoidEntry.ts`, replace the fetch-deductions + per-batch read-modify-write
+block (`:58-96`) with a single `supabase.rpc('void_outflow', { p_outflow_id, p_reason: reason })`
+call. Keep the activity-log void update (`:98-124`). Delete the absolute-write JS path entirely.
+(Cast the RPC name until types regenerate, same pattern as `useRecordReturn.ts`.)
 
-- [ ] **Step 3: Implement the helper, then use it in `voidOutflow`**
+- [ ] **Step 4: Run tsc + tests**
 
-Create `src/lib/voidRestore.ts` as above. In `voidOutflow`, before restoring, fetch `return_restocks` for the outflow (join `returns`), build the `restocked` map, and restore `netRestorePerBatch(...)` amounts instead of the raw `quantity_deducted`.
-
-- [ ] **Step 4: Run tests + tsc**
-
-Run: `npm test -- --run` and `npx tsc --noEmit -p tsconfig.app.json`
-Expected: PASS, exit 0.
+Run: `npx tsc --noEmit -p tsconfig.app.json` and `npm test -- --run`
+Expected: exit 0, all pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/lib/voidRestore.ts src/lib/__tests__/voidRestore.test.ts src/hooks/useVoidEntry.ts
-git commit -m "fix(void): restore only not-yet-returned stock (return×void safety)"
+git add supabase/migrations/20260904000000_returns.sql src/hooks/useVoidEntry.ts
+git commit -m "fix(void): atomic void_outflow RPC, return×void safe (no client absolute writes)"
 ```
 
 ---
@@ -311,6 +370,10 @@ git commit -m "fix(void): restore only not-yet-returned stock (return×void safe
 
 **Interfaces:**
 - Produces: `remainingReturnable(outflowQty: number, priorReturned: number): number`.
+- **`priorReturned` MUST be `Σ returns.quantity` for the outflow across BOTH dispositions**
+  (restock + writeoff), so the UI cap matches the server's cumulative cap
+  (`record_return` counts all dispositions). The dialog fetches all `returns` for the
+  shown outflows, not just restock ones.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -391,6 +454,14 @@ git commit -m "feat(returns): activate record_return (types + drop cast)"
 ---
 
 ## Self-Review notes
-- **Spec coverage:** tables (T1), RPC restock/writeoff/caps/idempotency/locking (T2), void×return (T3), voided-batch fallback dating (T2 fallback), UI cap (T4), go-live + type cast removal (T5), activity feed (T6). ✅
+- **Spec coverage:** tables (T1), RPC restock/writeoff/caps/idempotency/locking (T2), server-side atomic void + void×return safety (T3), UI cap (T4), go-live + type cast removal (T5), activity feed (T6). ✅
 - **Deferred by design:** offline outbox for returns (spec says v1 online-only); component/RTL tests already added in the redesign branch.
-- **Open decision locked:** void×return uses the "restore only remainder" resolution (T3), pending data-integrity confirmation.
+
+## Data-integrity review corrections applied (2026-09-04)
+Folded in after the `data-integrity-reviewer` pass. Outflow FIFO was confirmed sound; the following fixed the planned returns work:
+- **No phantom fallback inflow.** The old fallback could mint stock that never left and created anonymous no-supplier lots. Removed. Total restock is now capped up front at `Σ deducted − Σ restored` (all prior returns of the outflow), and any unallocatable remainder **raises `RESTOCK_UNALLOCATED`** instead of minting. (Blockers 1 & 2.)
+- **Voided batches skipped** in the restock loop (`i.voided_at is null`); the near-impossible voided-consumed-batch case fails loud, not silently.
+- **Void moved server-side** into an atomic `void_outflow` RPC with the SAME lock order as `record_return` (outflow row → inflows `FOR UPDATE OF i ORDER BY date, created_at`), relative updates, restoring `deducted − already_restored` per batch. The client-side absolute-write path is deleted. (Should-fix 1 & 2.)
+- **Single epsilon constant** (`v_eps = 1e-9`) across all quantity comparisons. (Nit.)
+- **UI cap sums all dispositions**; `item_type_id` resolved by name in the RPC (client doesn't send it). (Should-fix 3, Nit.)
+- **Remaining watch-item:** `get_advisors(security)` will list `record_return` + `void_outflow` as SECURITY DEFINER — expected (auth check is inside each function), same pattern as `record_order_outflows`.
