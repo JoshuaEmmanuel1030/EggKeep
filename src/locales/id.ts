@@ -314,6 +314,43 @@ export const id = {
     confirmVoid: 'Konfirmasi Pembatalan',
     editWindowExpired: 'Jendela edit telah berakhir (48 jam)',
     withinEditWindow: 'Dapat diedit selama {hours} jam lagi',
+    // Timeline
+    entries: 'entri',
+    entry: 'entri',
+    // Empty states
+    emptyTitle: 'Belum ada aktivitas',
+    emptyHint: 'Barang masuk dan pesanan akan muncul di sini saat tim mencatatnya.',
+    emptyFilteredTitle: 'Tidak ada aktivitas yang cocok',
+    emptyFilteredHint: 'Coba hapus filter atau perlebar rentang tanggal.',
+    // Summary strip
+    todayOrders: 'Pesanan keluar',
+    todayInflows: 'Barang masuk',
+    todayPending: 'Menunggu sinkron',
+    // Void order
+    voidOrder: 'Batalkan pesanan',
+    voidOrderConfirmTitle: 'Batalkan seluruh pesanan ini?',
+    voidOrderConfirmBody: 'Ini membatalkan semua {count} entri pada pesanan dan mengembalikan stoknya. Alasan diisi pada langkah berikutnya.',
+    // Record return (retur)
+    recordReturn: 'Catat retur',
+    returnDescription: 'Catat telur yang dikembalikan pelanggan pada pesanan ini.',
+    returnDescriptionBuyer: 'Catat telur yang dikembalikan {buyer} pada pesanan ini.',
+    returnNoEggLines: 'Pesanan ini tidak punya baris telur untuk diretur.',
+    returnSold: 'Terjual',
+    returnQuantity: 'Diretur',
+    returnOfSold: 'Retur {qty} dari {max} {unit} terjual',
+    returnOverMax: 'Hanya {max} {unit} yang terjual — dibatasi.',
+    returnDate: 'Tanggal retur',
+    returnDisposition: 'Tindakan',
+    returnRestock: 'Masuk stok',
+    returnWriteOff: 'Hapus',
+    returnReason: 'Alasan',
+    returnReasonPlaceholder: 'mis. pecah di jalan, kelas salah...',
+    returnNeedsQty: 'Isi jumlah retur pada minimal satu baris.',
+    confirmReturn: 'Catat retur',
+    returnRecorded: 'Retur dicatat',
+    returnFailed: 'Gagal mencatat retur',
+    returnPending: 'Fitur retur belum aktif — akan tersimpan setelah pembaruan dirilis.',
+    returnLineUnresolved: 'Tidak menemukan baris pesanan asli untuk {product}.',
   },
 
   // Install

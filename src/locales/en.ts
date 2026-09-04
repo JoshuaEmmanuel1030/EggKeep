@@ -314,6 +314,43 @@ export const en = {
     confirmVoid: 'Confirm Void',
     editWindowExpired: 'Edit window expired (48 hours)',
     withinEditWindow: 'Editable for {hours} more hours',
+    // Timeline
+    entries: 'entries',
+    entry: 'entry',
+    // Empty states
+    emptyTitle: 'No activity yet',
+    emptyHint: 'Inflows and orders will appear here as your team records them.',
+    emptyFilteredTitle: 'No matching activity',
+    emptyFilteredHint: 'Try clearing a filter or widening the date range.',
+    // Summary strip
+    todayOrders: 'Orders out',
+    todayInflows: 'Inflows',
+    todayPending: 'Pending sync',
+    // Void order
+    voidOrder: 'Void order',
+    voidOrderConfirmTitle: 'Void this entire order?',
+    voidOrderConfirmBody: 'This voids all {count} entries in the order and restores their stock. You add a reason on the next step.',
+    // Record return
+    recordReturn: 'Record return',
+    returnDescription: 'Log eggs the customer sent back on this order.',
+    returnDescriptionBuyer: 'Log eggs {buyer} sent back on this order.',
+    returnNoEggLines: 'This order has no egg lines to return.',
+    returnSold: 'Sold',
+    returnQuantity: 'Returned',
+    returnOfSold: 'Returning {qty} of {max} {unit} sold',
+    returnOverMax: 'Only {max} {unit} were sold — capped to that.',
+    returnDate: 'Return date',
+    returnDisposition: 'What happens to it',
+    returnRestock: 'Restock',
+    returnWriteOff: 'Write off',
+    returnReason: 'Reason',
+    returnReasonPlaceholder: 'e.g. broken in transit, wrong grade...',
+    returnNeedsQty: 'Enter a returned quantity on at least one line.',
+    confirmReturn: 'Record return',
+    returnRecorded: 'Return recorded',
+    returnFailed: 'Could not record return',
+    returnPending: "Returns aren't live yet — this will save once the update ships.",
+    returnLineUnresolved: 'Could not find the original order line for {product}.',
   },
 
   // Install
