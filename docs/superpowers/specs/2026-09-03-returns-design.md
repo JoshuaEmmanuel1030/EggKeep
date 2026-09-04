@@ -62,24 +62,55 @@ all-or-nothing, row-locked, idempotent by client line `id`.
 
 Per line:
 1. Idempotency guard: skip entirely if the line `id` already exists in `returns`.
-2. Validate the `outflow_id` exists and is not voided.
-3. Validate cumulative returns (existing + this) do **not** exceed the outflow's
-   `quantity_butir` → else `RAISE EXCEPTION 'RETURN_EXCEEDS_OUTFLOW'`.
+2. **Lock the outflow row** (`SELECT ... FROM outflows WHERE id = outflow_id FOR
+   UPDATE`) before doing anything else for this line. This serializes the return
+   against a concurrent void of the same outflow (see "Void × return" below) and
+   against another concurrent return on the same order. Validate it exists and
+   `voided_at IS NULL` → else `RAISE EXCEPTION 'OUTFLOW_VOIDED'`.
+3. Validate cumulative returns (existing `returns` for this outflow + this line)
+   do **not** exceed the outflow's `quantity_butir` → else
+   `RAISE EXCEPTION 'RETURN_EXCEEDS_OUTFLOW'`.
 4. Insert the `returns` row.
 5. If `disposition = 'restock'`: reverse the outflow's `fifo_deductions`
    **oldest inflow first** (`ORDER BY inflows.date ASC, created_at ASC`,
-   `FOR UPDATE`), restoring `min(remaining_to_return, deducted − already_restored)`
-   to each `inflows.remaining_butir` via a relative update, and insert a
+   `FOR UPDATE` on the inflow rows), restoring
+   `min(remaining_to_return, deducted − already_restored)` to each
+   `inflows.remaining_butir` via a **relative** update, and insert a
    `return_restocks` row per batch touched. Keeps returned (older) eggs FIFO-first.
+   - `already_restored` per `(outflow_id, inflow_id)` = `COALESCE(SUM(
+     return_restocks.quantity_restored), 0)` for that pair, read **inside the same
+     locked transaction** so concurrent returns can't both see a stale zero.
 6. If `disposition = 'writeoff'`: no stock change.
 
 Emits a `return` activity-log entry for the feed.
 
+### Void × return interaction (must-fix — double-restore hazard)
+A partial restock return already added stock back to some batches. If the outflow
+is later **voided**, the current `voidOutflow` restores the **full**
+`fifo_deductions` quantity → the already-returned portion is restored **twice**,
+inflating stock. Resolution (pick one, implement before either path ships):
+
+- **Preferred:** make void restore only the *not-yet-returned* remainder per batch:
+  `restore = quantity_deducted − Σ return_restocks.quantity_restored` for that
+  `(outflow_id, inflow_id)`; skip batches already fully returned. Void must take
+  the same `FOR UPDATE` lock order (outflow row, then inflow rows) as
+  `record_return` to avoid deadlock/race.
+- **Alternative (simpler v1):** block voiding an outflow that has any `returns`
+  rows (`RAISE`/guard in UI), forcing the user to reverse returns first.
+
+This also means `voidOutflow` should move server-side into an atomic RPC (it is
+currently a client-side read-modify-write in `useVoidEntry.ts` — non-atomic, the
+pattern CLAUDE.md forbids). Returns and void both mutating `remaining_butir`
+raises the concurrency stakes enough that the client-side path is no longer safe.
+
 ### Edge cases
-- Original inflow batch voided since the sale → skip it, allocate to the next
+- **Original inflow batch voided since the sale** → skip it, allocate to the next
   batch in the outflow's deductions; if none remain, fall back to a fresh inflow
-  dated `return_date` (documented, rare).
+  **dated with the original batch's `date`** (which we know via `inflow_id`), NOT
+  `return_date` — otherwise genuinely old returned eggs re-enter looking brand-new
+  and corrupt freshness/at-risk. Rare, but must preserve age.
 - Cumulative-return cap is enforced server-side, not just in the UI.
+- Final `min(input, remaining)` clamp server-side even though the UI caps too.
 - Offline: returns may reuse the outflow-outbox pattern later; v1 can be
   online-only (INSUFFICIENT-style errors are never queued).
 
@@ -106,6 +137,13 @@ Emits a `return` activity-log entry for the feed.
   tests, mirroring `stockCount.test.ts`.
 - RPC behavior: restock restores exact batches; writeoff no-ops on stock;
   cumulative cap rejects; idempotent replay is a no-op.
+- **Void × return:** partial restock return, then void the outflow → total stock
+  restored equals the outflow quantity exactly (no double-restore); and a
+  writeoff-then-void restores the full outflow (writeoff didn't touch stock).
+- Voided-original-batch fallback dates the fresh inflow with the original batch's
+  date (freshness preserved), not `return_date`.
+- Concurrency: two returns racing the same outflow, and a return racing a void,
+  never over-restore (locking works).
 - `data-integrity-reviewer` pass before merge (touches FIFO/stock).
 
 ## Deploy order
