@@ -163,7 +163,7 @@ export function RecordReturnDialog({
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Undo2 className="h-5 w-5 text-primary" />
+            <Undo2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             {t.activity.recordReturn}
           </DialogTitle>
           <DialogDescription>
@@ -196,13 +196,13 @@ export function RecordReturnDialog({
                     !hasQty
                       ? "border-l-border"
                       : isRestock
-                        ? "border-l-emerald-500"
+                        ? "border-l-emerald-600 dark:border-l-emerald-400"
                         : "border-l-destructive"
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Egg className="h-4 w-4 text-amber-500 shrink-0" />
+                      <Egg className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
                       <span className="font-semibold truncate">{log.product}</span>
                     </div>
                     <Badge variant="secondary" className="shrink-0 text-xs tabular-nums">
@@ -229,7 +229,7 @@ export function RecordReturnDialog({
                           "h-11 text-base tabular-nums transition-colors",
                           hasQty &&
                             (isRestock
-                              ? "border-emerald-500 focus-visible:ring-emerald-500"
+                              ? "border-emerald-600 dark:border-emerald-400 focus-visible:ring-emerald-600"
                               : "border-destructive focus-visible:ring-destructive")
                         )}
                       />
@@ -275,7 +275,7 @@ export function RecordReturnDialog({
                   {/* Live subtotal + over-max hint */}
                   <div id={`ret-sub-${log.id}`} className="min-h-[16px]">
                     {atMax ? (
-                      <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                      <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
                         <AlertCircle className="h-3 w-3" />
                         {t.activity.returnOverMax
                           .replace("{max}", max.toLocaleString())

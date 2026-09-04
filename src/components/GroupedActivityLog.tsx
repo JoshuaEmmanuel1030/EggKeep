@@ -20,6 +20,7 @@ import { useItemTypes } from "@/hooks/useItemTypes";
 import { useVoidEntry } from "@/hooks/useVoidEntry";
 import { VoidEntryDialog } from "./VoidEntryDialog";
 import { RecordReturnDialog } from "./RecordReturnDialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   ChevronDown,
   ShoppingCart,
@@ -36,6 +37,7 @@ import {
   FileText,
   Pencil,
   Undo2,
+  Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { orderBucketKey } from "@/lib/activityGrouping";
@@ -54,6 +56,10 @@ interface GroupedActivityLogProps {
   logs: ActivityLog[];
   showVoided?: boolean;
   viewMode?: "grouped" | "chronological";
+  // While true, render a timeline skeleton instead of the (empty) feed.
+  loading?: boolean;
+  // Whether any filter is active — changes the empty-state copy.
+  hasActiveFilters?: boolean;
   // Called after a successful void so the parent can refresh inventory/logs.
   onVoided?: () => void;
 }
@@ -87,7 +93,7 @@ interface ReturnRequest {
   eggLogs: ActivityLog[];
 }
 
-export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", onVoided }: GroupedActivityLogProps) {
+export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", loading = false, hasActiveFilters = false, onVoided }: GroupedActivityLogProps) {
   const { t } = useLanguage();
   const { canEdit, getEditWindowHours, voidOutflow, voidInflow, findRelatedEntryId } = useVoidEntry();
 
@@ -326,12 +332,12 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
     </>
   );
 
+  if (loading) {
+    return <ActivityTimelineSkeleton />;
+  }
+
   if (logs.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        {t.activity.title} - No activity logs yet
-      </div>
-    );
+    return <ActivityEmptyState hasActiveFilters={hasActiveFilters} />;
   }
 
   // Chronological view - flat list sorted by time, on a continuous timeline rail.
@@ -404,22 +410,23 @@ function StatusStrip({ summary }: StatusStripProps) {
       label: t.activity.todayOrders,
       value: summary.orders,
       icon: Truck,
-      rail: "border-l-primary",
-      fg: "text-primary",
+      // Graphical rail ≥3:1; number/icon fg ≥4.5:1 (amber-700 light / amber-400 dark).
+      rail: "border-l-amber-600 dark:border-l-amber-400",
+      fg: "text-amber-700 dark:text-amber-400",
     },
     {
       label: t.activity.todayInflows,
       value: summary.inflows,
       icon: PackagePlus,
-      rail: "border-l-emerald-500",
-      fg: "text-emerald-600 dark:text-emerald-400",
+      rail: "border-l-emerald-600 dark:border-l-emerald-400",
+      fg: "text-emerald-700 dark:text-emerald-400",
     },
     {
       label: t.activity.todayPending,
       value: summary.pending,
       icon: CloudUpload,
-      rail: summary.pending > 0 ? "border-l-amber-500" : "border-l-border",
-      fg: summary.pending > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+      rail: summary.pending > 0 ? "border-l-amber-600 dark:border-l-amber-400" : "border-l-border",
+      fg: summary.pending > 0 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground",
     },
   ];
 
@@ -448,6 +455,67 @@ function StatusStrip({ summary }: StatusStripProps) {
   );
 }
 
+// ── Empty state ──────────────────────────────────────────────────────────────
+// A designed empty state consistent with the timeline aesthetic (not a bare
+// one-liner). Different copy when the emptiness is a filter result vs no data.
+function ActivityEmptyState({ hasActiveFilters }: { hasActiveFilters?: boolean }) {
+  const { t } = useLanguage();
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+        <Inbox className="h-7 w-7 text-muted-foreground" />
+      </div>
+      <div className="space-y-1">
+        <h3 className="text-base font-semibold">
+          {hasActiveFilters ? t.activity.emptyFilteredTitle : t.activity.emptyTitle}
+        </h3>
+        <p className="text-sm text-muted-foreground max-w-[16rem]">
+          {hasActiveFilters ? t.activity.emptyFilteredHint : t.activity.emptyHint}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Loading skeleton ─────────────────────────────────────────────────────────
+// A timeline skeleton (rail + shimmer node rows) so the feed never flashes blank
+// then pops. Mirrors the real layout: sticky-marker line, then rail with nodes.
+function ActivityTimelineSkeleton() {
+  return (
+    <div className="space-y-6" aria-hidden>
+      <div className="grid grid-cols-3 gap-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="rounded-lg border border-l-[3px] bg-card px-3 py-2.5 space-y-2">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-6 w-10" />
+          </div>
+        ))}
+      </div>
+      <div className="space-y-3">
+        <Skeleton className="h-5 w-40" />
+        <div className="relative pl-6">
+          <div className="absolute left-[7px] top-1 bottom-1 w-px bg-border" />
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="relative">
+                <span className="absolute -left-[22px] top-4 h-3 w-3 rounded-full bg-muted ring-4 ring-background" />
+                <div className="rounded-xl border border-l-4 border-l-muted bg-card p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-12" />
+                  </div>
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-9 w-28 ml-auto" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Direction accent tokens — one source of truth for node/rail/border color.
 type Tone = "inflow" | "outflow" | "quick";
 
@@ -456,25 +524,27 @@ function rowTone(log: ActivityLog): Tone {
   return log.metadata?.orderType === "quick_outflow" ? "quick" : "outflow";
 }
 
+// Graphical accents (dots) — need ≥3:1 vs the card/page. 600 in light, 400 in
+// dark clears that with margin (see docs/activity-redesign/contrast.md).
 function toneDot(tone: Tone): string {
   switch (tone) {
     case "inflow":
-      return "bg-emerald-500";
+      return "bg-emerald-600 dark:bg-emerald-400";
     case "quick":
-      return "bg-primary";
+      return "bg-amber-600 dark:bg-amber-400";
     default:
-      return "bg-amber-500";
+      return "bg-amber-600 dark:bg-amber-400";
   }
 }
 
 function toneBorder(tone: Tone): string {
   switch (tone) {
     case "inflow":
-      return "border-l-emerald-500/70";
+      return "border-l-emerald-600 dark:border-l-emerald-400";
     case "quick":
-      return "border-l-primary/70";
+      return "border-l-amber-600 dark:border-l-amber-400";
     default:
-      return "border-l-amber-500/70";
+      return "border-l-amber-600 dark:border-l-amber-400";
   }
 }
 
@@ -612,8 +682,11 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
 }
 
 function SectionLabel({ icon, tone, children }: { icon: React.ReactNode; tone: Tone; children: React.ReactNode }) {
+  // Small uppercase labels — AA text ≥4.5:1. 700 light / 400 dark.
   const color =
-    tone === "inflow" ? "text-emerald-600" : tone === "quick" ? "text-primary" : "text-amber-600";
+    tone === "inflow"
+      ? "text-emerald-700 dark:text-emerald-400"
+      : "text-amber-700 dark:text-amber-400";
   return (
     <div className={cn("flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider", color)}>
       {icon}
@@ -702,7 +775,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
       <div className="flex items-start justify-between gap-2 mb-2.5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <Store className="h-4 w-4 text-primary shrink-0" />
+            <Store className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span className={cn("font-bold text-base leading-tight truncate", isVoided && "line-through")}>
               {order.buyerName}
             </span>
@@ -819,8 +892,8 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
             <div className="pt-2 space-y-1.5">
               {order.materials.map((item, idx) => (
                 <div key={idx} className="flex items-center gap-2 text-xs">
-                  {item.type === 'egg' && <Egg className="h-3 w-3 text-amber-500" />}
-                  {item.type === 'packaging' && <Package className="h-3 w-3 text-emerald-500" />}
+                  {item.type === 'egg' && <Egg className="h-3 w-3 text-amber-600 dark:text-amber-400" />}
+                  {item.type === 'packaging' && <Package className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />}
                   {item.type === 'box' && <Box className="h-3 w-3 text-blue-500" />}
                   <span className="text-muted-foreground">{item.product}:</span>
                   <span className="font-medium">{item.quantity.toLocaleString()}</span>
@@ -935,12 +1008,12 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
       )}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <Badge variant="outline" className="text-xs border-emerald-500/50 text-emerald-600 shrink-0">
+          <Badge variant="outline" className="text-xs border-emerald-600/60 text-emerald-700 dark:text-emerald-400 shrink-0">
             {CATEGORY_LABELS[log.category]}
           </Badge>
           <span className={cn("font-semibold", isVoided && "line-through")}>{log.product}</span>
           <span className="text-muted-foreground">·</span>
-          <span className={cn("font-bold tabular-nums text-emerald-600", isVoided && "line-through")}>
+          <span className={cn("font-bold tabular-nums text-emerald-700 dark:text-emerald-400", isVoided && "line-through")}>
             +{log.quantity_butir.toLocaleString()}
           </span>
           <span className="text-xs text-muted-foreground">{unitLabel(log.product, log.category)}</span>
@@ -1013,7 +1086,7 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
 
           <Badge
             variant={isInflow ? "outline" : "secondary"}
-            className={cn("text-xs shrink-0", isInflow && "border-emerald-500/50 text-emerald-600")}
+            className={cn("text-xs shrink-0", isInflow && "border-emerald-600/60 text-emerald-700 dark:text-emerald-400")}
           >
             {isInflow ? (
               <><PackagePlus className="h-3 w-3 mr-1" />Inflow</>
@@ -1033,7 +1106,7 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           <span
             className={cn(
               "font-bold tabular-nums shrink-0",
-              isInflow && "text-emerald-600",
+              isInflow && "text-emerald-700 dark:text-emerald-400",
               isVoided && "line-through"
             )}
           >

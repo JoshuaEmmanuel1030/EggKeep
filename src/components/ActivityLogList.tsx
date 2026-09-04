@@ -35,7 +35,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -179,20 +178,15 @@ export function ActivityLogList({
   if (loading) {
     return (
       <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-40" />
+        <CardHeader className="pb-4 border-b">
+          <CardTitle className="flex items-center gap-2 text-xl">
+            <Clock className="h-5 w-5" />
+            {t.activity.title}
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3">
-              <Skeleton className="h-8 w-8 rounded-full shrink-0" />
-              <div className="flex-1 space-y-1.5">
-                <Skeleton className="h-3 w-1/2" />
-                <Skeleton className="h-3 w-1/3" />
-              </div>
-              <Skeleton className="h-5 w-16" />
-            </div>
-          ))}
+        <CardContent className="pt-4">
+          {/* Timeline-shaped skeleton so the feed doesn't flash blank then pop */}
+          <GroupedActivityLog logs={[]} loading viewMode={viewMode} />
         </CardContent>
       </Card>
     );
@@ -470,9 +464,13 @@ export function ActivityLogList({
         {/* Content */}
         <CardContent className="pt-4">
           {filteredLogs.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {hasActiveFilters ? t.activity.noResults : "No activity logs yet"}
-            </div>
+            // Designed empty state (icon + headline + hint), filter-aware.
+            <GroupedActivityLog
+              logs={[]}
+              hasActiveFilters={!!hasActiveFilters}
+              showVoided={actionTypeFilter === "voided"}
+              viewMode={viewMode}
+            />
           ) : (
             <ScrollArea className="h-[calc(100vh-420px)] min-h-[300px] max-h-[600px] pr-4">
               <GroupedActivityLog logs={filteredLogs} showVoided={actionTypeFilter === "voided"} viewMode={viewMode} onVoided={onVoided} />

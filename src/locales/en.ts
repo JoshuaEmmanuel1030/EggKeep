@@ -317,6 +317,11 @@ export const en = {
     // Timeline
     entries: 'entries',
     entry: 'entry',
+    // Empty states
+    emptyTitle: 'No activity yet',
+    emptyHint: 'Inflows and orders will appear here as your team records them.',
+    emptyFilteredTitle: 'No matching activity',
+    emptyFilteredHint: 'Try clearing a filter or widening the date range.',
     // Summary strip
     todayOrders: 'Orders out',
     todayInflows: 'Inflows',

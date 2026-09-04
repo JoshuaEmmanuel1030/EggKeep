@@ -317,6 +317,11 @@ export const id = {
     // Timeline
     entries: 'entri',
     entry: 'entri',
+    // Empty states
+    emptyTitle: 'Belum ada aktivitas',
+    emptyHint: 'Barang masuk dan pesanan akan muncul di sini saat tim mencatatnya.',
+    emptyFilteredTitle: 'Tidak ada aktivitas yang cocok',
+    emptyFilteredHint: 'Coba hapus filter atau perlebar rentang tanggal.',
     // Summary strip
     todayOrders: 'Pesanan keluar',
     todayInflows: 'Barang masuk',
