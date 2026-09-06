@@ -313,7 +313,7 @@ ${activityContext}
 TODAY'S DATE: ${today.toISOString().slice(0, 10)}. Resolve relative dates ("yesterday", "last week") against this.
 
 DATA TOOLS (use these for anything not in the snapshot above — specific past dates, order counts, per-day/per-buyer breakdowns, movement totals, returns):
-- count_orders — number of distinct customer ORDERS in a date range (grouped like the Activities page). Use for "how many orders on Sep 5".
+- count_orders — number of distinct customer ORDERS in a date range (grouped like the Activities page). Two date meanings: "orders FOR/on Sep 5" = the business/delivery date (date_field 'labelled', the default); "orders ENTERED/typed on Sep 5" = the entry date (date_field 'entered'). Pick based on the user's wording; default to labelled.
 - list_transactions — individual inflow/outflow rows for a date range.
 - sum_movements — total in/out quantities grouped by day, product, or buyer.
 - get_returns — customer returns (retur) with restock/writeoff totals.

@@ -52,7 +52,7 @@ export const toolDefinitions = [
   {
     name: "count_orders",
     description:
-      "Count distinct customer ORDERS (grouped exactly like the Activities page: same buyer + order content + 30-second window) in a date range. Use for questions like 'how many orders on Sep 5'. Returns total plus per-buyer and per-day breakdowns.",
+      "Count distinct customer ORDERS (grouped exactly like the Activities page: same buyer + order content + 30-second window) in a date range. Use for questions like 'how many orders on Sep 5'. Returns total plus per-buyer and per-day breakdowns. IMPORTANT: date_field picks which date the range applies to — 'labelled' (the business/delivery date the order is FOR, default) vs 'entered' (when it was typed into the system). 'orders for Sep 5' means labelled; 'orders entered on Sep 5' means entered.",
     input_schema: {
       type: "object",
       properties: {
@@ -60,6 +60,11 @@ export const toolDefinitions = [
         date_from: { type: "string", description: "Range start YYYY-MM-DD" },
         date_to: { type: "string", description: "Range end YYYY-MM-DD" },
         buyer: { type: "string", description: "Optional buyer name filter" },
+        date_field: {
+          type: "string",
+          enum: ["labelled", "entered"],
+          description: "Which date the range filters on. 'labelled' = business/delivery date (default), 'entered' = system entry timestamp.",
+        },
       },
     },
   },
@@ -159,17 +164,28 @@ async function countOrdersTool(
   const range = resolveRange(args);
   if ("error" in range) return range;
   const buyer = typeof args.buyer === "string" ? args.buyer : undefined;
+  // 'labelled' = business/delivery date (metadata.outflowDate); default, because
+  // "orders for Sep 5" means the date the order is FOR. 'entered' = recorded_at.
+  const dateField = args.date_field === "entered" ? "entered" : "labelled";
 
-  // Orders live in activity_logs (buyer is only in metadata). Filter to quick
-  // outflows, in-range, not voided.
-  const { data, error } = await supabase
+  let query = supabase
     .from("activity_logs")
     .select("recorded_at, metadata, voided_at, action_type")
     .eq("action_type", "outflow")
-    .gte("recorded_at", `${range.from}T00:00:00`)
-    .lte("recorded_at", `${range.to}T23:59:59.999`)
-    .is("voided_at", null)
-    .limit(2000);
+    .is("voided_at", null);
+
+  if (dateField === "entered") {
+    query = query
+      .gte("recorded_at", `${range.from}T00:00:00`)
+      .lte("recorded_at", `${range.to}T23:59:59.999`);
+  } else {
+    // Filter on the business date stored in metadata.outflowDate (text YYYY-MM-DD).
+    query = query
+      .gte("metadata->>outflowDate", range.from)
+      .lte("metadata->>outflowDate", range.to);
+  }
+
+  const { data, error } = await query.limit(2000);
   if (error) return { error: error.message };
 
   const rows: (OrderRow & { day: string })[] = [];
@@ -177,7 +193,10 @@ async function countOrdersTool(
     const md = r.metadata ?? {};
     if (md.orderType !== "quick_outflow") continue;
     if (buyer && md.buyerName !== buyer) continue;
-    const day = md.outflowDate ?? String(r.recorded_at).slice(0, 10);
+    // Day breakdown uses the SAME field the range filtered on, so byDay is coherent.
+    const day = dateField === "entered"
+      ? String(r.recorded_at).slice(0, 10)
+      : (md.outflowDate ?? String(r.recorded_at).slice(0, 10));
     rows.push({
       buyerName: md.buyerName,
       orderLines: md.orderLines,
@@ -187,7 +206,7 @@ async function countOrdersTool(
     });
   }
   const result = countOrders(rows);
-  return { range, ...result };
+  return { range, date_field: dateField, ...result };
 }
 
 async function listTransactionsTool(
