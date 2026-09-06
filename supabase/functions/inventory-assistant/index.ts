@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 import { CONVERSION_DICT, EGGS_PER_TRAY } from "./conversions.ts";
+import { toolDefinitions, runTool } from "./tools.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -309,6 +310,16 @@ ${monthlyContext}
 ${velocityContext}
 ${activityContext}
 
+TODAY'S DATE: ${today.toISOString().slice(0, 10)}. Resolve relative dates ("yesterday", "last week") against this.
+
+DATA TOOLS (use these for anything not in the snapshot above — specific past dates, order counts, per-day/per-buyer breakdowns, movement totals, returns):
+- count_orders — number of distinct customer ORDERS in a date range (grouped like the Activities page). Two date meanings: "orders FOR/on Sep 5" = the business/delivery date (date_field 'labelled', the default); "orders ENTERED/typed on Sep 5" = the entry date (date_field 'entered'). Pick based on the user's wording; default to labelled.
+- list_transactions — individual inflow/outflow rows for a date range.
+- sum_movements — total in/out quantities grouped by day, product, or buyer.
+- get_returns — customer returns (retur) with restock/writeoff totals.
+- get_stock — current stock + at-risk + oldest batches for a product (or all).
+An "order" is a grouped customer order (many product rows), NOT a single transaction row — use count_orders for orders, list_transactions for individual movements. Call a tool when the snapshot lacks the needed data; never guess a number you don't have. If a tool returns an error or empty result, say so plainly.
+
 YOUR CAPABILITIES:
 - Report exact stock levels for any product
 - Identify at-risk eggs (>5 days old) with specific batch details
@@ -329,38 +340,79 @@ GUIDELINES:
 - Report quantities in their native stock unit: kg for weight-sold eggs (you may add the estimated butir count in parentheses, clearly marked as an estimate), butir for count-sold eggs, pcs for boxes/labels/packaging. Do NOT convert to trays or other units unless the user specifically asks. When you do convert, use the exact factors from the STOCK UNITS & CONVERSION RULES and never guess
 - If a product is not in inventory, say so clearly`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages: [
-          { role: 'user', content: message }
-        ],
-      }),
-    });
+    // kg-native unit resolver, reused by the tools.
+    const unit = (product: string, category: string): 'kg' | 'butir' | 'pcs' =>
+      stockUnit(product, category);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Anthropic API error:', response.status, errorText);
+    // Bounded agentic tool-use loop. The model may call read-only tools to fetch
+    // data outside the static snapshot; we cap iterations so cost/latency stay bounded.
+    const MAX_TOOL_ITERATIONS = 5;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const messages: any[] = [{ role: 'user', content: message }];
+    let assistantMessage = 'Sorry, I could not generate a response.';
 
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
-          status: 429,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    const callAnthropic = async () => {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 2048,
+          system: systemPrompt,
+          tools: toolDefinitions,
+          messages,
+        }),
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Anthropic API error:', res.status, errorText);
+        if (res.status === 429) {
+          const err = new Error('Rate limit exceeded. Please try again later.');
+          (err as { status?: number }).status = 429;
+          throw err;
+        }
+        throw new Error('Anthropic API error');
+      }
+      return res.json();
+    };
+
+    for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+      const data = await callAnthropic();
+      const content = data.content ?? [];
+      // Text (if any) is the current best answer.
+      const textBlock = content.find((b: { type: string }) => b.type === 'text');
+      if (textBlock?.text) assistantMessage = textBlock.text;
+
+      const toolUses = content.filter((b: { type: string }) => b.type === 'tool_use');
+      if (data.stop_reason !== 'tool_use' || toolUses.length === 0) break;
+
+      // Run each requested tool and feed results back.
+      messages.push({ role: 'assistant', content });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolResults: any[] = [];
+      for (const tu of toolUses) {
+        const result = await runTool(tu.name, tu.input ?? {}, {
+          supabase, unit, freshnessDays: EGG_FRESHNESS_DAYS,
+        });
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: tu.id,
+          content: JSON.stringify(result),
         });
       }
-      throw new Error('Anthropic API error');
-    }
+      messages.push({ role: 'user', content: toolResults });
 
-    const data = await response.json();
-    const assistantMessage = data.content?.[0]?.text || 'Sorry, I could not generate a response.';
+      if (iteration === MAX_TOOL_ITERATIONS - 1) {
+        // One more call to let the model summarize the last tool results into text.
+        const final = await callAnthropic();
+        const ft = (final.content ?? []).find((b: { type: string }) => b.type === 'text');
+        if (ft?.text) assistantMessage = ft.text;
+      }
+    }
 
     return new Response(JSON.stringify({ response: assistantMessage }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -369,8 +421,9 @@ GUIDELINES:
   } catch (error: unknown) {
     console.error('Error in inventory-assistant:', error);
     const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+    const status = (error as { status?: number })?.status ?? 500;
     return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
+      status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
