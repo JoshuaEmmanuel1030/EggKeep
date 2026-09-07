@@ -472,6 +472,13 @@ export const en = {
     discardConfirm: 'Discard this queued order? It will NOT be recorded in inventory.',
   },
 
+  // App update prompt (PWA)
+  update: {
+    title: 'Update available',
+    description: 'A newer version of the app is ready.',
+    action: 'Refresh',
+  },
+
   // Language
   language: {
     english: 'English',

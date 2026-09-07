@@ -1,6 +1,4 @@
-/// <reference types="vitest/config" />
-import { defineConfig } from "vite";
-import { configDefaults } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
@@ -16,7 +14,11 @@ export default defineConfig(({ mode }) => ({
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
-      registerType: "autoUpdate",
+      // 'prompt' (not 'autoUpdate'): a new build never reloads silently. iOS
+      // home-screen PWAs throttle the silent auto-reload unreliably, and a
+      // surprise mid-entry reload risks losing a half-typed order. Instead we
+      // surface a one-tap "update available" toast (see src/main.tsx).
+      registerType: "prompt",
       includeAssets: ["favicon.ico", "pwa-192.png", "pwa-512.png"],
       manifest: {
         name: "JS Online Inventory Tracker",
@@ -47,7 +49,9 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
-        skipWaiting: true,
+        // No skipWaiting: in 'prompt' mode the new worker waits until the user
+        // taps the update toast (which posts SKIP_WAITING via updateSW), so a
+        // fresh build never activates mid-session behind the user's back.
         clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         runtimeCaching: [

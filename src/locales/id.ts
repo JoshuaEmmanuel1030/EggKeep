@@ -472,6 +472,13 @@ export const id = {
     discardConfirm: 'Buang pesanan antrean ini? Pesanan TIDAK akan dicatat di inventaris.',
   },
 
+  // App update prompt (PWA)
+  update: {
+    title: 'Pembaruan tersedia',
+    description: 'Versi aplikasi terbaru sudah siap.',
+    action: 'Muat ulang',
+  },
+
   // Language
   language: {
     english: 'English',
