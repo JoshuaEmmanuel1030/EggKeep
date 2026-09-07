@@ -477,6 +477,7 @@ export const en = {
     title: 'Update available',
     description: 'A newer version of the app is ready.',
     action: 'Refresh',
+    refreshApp: 'Update app',
   },
 
   // Language
