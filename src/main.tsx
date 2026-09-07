@@ -5,6 +5,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { initMonitoring } from "./lib/monitoring.ts";
 import { toast } from "./hooks/use-toast.ts";
 import { ToastAction } from "./components/ui/toast.tsx";
+import { setPwaUpdater } from "./lib/pwaUpdate.ts";
 import { en } from "./locales/en.ts";
 import { id } from "./locales/id.ts";
 import "./index.css";
@@ -26,6 +27,8 @@ function updateStrings() {
 const updateSW = registerSW({
   onRegisteredSW(_swUrl, registration) {
     if (!registration) return;
+    // Expose the updater to the in-app "refresh" button (Header).
+    setPwaUpdater(updateSW, registration);
     // A long-lived PWA session only checks for a new bundle ~hourly. Data entered
     // by a stale bundle can be format-incompatible (e.g. the kg-native cutover),
     // so also check on every focus/visibility regain and every 15 minutes.

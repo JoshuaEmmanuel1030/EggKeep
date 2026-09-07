@@ -477,6 +477,7 @@ export const id = {
     title: 'Pembaruan tersedia',
     description: 'Versi aplikasi terbaru sudah siap.',
     action: 'Muat ulang',
+    refreshApp: 'Perbarui aplikasi',
   },
 
   // Language
