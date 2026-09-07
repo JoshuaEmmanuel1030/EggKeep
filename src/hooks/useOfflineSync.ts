@@ -7,6 +7,20 @@ import { Json } from "@/integrations/supabase/types";
 
 const PENDING_LOGS_KEY = "pending_activity_logs";
 
+/**
+ * A queued activity log is "resolved" (drop it from the queue) when the insert
+ * succeeds OR when the row is already there. The queued id is a fixed client
+ * UUID retried verbatim, and activity_logs' ONLY unique constraint is its
+ * primary key (id) — so a 23505 unique_violation can only mean this exact log
+ * was already saved (e.g. the original insert committed but its response was
+ * lost). activity_logs is a display/audit log, never the stock ledger, so
+ * dropping such a duplicate cannot affect stock or double an order. Any other
+ * error is transient (network, RLS, FK) — keep it queued and retry later.
+ */
+export function isPendingLogResolved(error: { code?: string } | null | undefined): boolean {
+  return !error || error.code === "23505";
+}
+
 export function useOfflineSync() {
   const { user } = useAuth();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -83,7 +97,9 @@ export function useOfflineSync() {
           metadata: log.metadata as unknown as Json,
         });
 
-        if (!error) {
+        if (isPendingLogResolved(error)) {
+          // Success, or the row is already saved (duplicate id) — either way this
+          // log is done and must leave the queue so it can't get stuck forever.
           successfulSyncs.push(log.id);
         } else {
           console.error("Error syncing log:", error);
