@@ -26,6 +26,9 @@ export interface ItemType {
   // Egg-only (v1): physical-count variance tolerance in the item's native unit
   // (unset = code default: kg -> 1, else 0). See src/lib/stockCount.ts.
   countTolerance?: number;
+  // True when this is an auto-created Retakan (hairline-crack) child of another
+  // egg product. Set by the record_return RPC; display-only in the UI.
+  isRetakan?: boolean;
 }
 
 export interface InflowEntry {

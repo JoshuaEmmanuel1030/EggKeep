@@ -40,6 +40,7 @@ export function useItemTypes() {
           (row as { low_stock_threshold?: number | null }).low_stock_threshold ?? undefined,
         countTolerance:
           (row as { count_tolerance?: number | null }).count_tolerance ?? undefined,
+        isRetakan: (row as { is_retakan?: boolean | null }).is_retakan ?? false,
       }));
 
       setItemTypes(mapped);

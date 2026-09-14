@@ -7,6 +7,7 @@ import { SKUList } from "@/components/catalog/SKUList";
 import { ItemTypeList } from "@/components/catalog/ItemTypeList";
 import { BuyerList } from "@/components/catalog/BuyerList";
 import { RecalculateInventoryButton } from "@/components/admin/RecalculateInventoryButton";
+import { ReconciliationButton } from "@/components/admin/ReconciliationButton";
 
 export function Catalog() {
   const { t } = useLanguage();
@@ -19,7 +20,12 @@ export function Catalog() {
           <h2 className="text-2xl font-bold tracking-tight">{t.catalog.title}</h2>
           <p className="text-muted-foreground">{t.catalog.manageCatalog}</p>
         </div>
-        {isAdmin && <RecalculateInventoryButton />}
+        {isAdmin && (
+          <div className="flex flex-wrap gap-2">
+            <ReconciliationButton />
+            <RecalculateInventoryButton />
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="skus" className="space-y-4">

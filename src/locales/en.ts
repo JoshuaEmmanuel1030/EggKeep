@@ -19,6 +19,7 @@ export const en = {
 
   // Common
   common: {
+    retakan: 'Retakan',
     loading: 'Loading...',
     loadingInventory: 'Loading inventory...',
     save: 'Save',
@@ -250,6 +251,11 @@ export const en = {
     pleaseAddValidLine: 'Please add at least one valid order line',
     warningShortages: 'Warning: Some items have insufficient stock:',
     continueAnyway: 'Do you want to continue anyway?',
+    duplicateTitle: 'Possible duplicate order',
+    duplicateBody: 'A matching order was already recorded recently:',
+    duplicateLine: 'recorded {minutes} min ago',
+    duplicateHint: 'Record it again only if this is a genuinely separate order.',
+    recordAnyway: 'Record anyway',
     exceedsStock: 'Exceeds available stock by',
     butirPcs: 'Butir (pcs)',
     kilogram: 'Kilogram',
@@ -543,5 +549,16 @@ export const en = {
     deductionsCreated: 'deductions created',
     totalDeducted: 'Total deducted',
     noOutflowsToProcess: 'No outflows to process',
+    reconcileCheck: 'Check Stock Integrity',
+    reconcileTitle: 'Stock Reconciliation',
+    reconcileClean: 'Stock is consistent — no discrepancies found.',
+    reconcileFound: 'discrepancies found',
+    reconcileProduct: 'Product',
+    reconcileStored: 'Stored',
+    reconcileExpected: 'Expected',
+    reconcileDrift: 'Drift',
+    reconcileKind: 'Type',
+    reconcileHint: 'Read-only check. To repair drift, use Recalculate Inventory.',
+    reconcileFailed: 'Reconciliation failed',
   },
 } as const;

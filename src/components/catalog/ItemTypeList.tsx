@@ -5,6 +5,7 @@ import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { InventoryCategory, ItemType } from "@/types/inventory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -148,8 +149,8 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
       }
       setDialogOpen(false);
       setRenameWarn(null);
-    } catch (error: any) {
-      toast.error(error.message || t.common.error);
+    } catch (error) {
+      toast.error((error instanceof Error && error.message) || t.common.error);
     }
   };
 
@@ -217,7 +218,19 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
             ) : (
               filteredItems.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className="flex items-center gap-2">
+                      {item.name}
+                      {item.isRetakan && (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-400"
+                        >
+                          {t.common.retakan}
+                        </Badge>
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell className="text-right">
                     {isAdmin && (
                       <div className="flex justify-end gap-1">

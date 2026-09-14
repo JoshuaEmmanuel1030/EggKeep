@@ -140,6 +140,13 @@ export function InventoryDashboard({
     return map;
   }, [itemTypes]);
 
+  // Retakan (hairline-crack) children, keyed category-name, for the row badge.
+  const retakanProducts = useMemo(() => {
+    const s = new Set<string>();
+    for (const it of itemTypes) if (it.isRetakan) s.add(`${it.category}-${it.name}`);
+    return s;
+  }, [itemTypes]);
+
   // ---- Derived analytics: cover, expiring, action lists, per-egg metrics --
   const { eggActions, supplyActions, binding, eggMetrics } = useMemo(() => {
     const eggs: ActionItem[] = [];
@@ -720,7 +727,17 @@ export function InventoryDashboard({
                                 : <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />)}
                             </td>
                             <td className="py-2 sm:py-3 px-1 sm:px-2">
-                              <span className="font-medium text-xs sm:text-sm line-clamp-2">{item.product}</span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="font-medium text-xs sm:text-sm line-clamp-2">{item.product}</span>
+                                {retakanProducts.has(`${item.category}-${item.product}`) && (
+                                  <Badge
+                                    variant="outline"
+                                    className="shrink-0 text-[10px] sm:text-xs border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-400"
+                                  >
+                                    {t.common.retakan}
+                                  </Badge>
+                                )}
+                              </span>
                             </td>
                             <td className="py-2 sm:py-3 px-1 sm:px-2 hidden xs:table-cell">
                               <Badge variant="outline" className="text-[10px] sm:text-xs">{CATEGORY_LABELS[item.category]}</Badge>

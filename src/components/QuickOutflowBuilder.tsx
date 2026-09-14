@@ -31,6 +31,7 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useDuplicateOrderCheck, DuplicateMatch } from "@/hooks/useDuplicateOrderCheck";
 
 interface QuickOutflowBuilderProps {
   stockSummary: StockSummary[];
@@ -55,6 +56,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const { buyers, isLoading: buyersLoading } = useBuyers();
   const { skus, isLoading: skusLoading } = usePackSKUs();
   const { conversionMap, eggProductNames, boxCapacityMap, labelsPerPackMap, getTypesByCategory } = useItemTypes();
+  const { check: checkDuplicates } = useDuplicateOrderCheck();
 
   // Label catalog names for the per-line label dropdown.
   const labelNames = useMemo(
@@ -87,6 +89,8 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const [queueOpen, setQueueOpen] = useState(true);
   const [shortageDialogOpen, setShortageDialogOpen] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<QueuedOrder[]>([]);
+  const [dupDialogOpen, setDupDialogOpen] = useState(false);
+  const [dupMatches, setDupMatches] = useState<DuplicateMatch[]>([]);
   const [pickListOpen, setPickListOpen] = useState(false);
 
   // Update box mode when buyer changes
@@ -420,7 +424,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
 
-    let allOrders = [...orderQueue];
+    const allOrders = [...orderQueue];
     if (hasValidLines && selectedBuyer) {
       allOrders.push({
         id: crypto.randomUUID(),
@@ -444,6 +448,23 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       return;
     }
 
+    // Near-duplicate guard: warn (don't block) if a matching order was recorded
+    // recently. Uses the same orderLines shape that gets stored, for signature parity.
+    const dups = await checkDuplicates(
+      allOrders.map((o) => ({
+        buyerName: o.buyer.name,
+        outflowDate: o.date,
+        orderLines: buildOrderMetadata(o).orderLines ?? [],
+      }))
+    );
+    if (dups.length > 0) {
+      setDupMatches(dups);
+      setPendingOrders(allOrders);
+      setDupDialogOpen(true);
+      isSubmittingRef.current = false;
+      return;
+    }
+
     if (shortages.length > 0) {
       setPendingOrders(allOrders);
       setShortageDialogOpen(true);
@@ -452,6 +473,18 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     }
 
     await doSubmit(allOrders);
+  };
+
+  // "Record anyway" from the duplicate warning: fall through to the shortage gate
+  // (if any) then submit the same pending orders.
+  const proceedPastDuplicate = () => {
+    setDupDialogOpen(false);
+    if (shortages.length > 0) {
+      setShortageDialogOpen(true);
+      return;
+    }
+    isSubmittingRef.current = true;
+    doSubmit(pendingOrders);
   };
 
   return (
@@ -755,6 +788,31 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
               }}
             >
               {t.outflow.continueAnyway || "Continue Anyway"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={dupDialogOpen} onOpenChange={setDupDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.outflow.duplicateTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="block">{t.outflow.duplicateBody}</span>
+              <ul className="mt-2 space-y-1 text-sm">
+                {dupMatches.map((d, i) => (
+                  <li key={`${d.buyerName}-${d.outflowDate}-${i}`}>
+                    • {d.buyerName} ({d.outflowDate}) — {t.outflow.duplicateLine.replace("{minutes}", String(d.minutesAgo))}
+                  </li>
+                ))}
+              </ul>
+              <span className="block mt-3 text-sm">{t.outflow.duplicateHint}</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={proceedPastDuplicate}>
+              {t.outflow.recordAnyway}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

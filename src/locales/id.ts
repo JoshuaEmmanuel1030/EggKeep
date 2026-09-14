@@ -19,6 +19,7 @@ export const id = {
 
   // Common
   common: {
+    retakan: 'Retakan',
     loading: 'Memuat...',
     loadingInventory: 'Memuat inventaris...',
     save: 'Simpan',
@@ -250,6 +251,11 @@ export const id = {
     pleaseAddValidLine: 'Tambahkan minimal satu baris pesanan yang valid',
     warningShortages: 'Peringatan: Beberapa item stoknya tidak cukup:',
     continueAnyway: 'Apakah Anda ingin melanjutkan?',
+    duplicateTitle: 'Kemungkinan pesanan ganda',
+    duplicateBody: 'Pesanan yang sama baru saja dicatat:',
+    duplicateLine: 'dicatat {minutes} menit lalu',
+    duplicateHint: 'Catat lagi hanya jika ini benar-benar pesanan terpisah.',
+    recordAnyway: 'Tetap catat',
     exceedsStock: 'Melebihi stok tersedia sebanyak',
     butirPcs: 'Butir (pcs)',
     kilogram: 'Kilogram',
@@ -543,5 +549,16 @@ export const id = {
     deductionsCreated: 'deduksi dibuat',
     totalDeducted: 'Total dideduksi',
     noOutflowsToProcess: 'Tidak ada keluar untuk diproses',
+    reconcileCheck: 'Cek Integritas Stok',
+    reconcileTitle: 'Rekonsiliasi Stok',
+    reconcileClean: 'Stok konsisten — tidak ada selisih.',
+    reconcileFound: 'selisih ditemukan',
+    reconcileProduct: 'Produk',
+    reconcileStored: 'Tersimpan',
+    reconcileExpected: 'Seharusnya',
+    reconcileDrift: 'Selisih',
+    reconcileKind: 'Jenis',
+    reconcileHint: 'Pemeriksaan hanya-baca. Untuk memperbaiki selisih, gunakan Hitung Ulang Inventaris.',
+    reconcileFailed: 'Rekonsiliasi gagal',
   },
 } as const;
