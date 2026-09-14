@@ -115,6 +115,16 @@ describe("RecordReturnDialog", () => {
     expect(recordReturnMock.mock.calls[0]![0].lines[0]!.disposition).toBe("writeoff");
   });
 
+  it("sends the retakan disposition when toggled", async () => {
+    renderDialog();
+    fireEvent.change(screen.getByLabelText(/returned/i), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /retakan/i }));
+    fireEvent.click(screen.getByRole("button", { name: /record return/i }));
+
+    await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
+    expect(recordReturnMock.mock.calls[0]![0].lines[0]!.disposition).toBe("retakan");
+  });
+
   it("shows the empty message when there are no egg lines", () => {
     renderDialog({ eggLogs: [] });
     expect(screen.getByText(/no egg lines to return/i)).toBeInTheDocument();

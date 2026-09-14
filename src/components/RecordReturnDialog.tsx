@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, Egg, PackageCheck, Trash2, Undo2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Egg, PackageCheck, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -187,6 +187,7 @@ export function RecordReturnDialog({
               const hasQty = !isNaN(entered) && entered > 0;
               const atMax = hasQty && entered >= max;
               const isRestock = state.disposition === "restock";
+              const isRetakan = state.disposition === "retakan";
 
               return (
                 <div
@@ -197,7 +198,9 @@ export function RecordReturnDialog({
                       ? "border-l-border"
                       : isRestock
                         ? "border-l-emerald-600 dark:border-l-emerald-400"
-                        : "border-l-destructive"
+                        : isRetakan
+                          ? "border-l-amber-600 dark:border-l-amber-400"
+                          : "border-l-destructive"
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -230,12 +233,14 @@ export function RecordReturnDialog({
                           hasQty &&
                             (isRestock
                               ? "border-emerald-600 dark:border-emerald-400 focus-visible:ring-emerald-600"
-                              : "border-destructive focus-visible:ring-destructive")
+                              : isRetakan
+                                ? "border-amber-600 dark:border-amber-400 focus-visible:ring-amber-600"
+                                : "border-destructive focus-visible:ring-destructive")
                         )}
                       />
                     </div>
 
-                    {/* Restock / write-off toggle — 44px tap targets */}
+                    {/* Restock / retakan / write-off toggle — 44px tap targets */}
                     <div
                       role="group"
                       aria-label={t.activity.returnDisposition}
@@ -257,11 +262,25 @@ export function RecordReturnDialog({
                       </button>
                       <button
                         type="button"
-                        aria-pressed={!isRestock}
+                        aria-pressed={isRetakan}
+                        onClick={() => setDisposition(log.id, "retakan")}
+                        className={cn(
+                          "flex items-center gap-1.5 rounded-md px-3 h-11 text-xs font-medium transition-colors",
+                          isRetakan
+                            ? "bg-amber-600 text-white shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        {t.activity.returnRetakan}
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={state.disposition === "writeoff"}
                         onClick={() => setDisposition(log.id, "writeoff")}
                         className={cn(
                           "flex items-center gap-1.5 rounded-md px-3 h-11 text-xs font-medium transition-colors",
-                          !isRestock
+                          state.disposition === "writeoff"
                             ? "bg-destructive text-destructive-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground"
                         )}
@@ -271,6 +290,13 @@ export function RecordReturnDialog({
                       </button>
                     </div>
                   </div>
+
+                  {isRetakan && (
+                    <p className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                      {t.activity.returnRetakanHelp}
+                    </p>
+                  )}
 
                   {/* Live subtotal + over-max hint */}
                   <div id={`ret-sub-${log.id}`} className="min-h-[16px]">

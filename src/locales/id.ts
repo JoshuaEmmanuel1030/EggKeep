@@ -343,6 +343,8 @@ export const id = {
     returnDisposition: 'Tindakan',
     returnRestock: 'Masuk stok',
     returnWriteOff: 'Hapus',
+    returnRetakan: 'Retakan',
+    returnRetakanHelp: 'Telur retur pecah/damas dialihkan ke varian Retakan untuk dijual kembali sebagai kelas berbeda.',
     returnReason: 'Alasan',
     returnReasonPlaceholder: 'mis. pecah di jalan, kelas salah...',
     returnNeedsQty: 'Isi jumlah retur pada minimal satu baris.',

@@ -343,6 +343,8 @@ export const en = {
     returnDisposition: 'What happens to it',
     returnRestock: 'Restock',
     returnWriteOff: 'Write off',
+    returnRetakan: 'Retakan',
+    returnRetakanHelp: 'Cracked/returned eggs routed to the Retakan variant for resale as a different grade.',
     returnReason: 'Reason',
     returnReasonPlaceholder: 'e.g. broken in transit, wrong grade...',
     returnNeedsQty: 'Enter a returned quantity on at least one line.',

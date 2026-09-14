@@ -4,7 +4,7 @@ import { InventoryCategory } from "./inventory";
 // disposition drives whether stock moves:
 //   - "restock"  -> good eggs go back into the outflow's original FIFO batches
 //   - "writeoff" -> broken/scrapped; logged only, no stock change
-export type ReturnDisposition = "restock" | "writeoff";
+export type ReturnDisposition = "restock" | "writeoff" | "retakan";
 
 // One returned line the user is entering, tied to a specific outflow row.
 export interface ReturnLineInput {
