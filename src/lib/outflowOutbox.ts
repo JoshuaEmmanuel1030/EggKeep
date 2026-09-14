@@ -65,17 +65,22 @@ const NETWORK_ERROR_RE =
  * Rules, in order:
  *  1. INSUFFICIENT_STOCK anywhere in the message → server (even if we went
  *     offline right after — the server definitively rejected the order).
- *  2. A non-empty PostgrestError `code` (e.g. P0001, PGRST...) → server, the
+ *  2. Postgres 57014 (query_canceled: statement_timeout / canceled request) →
+ *     network. The statement rolled back — nothing committed — so it's safe to
+ *     queue and replay (the RPC is idempotent per entry id). This is transient,
+ *     not a rejection, so it must NOT abort a bulk-queue submit.
+ *  3. A non-empty PostgrestError `code` (e.g. P0001, PGRST...) → server, the
  *     response came back from PostgREST/Postgres.
- *  3. navigator.onLine === false → network.
- *  4. Message matches known fetch-failure strings → network.
- *  5. Anything else → server (fail safe: never queue an unknown error).
+ *  4. navigator.onLine === false → network.
+ *  5. Message matches known fetch-failure strings → network.
+ *  6. Anything else → server (fail safe: never queue an unknown error).
  */
 export function classifyOutflowError(error: unknown, online: boolean): "network" | "server" {
   const message = (error as { message?: string })?.message ?? String(error);
   if (message.includes("INSUFFICIENT_STOCK")) return "server";
 
   const code = (error as { code?: string })?.code;
+  if (code === "57014") return "network";
   if (typeof code === "string" && code.trim() !== "" && !/^ERR_/i.test(code)) {
     return "server";
   }

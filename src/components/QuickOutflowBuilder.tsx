@@ -304,32 +304,16 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const doSubmit = async (ordersToSubmit: QueuedOrder[]) => {
     setSubmitting(true);
 
-    // Pre-flight: re-validate combined stock before any write to prevent partial commits
-    const combined: AggregatedMaterials = {
-      eggsByProduct: new Map(),
-      packagingByItem: new Map(),
-      labelsByItem: new Map(),
-      boxesByType: new Map(),
-      logistics: { keranjang: false, traysUsed: 0 },
-    };
-    for (const order of ordersToSubmit) {
-      for (const [p, q] of order.aggregates.eggsByProduct) combined.eggsByProduct.set(p, (combined.eggsByProduct.get(p) || 0) + q);
-      for (const [i, q] of order.aggregates.packagingByItem) combined.packagingByItem.set(i, (combined.packagingByItem.get(i) || 0) + q);
-      for (const [i, q] of order.aggregates.labelsByItem) combined.labelsByItem.set(i, (combined.labelsByItem.get(i) || 0) + q);
-      for (const [b, q] of order.aggregates.boxesByType) combined.boxesByType.set(b, (combined.boxesByType.get(b) || 0) + q);
-    }
-    const preflightShortages = validateStockAgainstInventory(combined, stockSummary).filter(s => s.available === 0);
-    if (preflightShortages.length > 0) {
-      toast({
-        title: "Stock changed",
-        description: `No stock for: ${preflightShortages.map(s => s.item).join(', ')}. Refresh and try again.`,
-        variant: "destructive",
-      });
-      setSubmitting(false);
-      isSubmittingRef.current = false;
-      return;
-    }
-
+    // No client-side stock gate here: the shortage dialog already warned the user
+    // (all shortages, with an explicit "Continue Anyway"), and the record_order_outflows
+    // RPC is the real authority — atomic per order, rolls back on INSUFFICIENT_STOCK.
+    // Each order is its OWN atomic RPC. One order failing must NOT drop the
+    // orders after it (the old `throw` did exactly that — the tail of a bulk
+    // queue silently vanished). Instead: submit every order, keep only the
+    // FAILED ones in the queue, and clear succeeded ones so a re-submit can't
+    // re-record them (fresh entry UUIDs would dodge the RPC's idempotency guard
+    // and double-deduct stock).
+    const failedOrders: QueuedOrder[] = [];
     let completedCount = 0;
     try {
       const timestamp = new Date().toISOString();
@@ -388,32 +372,46 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
         }
 
         const metadata = buildOrderMetadata(order);
-        const success = await onSubmit(entries, userEmail, metadata);
-        if (!success) throw new Error(`Failed to submit order for ${order.buyer.name}`);
-        completedCount++;
-        totalEntries += entries.length;
+        let success = false;
+        try {
+          success = await onSubmit(entries, userEmail, metadata);
+        } catch (error) {
+          console.error(`Error submitting order for ${order.buyer.name}:`, error);
+          success = false;
+        }
+        if (success) {
+          completedCount++;
+          totalEntries += entries.length;
+        } else {
+          failedOrders.push(order);
+        }
       }
 
-      toast({
-        title: t.outflow.orderRecorded,
-        description: `${ordersToSubmit.length} ${ordersToSubmit.length > 1 ? 'orders' : 'order'} recorded (${totalEntries} items)`,
-      });
-
+      // Only the failed orders survive in the queue; succeeded ones are gone so
+      // they can never be re-recorded. Always clear the form — a failed
+      // current-form order is now captured as a queued order above.
+      setOrderQueue(failedOrders);
       setLines([]);
       setInvoiceRef("");
       setSelectedBuyer(null);
       setBoxMode("box kecil");
-      setOrderQueue([]);
-    } catch (error) {
-      console.error("Error submitting orders:", error);
-      const remaining = ordersToSubmit.length - completedCount;
-      toast({
-        title: completedCount > 0 ? `Partial submission (${completedCount}/${ordersToSubmit.length})` : t.common.error,
-        description: completedCount > 0
-          ? `${completedCount} order(s) recorded. ${remaining} failed — check activity log and re-submit the remainder.`
-          : t.outflow.failedToRecordOrder,
-        variant: "destructive",
-      });
+
+      if (failedOrders.length === 0) {
+        toast({
+          title: t.outflow.orderRecorded,
+          description: `${completedCount} ${completedCount > 1 ? 'orders' : 'order'} recorded (${totalEntries} items)`,
+        });
+      } else {
+        toast({
+          title: completedCount > 0
+            ? `Partial submission (${completedCount}/${ordersToSubmit.length})`
+            : t.common.error,
+          description: completedCount > 0
+            ? `${completedCount} order(s) recorded. ${failedOrders.length} still queued — fix stock and re-submit.`
+            : t.outflow.failedToRecordOrder,
+          variant: "destructive",
+        });
+      }
     } finally {
       setSubmitting(false);
       isSubmittingRef.current = false;

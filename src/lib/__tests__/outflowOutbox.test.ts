@@ -73,6 +73,12 @@ describe("classifyOutflowError", () => {
     expect(classifyOutflowError({ message: "not found", code: "PGRST202" }, true)).toBe("server");
   });
 
+  it("classifies Postgres 57014 (query_canceled: statement timeout / canceled request) as network", () => {
+    // Rolled back, nothing committed → safe to queue + replay, must not abort a bulk submit.
+    expect(classifyOutflowError({ message: "canceling statement due to statement timeout", code: "57014" }, true)).toBe("network");
+    expect(classifyOutflowError({ message: "canceling statement due to user request", code: "57014" }, true)).toBe("network");
+  });
+
   it("classifies fetch failures as network", () => {
     expect(classifyOutflowError(new TypeError("Failed to fetch"), true)).toBe("network");
     expect(classifyOutflowError({ message: "TypeError: Failed to fetch", code: "" }, true)).toBe("network");
