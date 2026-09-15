@@ -51,6 +51,9 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { GroupedActivityLog } from "./GroupedActivityLog";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { usePackSKUs } from "@/hooks/usePackSKUs";
+import { useItemTypes } from "@/hooks/useItemTypes";
+import { buildSkuBomRows, skuBomRowsToCSV } from "@/lib/outflowSkuExport";
 import { format, parseISO, startOfDay, endOfDay, isWithinInterval } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
@@ -74,6 +77,8 @@ export function ActivityLogList({
   onVoided,
 }: ActivityLogListProps) {
   const { t } = useLanguage();
+  const { skus } = usePackSKUs();
+  const { conversionMap, boxCapacityMap, labelsPerPackMap } = useItemTypes();
   const [viewMode, setViewMode] = useState<"grouped" | "chronological">("grouped");
   
   // Filter state
@@ -242,6 +247,22 @@ export function ActivityLogList({
               >
                 <Download className="h-4 w-4" />
                 Export
+              </Button>
+
+              {/* Per-SKU BOM export (outflows) */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  const rows = buildSkuBomRows(filteredLogs, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
+                  const date = new Date().toISOString().slice(0, 10);
+                  downloadCSV(skuBomRowsToCSV(rows), `outflow-sku-bom-${date}.csv`);
+                }}
+                disabled={!filteredLogs.some((l) => l.action_type === "outflow")}
+              >
+                <Download className="h-4 w-4" />
+                Export SKU BOM
               </Button>
 
               {/* View Toggle */}
