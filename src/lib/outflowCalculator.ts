@@ -111,6 +111,28 @@ export function getSKUByCode(code: string, skus: PackSKU[]): PackSKU | undefined
   return skus.find(sku => sku.code === code);
 }
 
+// Desugar a Box SKU order line into the equivalent base-pack line.
+// Box SKUs store no packs-per-box number; it is read live from box_capacities.
+// Returns the line unchanged for non-box lines, the expanded pack line for box
+// SKUs, or null when the box×pack capacity is unconfigured (or packQty missing).
+export function resolveBoxLine(
+  line: OrderLine,
+  skus: PackSKU[],
+  boxCapacityMap: BoxCapacityMap
+): OrderLine | null {
+  if (line.lineType !== "pack" || !line.skuCode) return line;
+  const sku = getSKUByCode(line.skuCode, skus);
+  if (!sku?.basePackCode || !sku.boxMode) return line; // ordinary pack SKU
+  const capacity = boxCapacityMap[sku.boxMode]?.[sku.basePackCode];
+  if (!capacity || !line.packQty) return null;
+  return {
+    ...line,
+    skuCode: sku.basePackCode,
+    packQty: line.packQty * capacity,
+    boxModeOverride: sku.boxMode as BoxModeType,
+  };
+}
+
 // Check if box mode is logistics only (no DB write for boxes)
 export function isLogisticsOnlyMode(boxMode: BoxModeType): boolean {
   return LOGISTICS_ONLY_MODES.includes(boxMode);
@@ -149,6 +171,10 @@ export function calculateLineMaterials(
   boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES,
   labelsPerPackMap: LabelsPerPackMap = {}
 ): LineMaterials | null {
+  const resolved = resolveBoxLine(line, skus, boxCapacityMap);
+  if (resolved === null) return null;
+  line = resolved;
+
   if (line.lineType === "pack") {
     if (!line.skuCode || !line.packQty || line.packQty <= 0) {
       return null;
