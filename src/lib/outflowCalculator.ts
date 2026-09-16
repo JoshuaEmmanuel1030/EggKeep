@@ -10,6 +10,8 @@ export interface PackSKU {
   eggProduct: string;
   packagingItem: string | null;
   isActive?: boolean;
+  basePackCode?: string | null;
+  boxMode?: string | null;
 }
 
 // Box capacities: boxType -> skuCode -> packs per box

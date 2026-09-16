@@ -308,6 +308,8 @@ export type Database = {
       }
       pack_skus: {
         Row: {
+          base_pack_code: string | null
+          box_mode: string | null
           code: string
           created_at: string | null
           deleted_at: string | null
@@ -321,6 +323,8 @@ export type Database = {
           packaging_item_type_id: string | null
         }
         Insert: {
+          base_pack_code?: string | null
+          box_mode?: string | null
           code: string
           created_at?: string | null
           deleted_at?: string | null
@@ -334,6 +338,8 @@ export type Database = {
           packaging_item_type_id?: string | null
         }
         Update: {
+          base_pack_code?: string | null
+          box_mode?: string | null
           code?: string
           created_at?: string | null
           deleted_at?: string | null
