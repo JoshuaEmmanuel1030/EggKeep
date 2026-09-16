@@ -35,7 +35,7 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
   const [dependencies, setDependencies] = useState<DependencyCheckResult | null>(null);
   const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
   const [renameWarn, setRenameWarn] = useState<{
-    data: Record<string, unknown>;
+    data: PackSKUInput;
     oldName: string;
     deps: DependencyCheckResult;
   } | null>(null);
@@ -105,13 +105,13 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
     }
   };
 
-  const performSave = async (data: Record<string, unknown>) => {
+  const performSave = async (data: PackSKUInput) => {
     try {
       if (editingSKU) {
-        await updateSKU.mutateAsync({ id: editingSKU.id, ...(data as unknown as PackSKUInput) });
+        await updateSKU.mutateAsync({ id: editingSKU.id, ...data });
         toast.success(t.catalog.updateSuccess);
       } else {
-        await addSKU.mutateAsync(data as unknown as PackSKUInput);
+        await addSKU.mutateAsync(data);
         toast.success(t.catalog.addSuccess);
       }
       setDialogOpen(false);
@@ -121,7 +121,7 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
     }
   };
 
-  const handleSave = async (data: Record<string, unknown>) => {
+  const handleSave = async (data: PackSKUInput) => {
     // Guard SKU-code renames: the code is embedded in outflow records + box-capacity
     // maps, so changing it on a used SKU orphans those references.
     if (editingSKU && data.code && data.code !== editingSKU.code) {
@@ -256,7 +256,7 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
         open={!!renameWarn}
         onOpenChange={(open) => { if (!open) setRenameWarn(null); }}
         oldName={renameWarn?.oldName || ""}
-        newName={(renameWarn?.data.code as string) || ""}
+        newName={renameWarn?.data.code || ""}
         dependencies={renameWarn?.deps || null}
         isSaving={updateSKU.isPending}
         onConfirm={() => { if (renameWarn) performSave(renameWarn.data); }}

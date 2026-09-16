@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-import { PackSKU } from "@/types/catalog";
+import { PackSKU, PackSKUInput } from "@/types/catalog";
 
 const skuSchema = z.object({
   code: z.string().min(1, "Code is required").max(20),
@@ -53,7 +53,7 @@ interface SKUDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sku: PackSKU | null;
-  onSave: (data: Record<string, unknown>) => Promise<void>;
+  onSave: (data: PackSKUInput) => Promise<void>;
   isLoading: boolean;
 }
 
