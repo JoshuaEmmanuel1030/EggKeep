@@ -87,8 +87,9 @@ export function OrderLineItem({
   // Check if current SKU is supported for the effective box mode
   const skuSupported = useMemo(() => {
     if (!line.skuCode) return true;
+    if (isBoxSku) return true;
     return isSKUSupportedForBoxMode(line.skuCode, effectiveBoxMode, boxCapacityMap);
-  }, [line.skuCode, effectiveBoxMode, boxCapacityMap]);
+  }, [line.skuCode, effectiveBoxMode, boxCapacityMap, isBoxSku]);
 
   return (
     <div className="space-y-3 p-4 border rounded-lg bg-card">

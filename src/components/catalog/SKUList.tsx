@@ -44,7 +44,8 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
     (sku) =>
       sku.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       sku.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sku.eggProduct.toLowerCase().includes(searchTerm.toLowerCase())
+      sku.eggProduct.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (sku.basePackCode?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
   );
 
   const handleAdd = () => {
