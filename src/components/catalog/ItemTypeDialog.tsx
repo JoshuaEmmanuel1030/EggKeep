@@ -69,7 +69,7 @@ export function ItemTypeDialog({
   const [caps, setCaps] = useState<Record<string, string>>({});
 
   // Only active SKUs are configurable.
-  const activeSkus = useMemo(() => skus.filter((s) => s.isActive), [skus]);
+  const activeSkus = useMemo(() => skus.filter((s) => s.isActive && !s.basePackCode), [skus]);
 
   useEffect(() => {
     if (open) {
