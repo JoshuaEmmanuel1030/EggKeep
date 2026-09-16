@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { SKUDialog } from "./SKUDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { RenameWarningDialog } from "./RenameWarningDialog";
-import { PackSKU } from "@/types/catalog";
+import { PackSKU, PackSKUInput } from "@/types/catalog";
 import { checkSKUDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
 
 interface SKUListProps {
@@ -35,7 +35,7 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
   const [dependencies, setDependencies] = useState<DependencyCheckResult | null>(null);
   const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
   const [renameWarn, setRenameWarn] = useState<{
-    data: any;
+    data: PackSKUInput;
     oldName: string;
     deps: DependencyCheckResult;
   } | null>(null);
@@ -44,7 +44,8 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
     (sku) =>
       sku.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       sku.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sku.eggProduct.toLowerCase().includes(searchTerm.toLowerCase())
+      sku.eggProduct.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (sku.basePackCode?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
   );
 
   const handleAdd = () => {
@@ -105,7 +106,7 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
     }
   };
 
-  const performSave = async (data: any) => {
+  const performSave = async (data: PackSKUInput) => {
     try {
       if (editingSKU) {
         await updateSKU.mutateAsync({ id: editingSKU.id, ...data });
@@ -116,12 +117,12 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
       }
       setDialogOpen(false);
       setRenameWarn(null);
-    } catch (error: any) {
-      toast.error(error.message || t.common.error);
+    } catch (error) {
+      toast.error((error as { message?: string }).message || t.common.error);
     }
   };
 
-  const handleSave = async (data: any) => {
+  const handleSave = async (data: PackSKUInput) => {
     // Guard SKU-code renames: the code is embedded in outflow records + box-capacity
     // maps, so changing it on a used SKU orphans those references.
     if (editingSKU && data.code && data.code !== editingSKU.code) {
@@ -190,9 +191,14 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
               filteredSKUs.map((sku) => (
                 <TableRow key={sku.id}>
                   <TableCell className="font-mono font-medium">{sku.code}</TableCell>
-                  <TableCell>{sku.displayName}</TableCell>
-                  <TableCell className="text-center">{sku.eggsPerPack}</TableCell>
-                  <TableCell>{sku.eggProduct}</TableCell>
+                  <TableCell>
+                    {sku.displayName}
+                    {sku.basePackCode && (
+                      <Badge variant="outline" className="ml-2">{t.catalog.boxSkuBadge}</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">{sku.basePackCode ? "—" : sku.eggsPerPack}</TableCell>
+                  <TableCell>{sku.basePackCode ? `${sku.basePackCode} · ${sku.boxMode}` : sku.eggProduct}</TableCell>
                   <TableCell>{sku.packagingItem || "—"}</TableCell>
                   <TableCell className="text-center">
                     <Badge variant={sku.isActive ? "default" : "secondary"}>

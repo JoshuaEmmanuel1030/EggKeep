@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useItemTypes } from "@/hooks/useItemTypes";
+import { usePackSKUs } from "@/hooks/usePackSKUs";
 import {
   Dialog,
   DialogContent,
@@ -29,16 +30,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-import { PackSKU } from "@/types/catalog";
+import { PackSKU, PackSKUInput } from "@/types/catalog";
 
 const skuSchema = z.object({
   code: z.string().min(1, "Code is required").max(20),
   displayName: z.string().min(1, "Display name is required"),
-  eggsPerPack: z.coerce.number().min(1, "Must be at least 1"),
-  eggProduct: z.string().min(1, "Egg product is required"),
+  kind: z.enum(["pack", "box"]),
+  eggsPerPack: z.coerce.number().optional(),
+  eggProduct: z.string().optional(),
   packagingItem: z.string().optional(),
+  basePackCode: z.string().optional(),
+  boxMode: z.string().optional(),
   isActive: z.boolean(),
-});
+}).refine((d) => d.kind !== "pack" || (d.eggsPerPack && d.eggsPerPack >= 1 && d.eggProduct),
+  { message: "Pack SKUs need eggs-per-pack and an egg product", path: ["eggProduct"] })
+  .refine((d) => d.kind !== "box" || (d.basePackCode && d.boxMode),
+  { message: "Box SKUs need a base pack and a box", path: ["basePackCode"] });
 
 type SKUFormData = z.infer<typeof skuSchema>;
 
@@ -46,28 +53,36 @@ interface SKUDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sku: PackSKU | null;
-  onSave: (data: SKUFormData) => Promise<void>;
+  onSave: (data: PackSKUInput) => Promise<void>;
   isLoading: boolean;
 }
 
 export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDialogProps) {
   const { t } = useLanguage();
   const { getTypesByCategory } = useItemTypes();
+  const { skus: allSkus } = usePackSKUs();
 
   const eggTypes = getTypesByCategory("egg");
   const packagingTypes = getTypesByCategory("packaging");
+  const boxTypes = getTypesByCategory("box");
+  const basePackOptions = allSkus.filter((s) => !s.basePackCode && s.isActive);
 
   const form = useForm<SKUFormData>({
     resolver: zodResolver(skuSchema),
     defaultValues: {
       code: "",
       displayName: "",
+      kind: "pack",
       eggsPerPack: 1,
       eggProduct: "",
       packagingItem: "",
+      basePackCode: "",
+      boxMode: "",
       isActive: true,
     },
   });
+
+  const kind = form.watch("kind");
 
   useEffect(() => {
     if (open) {
@@ -75,18 +90,24 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
         form.reset({
           code: sku.code,
           displayName: sku.displayName,
+          kind: sku.basePackCode ? "box" : "pack",
           eggsPerPack: sku.eggsPerPack,
           eggProduct: sku.eggProduct,
           packagingItem: sku.packagingItem || "",
+          basePackCode: sku.basePackCode || "",
+          boxMode: sku.boxMode || "",
           isActive: sku.isActive,
         });
       } else {
         form.reset({
           code: "",
           displayName: "",
+          kind: "pack",
           eggsPerPack: 1,
           eggProduct: "",
           packagingItem: "",
+          basePackCode: "",
+          boxMode: "",
           isActive: true,
         });
       }
@@ -94,7 +115,29 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
   }, [open, sku, form]);
 
   const handleSubmit = async (data: SKUFormData) => {
-    await onSave(data);
+    if (data.kind === "box") {
+      await onSave({
+        code: data.code,
+        displayName: data.displayName,
+        eggsPerPack: 1,
+        eggProduct: "",
+        packagingItem: null,
+        basePackCode: data.basePackCode,
+        boxMode: data.boxMode,
+        isActive: data.isActive,
+      });
+    } else {
+      await onSave({
+        code: data.code,
+        displayName: data.displayName,
+        eggsPerPack: data.eggsPerPack,
+        eggProduct: data.eggProduct,
+        packagingItem: data.packagingItem || null,
+        basePackCode: null,
+        boxMode: null,
+        isActive: data.isActive,
+      });
+    }
   };
 
   return (
@@ -138,36 +181,19 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
 
             <FormField
               control={form.control}
-              name="eggsPerPack"
+              name="kind"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t.catalog.eggsPerPack}</FormLabel>
-                  <FormControl>
-                    <Input {...field} type="number" min={1} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="eggProduct"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.catalog.eggProduct}</FormLabel>
+                  <FormLabel>{t.catalog.skuKind}</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder={t.common.selectDots} />
+                        <SelectValue />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {eggTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.name}>
-                          {type.name}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="pack">{t.catalog.skuKindPack}</SelectItem>
+                      <SelectItem value="box">{t.catalog.skuKindBox}</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -175,37 +201,134 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="packagingItem"
-              render={({ field }) => {
-                const handleChange = (value: string) => {
-                  field.onChange(value === "__none__" ? "" : value);
-                };
-                const displayValue = field.value === "" ? "__none__" : field.value;
-                return (
-                  <FormItem>
-                    <FormLabel>{t.catalog.packagingItem} ({t.common.optional})</FormLabel>
-                    <Select onValueChange={handleChange} value={displayValue}>
+            {kind === "pack" && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="eggsPerPack"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t.catalog.eggsPerPack}</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={t.common.selectDots} />
-                        </SelectTrigger>
+                        <Input {...field} type="number" min={1} />
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="__none__">— {t.catalog.none} —</SelectItem>
-                        {packagingTypes.map((type) => (
-                          <SelectItem key={type.id} value={type.name}>
-                            {type.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                );
-              }}
-            />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="eggProduct"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t.catalog.eggProduct}</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={t.common.selectDots} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {eggTypes.map((type) => (
+                            <SelectItem key={type.id} value={type.name}>
+                              {type.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="packagingItem"
+                  render={({ field }) => {
+                    const handleChange = (value: string) => {
+                      field.onChange(value === "__none__" ? "" : value);
+                    };
+                    const displayValue = field.value === "" ? "__none__" : field.value;
+                    return (
+                      <FormItem>
+                        <FormLabel>{t.catalog.packagingItem} ({t.common.optional})</FormLabel>
+                        <Select onValueChange={handleChange} value={displayValue}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t.common.selectDots} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="__none__">— {t.catalog.none} —</SelectItem>
+                            {packagingTypes.map((type) => (
+                              <SelectItem key={type.id} value={type.name}>
+                                {type.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+              </>
+            )}
+
+            {kind === "box" && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="basePackCode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t.catalog.basePackSku}</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={t.common.selectDots} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {basePackOptions.map((s) => (
+                            <SelectItem key={s.id} value={s.code}>
+                              {s.code} — {s.displayName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="boxMode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t.catalog.boxLabel}</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={t.common.selectDots} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {boxTypes.map((type) => (
+                            <SelectItem key={type.id} value={type.name}>
+                              {type.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
 
             <FormField
               control={form.control}

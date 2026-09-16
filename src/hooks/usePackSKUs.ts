@@ -25,6 +25,8 @@ export function usePackSKUs() {
         packagingItem: row.packaging_item,
         isActive: row.is_active,
         createdAt: row.created_at,
+        basePackCode: row.base_pack_code,
+        boxMode: row.box_mode,
       }));
     },
   });
@@ -40,6 +42,8 @@ export function usePackSKUs() {
           egg_product: input.eggProduct,
           packaging_item: input.packagingItem || null,
           is_active: input.isActive ?? true,
+          base_pack_code: input.basePackCode ?? null,
+          box_mode: input.boxMode ?? null,
         })
         .select()
         .single();
@@ -63,6 +67,8 @@ export function usePackSKUs() {
           egg_product: input.eggProduct,
           packaging_item: input.packagingItem || null,
           is_active: input.isActive ?? true,
+          base_pack_code: input.basePackCode ?? null,
+          box_mode: input.boxMode ?? null,
         })
         .eq("id", id)
         .select()

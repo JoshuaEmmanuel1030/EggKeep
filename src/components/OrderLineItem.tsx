@@ -76,6 +76,10 @@ export function OrderLineItem({
     return calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
   }, [line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap]);
 
+  // Detect if the selected SKU is a Box SKU
+  const selectedSku = skus.find((s) => s.code === line.skuCode);
+  const isBoxSku = !!selectedSku?.basePackCode;
+
   // The box mode actually applied to this line (per-line override wins over the
   // order default). Used for the SKU-support warning so it tracks the override.
   const effectiveBoxMode = line.boxModeOverride || boxMode;
@@ -83,8 +87,9 @@ export function OrderLineItem({
   // Check if current SKU is supported for the effective box mode
   const skuSupported = useMemo(() => {
     if (!line.skuCode) return true;
+    if (isBoxSku) return true;
     return isSKUSupportedForBoxMode(line.skuCode, effectiveBoxMode, boxCapacityMap);
-  }, [line.skuCode, effectiveBoxMode, boxCapacityMap]);
+  }, [line.skuCode, effectiveBoxMode, boxCapacityMap, isBoxSku]);
 
   return (
     <div className="space-y-3 p-4 border rounded-lg bg-card">
@@ -171,7 +176,7 @@ export function OrderLineItem({
 
           {/* Quantity */}
           <div className="space-y-1">
-            <Label className="text-xs">{t.outflow.quantityPacks}</Label>
+            <Label className="text-xs">{isBoxSku ? t.outflow.quantityBoxes : t.outflow.quantityPacks}</Label>
             <Input
               type="number"
               min="1"
