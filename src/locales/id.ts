@@ -271,6 +271,7 @@ export const id = {
     queuedOrders: 'Pesanan dalam Antrian',
     addToQueue: 'Tambah ke Antrian',
     submitAll: 'Kirim Semua',
+    quantityBoxes: "Jumlah (box)",
   },
 
   // Activity
@@ -400,6 +401,12 @@ export const id = {
     packaging: 'Kemasan',
     buyers: 'Pembeli',
     comingSoon: 'Manajemen katalog lengkap segera hadir',
+    skuKind: "Tipe SKU",
+    skuKindPack: "Pack",
+    skuKindBox: "Box",
+    basePackSku: "SKU pack dasar",
+    boxLabel: "Box",
+    boxSkuBadge: "Box",
     // CRUD actions
     addSku: 'Tambah SKU',
     addItem: 'Tambah Item',

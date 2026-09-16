@@ -271,6 +271,7 @@ export const en = {
     queuedOrders: 'Queued Orders',
     addToQueue: 'Add to Queue',
     submitAll: 'Submit All',
+    quantityBoxes: "Quantity (boxes)",
   },
 
   // Activity
@@ -400,6 +401,12 @@ export const en = {
     packaging: 'Packaging',
     buyers: 'Buyers',
     comingSoon: 'Full catalog management coming soon',
+    skuKind: "SKU type",
+    skuKindPack: "Pack",
+    skuKindBox: "Box",
+    basePackSku: "Base pack SKU",
+    boxLabel: "Box",
+    boxSkuBadge: "Box",
     // CRUD actions
     addSku: 'Add SKU',
     addItem: 'Add Item',
