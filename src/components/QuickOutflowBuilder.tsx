@@ -64,7 +64,9 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     [getTypesByCategory]
   );
   
-  // Map SKUs to PackSKU interface for outflow calculator
+  // Map SKUs to PackSKU interface for outflow calculator.
+  // basePackCode/boxMode MUST be carried through — the box-line desugar
+  // (resolveBoxLine) reads them; dropping them makes Box SKUs behave as plain packs.
   const packSKUs: PackSKU[] = skus.map(sku => ({
     code: sku.code,
     displayName: sku.displayName,
@@ -72,6 +74,8 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     eggProduct: sku.eggProduct,
     packagingItem: sku.packagingItem,
     isActive: sku.isActive,
+    basePackCode: sku.basePackCode,
+    boxMode: sku.boxMode,
   }));
   
   const [buyerOpen, setBuyerOpen] = useState(false);
