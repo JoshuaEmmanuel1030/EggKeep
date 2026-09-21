@@ -15,15 +15,20 @@ const recordReturnMock =
 vi.mock("@/hooks/useRecordReturn", () => ({
   useRecordReturn: () => ({ recordReturn: recordReturnMock, saving: false }),
 }));
+// Stable fn identity across renders — a fresh vi.fn each render would re-trigger
+// the dialog's resolve effect and loop.
+const findRelatedEntryIdMock = vi.fn(async (log: ActivityLog) => `outflow-${log.id}`);
 vi.mock("@/hooks/useVoidEntry", () => ({
-  useVoidEntry: () => ({
-    // Resolve every log to a deterministic outflow id.
-    findRelatedEntryId: vi.fn(async (log: ActivityLog) => `outflow-${log.id}`),
-  }),
+  useVoidEntry: () => ({ findRelatedEntryId: findRelatedEntryIdMock }),
 }));
 vi.mock("@/hooks/useItemTypes", () => ({
   // NEGERI BIASA is kg-native; conversionMap drives the unit label.
   useItemTypes: () => ({ conversionMap: { "NEGERI BIASA": { unit: "kg" } } }),
+}));
+// No prior returns by default -> the cap equals the full sold quantity.
+const priorReturnsMock = vi.fn<() => Record<string, number>>(() => ({}));
+vi.mock("@/hooks/usePriorReturns", () => ({
+  usePriorReturns: () => priorReturnsMock(),
 }));
 // sonner toast is a no-op in tests.
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -54,10 +59,16 @@ function renderDialog(over: Partial<React.ComponentProps<typeof RecordReturnDial
   );
 }
 
+const restockInput = () => screen.getByLabelText(/restock/i) as HTMLInputElement;
+const retakanInput = () => screen.getByLabelText(/retakan/i) as HTMLInputElement;
+const writeoffInput = () => screen.getByLabelText(/write off/i) as HTMLInputElement;
+
 describe("RecordReturnDialog", () => {
   beforeEach(() => {
     recordReturnMock.mockClear();
     recordReturnMock.mockResolvedValue({ ok: true });
+    priorReturnsMock.mockReset();
+    priorReturnsMock.mockReturnValue({});
   });
   afterEach(() => cleanup());
 
@@ -66,26 +77,30 @@ describe("RecordReturnDialog", () => {
     const confirm = screen.getByRole("button", { name: /record return/i });
     expect(confirm).toBeDisabled();
 
-    const qty = screen.getByLabelText(/returned/i);
-    fireEvent.change(qty, { target: { value: "30" } });
+    fireEvent.change(restockInput(), { target: { value: "30" } });
     expect(confirm).toBeEnabled();
   });
 
-  it("clamps quantity to the amount sold and shows the over-max hint", () => {
+  it("clamps the line total to the amount sold and shows the over-max hint", () => {
     renderDialog();
-    const qty = screen.getByLabelText(/returned/i) as HTMLInputElement;
-
-    fireEvent.change(qty, { target: { value: "999" } });
-    expect(qty.value).toBe("155"); // clamped to max
+    fireEvent.change(restockInput(), { target: { value: "999" } });
+    expect(restockInput().value).toBe("155"); // clamped to what was sold
     expect(screen.getByText(/only 155 kg were sold/i)).toBeInTheDocument();
+  });
+
+  it("caps the second bucket by the room the first bucket left", () => {
+    renderDialog();
+    fireEvent.change(restockInput(), { target: { value: "100" } });
+    // Only 55 kg of room remains; a 90 write-off must clamp to 55.
+    fireEvent.change(writeoffInput(), { target: { value: "90" } });
+    expect(writeoffInput().value).toBe("55");
   });
 
   it("calls recordReturn with a correctly-shaped RecordReturnInput", async () => {
     renderDialog();
-    fireEvent.change(screen.getByLabelText(/returned/i), { target: { value: "40" } });
+    fireEvent.change(restockInput(), { target: { value: "40" } });
     fireEvent.click(screen.getByRole("button", { name: /record return/i }));
 
-    // Wait a microtask for the async submit handler.
     await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
 
     const input = recordReturnMock.mock.calls[0]![0];
@@ -105,24 +120,49 @@ describe("RecordReturnDialog", () => {
     expect(input.lines[0]!.id).toBeTruthy(); // client UUID for idempotency
   });
 
-  it("sends the write-off disposition when toggled", async () => {
+  it("splits one returned line across all three dispositions", async () => {
     renderDialog();
-    fireEvent.change(screen.getByLabelText(/returned/i), { target: { value: "10" } });
-    fireEvent.click(screen.getByRole("button", { name: /write off/i }));
+    fireEvent.change(restockInput(), { target: { value: "12" } });
+    fireEvent.change(retakanInput(), { target: { value: "13" } });
+    fireEvent.change(writeoffInput(), { target: { value: "25" } });
     fireEvent.click(screen.getByRole("button", { name: /record return/i }));
 
     await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
-    expect(recordReturnMock.mock.calls[0]![0].lines[0]!.disposition).toBe("writeoff");
+    const { lines } = recordReturnMock.mock.calls[0]![0];
+
+    expect(lines).toHaveLength(3);
+    // All three point at the same outflow row.
+    expect(new Set(lines.map((l) => l.outflowId))).toEqual(new Set(["outflow-1"]));
+    // Distinct client ids so each is independently idempotent.
+    expect(new Set(lines.map((l) => l.id)).size).toBe(3);
+    expect(lines.map((l) => [l.disposition, l.quantity])).toEqual([
+      ["restock", 12],
+      ["retakan", 13],
+      ["writeoff", 25],
+    ]);
   });
 
-  it("sends the retakan disposition when toggled", async () => {
+  it("omits zero buckets when only some are filled", async () => {
     renderDialog();
-    fireEvent.change(screen.getByLabelText(/returned/i), { target: { value: "10" } });
-    fireEvent.click(screen.getByRole("button", { name: /retakan/i }));
+    fireEvent.change(retakanInput(), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: /record return/i }));
 
     await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
-    expect(recordReturnMock.mock.calls[0]![0].lines[0]!.disposition).toBe("retakan");
+    const { lines } = recordReturnMock.mock.calls[0]![0];
+    expect(lines).toEqual([expect.objectContaining({ disposition: "retakan", quantity: 10 })]);
+  });
+
+  it("caps to what's still returnable after a prior partial return", async () => {
+    // 100 of the 155 sold already came back -> only 55 kg is still returnable.
+    priorReturnsMock.mockReturnValue({ "outflow-1": 100 });
+    renderDialog();
+    fireEvent.change(restockInput(), { target: { value: "5" } });
+    // The outflow id resolves asynchronously on open; once it does the cap
+    // tightens from 155 to 55, visible in the "of {max}" hint.
+    await screen.findByText(/of 55 kg sold/i);
+    // A fresh entry above the tightened cap now clamps to 55.
+    fireEvent.change(restockInput(), { target: { value: "90" } });
+    expect(restockInput().value).toBe("55");
   });
 
   it("shows the empty message when there are no egg lines", () => {

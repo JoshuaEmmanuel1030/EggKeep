@@ -485,6 +485,12 @@ export const id = {
     retry: 'Coba Lagi',
     discard: 'Buang',
     discardConfirm: 'Buang pesanan antrean ini? Pesanan TIDAK akan dicatat di inventaris.',
+    returnSavedOffline: 'Retur disimpan offline',
+    returnSavedOfflineDesc: 'Tidak ada koneksi — retur ini masuk antrean dan akan disinkronkan otomatis saat kembali online.',
+    returnSyncedTitle: 'Antrean retur tersinkron',
+    returnSyncedDesc: 'retur antrean tercatat',
+    returnSyncFailedTitle: 'Retur antrean ditolak',
+    returnSyncFailedDesc: 'Server menolak sebuah retur antrean (mis. melebihi jumlah terjual, atau pesanan sudah dibatalkan). Retur tidak tercatat.',
   },
 
   // App update prompt (PWA)

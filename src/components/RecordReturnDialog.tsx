@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,8 +21,10 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { useVoidEntry } from "@/hooks/useVoidEntry";
 import { useRecordReturn } from "@/hooks/useRecordReturn";
+import { usePriorReturns } from "@/hooks/usePriorReturns";
+import { enqueueReturn } from "@/lib/returnOutbox";
+import { remainingReturnable } from "@/lib/returnsCap";
 import { ActivityLog } from "@/types/activityLog";
-import { clampReturnQty } from "@/lib/activityGrouping";
 import {
   RecordReturnInput,
   ReturnDisposition,
@@ -35,15 +37,47 @@ interface RecordReturnDialogProps {
   // The buyer / source label shown in the header.
   buyerName?: string;
   // The EGG activity logs belonging to this order (or a single manual outflow).
-  // Each log is one outflow row -> one returnable line.
+  // Each log is one outflow row -> one or more returnable disposition lines.
   eggLogs: ActivityLog[];
   onRecorded?: () => void;
 }
 
-interface LineState {
-  qty: string;
-  disposition: ReturnDisposition;
+// A single returned line can split across all three dispositions at once
+// (e.g. 12 good + 13 cracked + 25 broken of the same product). Each bucket is a
+// raw input string; on submit each non-zero bucket becomes its own ReturnLineInput
+// sharing the same outflowId (record_return sums them under one cumulative cap).
+type LineState = Record<ReturnDisposition, string>;
+
+const EMPTY_LINE: LineState = { restock: "", retakan: "", writeoff: "" };
+
+interface BucketDef {
+  key: ReturnDisposition;
+  icon: typeof PackageCheck;
+  // tailwind text/border accent per bucket
+  accent: string;
+  focus: string;
 }
+
+const BUCKETS: BucketDef[] = [
+  {
+    key: "restock",
+    icon: PackageCheck,
+    accent: "text-emerald-700 dark:text-emerald-400",
+    focus: "focus-visible:ring-emerald-600 border-emerald-600 dark:border-emerald-400",
+  },
+  {
+    key: "retakan",
+    icon: AlertTriangle,
+    accent: "text-amber-700 dark:text-amber-400",
+    focus: "focus-visible:ring-amber-600 border-amber-600 dark:border-amber-400",
+  },
+  {
+    key: "writeoff",
+    icon: Trash2,
+    accent: "text-destructive",
+    focus: "focus-visible:ring-destructive border-destructive",
+  },
+];
 
 function makeId(): string {
   try {
@@ -51,6 +85,13 @@ function makeId(): string {
   } catch {
     return `ret-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
+}
+
+// Parse a raw qty into a number (accepting comma decimals, id-locale friendly).
+// Non-numeric / empty -> 0 so it can be summed safely.
+function parseQty(raw: string): number {
+  const n = parseFloat((raw ?? "").replace(",", "."));
+  return isNaN(n) ? 0 : n;
 }
 
 export function RecordReturnDialog({
@@ -64,48 +105,92 @@ export function RecordReturnDialog({
   const { conversionMap } = useItemTypes();
   const { findRelatedEntryId } = useVoidEntry();
   const { recordReturn, saving } = useRecordReturn();
+  // Held in a ref so the resolve effect keys only off open/eggLogs, never the
+  // function identity (guards against an unstable findRelatedEntryId re-looping).
+  const findRelatedEntryIdRef = useRef(findRelatedEntryId);
+  findRelatedEntryIdRef.current = findRelatedEntryId;
 
   const [lines, setLines] = useState<Record<string, LineState>>({});
   const [reason, setReason] = useState("");
   const [returnDate, setReturnDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  // Each log's underlying outflow row id, resolved once on open and reused on
+  // confirm. Also drives the prior-returns cap below.
+  const [resolvedIds, setResolvedIds] = useState<Record<string, string | null>>({});
+
+  // Sum of prior returns per outflow, so a 2nd partial return caps to what's
+  // actually left (matches the server's cumulative cap) instead of the full sold qty.
+  const priorByOutflow = usePriorReturns(Object.values(resolvedIds));
+  const remainingFor = (log: ActivityLog): number => {
+    const outflowId = resolvedIds[log.id];
+    const prior = outflowId ? priorByOutflow[outflowId] ?? 0 : 0;
+    return remainingReturnable(log.quantity_butir, prior);
+  };
 
   const unitLabel = (product: string): string =>
     conversionMap[product]?.unit === "kg" ? "kg" : "butir";
+
+  const bucketLabel = (key: ReturnDisposition): string =>
+    key === "restock"
+      ? t.activity.returnRestock
+      : key === "retakan"
+        ? t.activity.returnRetakan
+        : t.activity.returnWriteOff;
 
   // Reset all state whenever the dialog opens with a fresh order.
   useEffect(() => {
     if (open) {
       const init: Record<string, LineState> = {};
       eggLogs.forEach((log) => {
-        init[log.id] = { qty: "", disposition: "restock" };
+        init[log.id] = { ...EMPTY_LINE };
       });
       setLines(init);
       setReason("");
       setReturnDate(format(new Date(), "yyyy-MM-dd"));
+      setResolvedIds({});
     }
   }, [open, eggLogs]);
 
-  // Parse a raw qty into a number (accepting comma decimals, id-locale friendly).
-  const parseQty = (raw: string): number => parseFloat(raw.replace(",", "."));
+  // Resolve each log's outflow row id once on open (async). Feeds the cap and is
+  // reused on confirm so we don't re-query.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const pairs = await Promise.all(
+        eggLogs.map(async (log) => [log.id, await findRelatedEntryIdRef.current(log)] as const)
+      );
+      if (!cancelled) setResolvedIds(Object.fromEntries(pairs));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, eggLogs]);
 
-  const setQty = (logId: string, raw: string, max: number) => {
-    // Allow only digits + one decimal separator; clamp to the line's amount.
+  // Sum of a log's three buckets.
+  const lineSum = (state: LineState): number =>
+    parseQty(state.restock) + parseQty(state.retakan) + parseQty(state.writeoff);
+
+  const setBucket = (
+    logId: string,
+    key: ReturnDisposition,
+    raw: string,
+    max: number
+  ) => {
+    // Allow only digits + one decimal separator.
     const cleaned = raw.replace(/[^0-9.,]/g, "");
-    const num = parseQty(cleaned);
-    const next = !isNaN(num) && num > max ? String(max) : cleaned;
-    setLines((prev) => ({ ...prev, [logId]: { ...prev[logId], qty: next } }));
-  };
-
-  const setDisposition = (logId: string, disposition: ReturnDisposition) => {
-    setLines((prev) => ({ ...prev, [logId]: { ...prev[logId], disposition } }));
+    setLines((prev) => {
+      const state = prev[logId] ?? { ...EMPTY_LINE };
+      const others = lineSum({ ...state, [key]: "" }); // other two buckets
+      const num = parseQty(cleaned);
+      // Clamp this bucket so the line's TOTAL never exceeds what was sold.
+      const room = Math.max(0, max - others);
+      const next = num > room ? String(room) : cleaned;
+      return { ...prev, [logId]: { ...state, [key]: next } };
+    });
   };
 
   const enteredLines = useMemo(
-    () =>
-      eggLogs.filter((log) => {
-        const v = parseQty(lines[log.id]?.qty ?? "");
-        return !isNaN(v) && v > 0;
-      }),
+    () => eggLogs.filter((log) => lineSum(lines[log.id] ?? EMPTY_LINE) > 0),
     [eggLogs, lines]
   );
 
@@ -114,27 +199,37 @@ export function RecordReturnDialog({
   const handleConfirm = async () => {
     if (!canSubmit) return;
 
-    // Resolve each entered line to its underlying outflow row id.
     const resolved: ReturnLineInput[] = [];
     for (const log of enteredLines) {
-      const outflowId = await findRelatedEntryId(log);
+      const outflowId = resolvedIds[log.id] ?? (await findRelatedEntryId(log));
       if (!outflowId) {
         toast.error(
           t.activity.returnLineUnresolved.replace("{product}", log.product)
         );
         return;
       }
-      // Final safety clamp — never send more than the line sold.
-      const quantity = clampReturnQty(lines[log.id].qty, log.quantity_butir);
-      resolved.push({
-        id: makeId(),
-        outflowId,
-        product: log.product,
-        category: log.category,
-        quantity,
-        disposition: lines[log.id].disposition,
-      });
+      // Emit one line per non-zero bucket, all sharing this outflowId. Enforce the
+      // returnable cap (sold minus prior returns) with a running remainder so the
+      // combined total can never exceed it, even if the UI clamp was bypassed.
+      const state = lines[log.id] ?? EMPTY_LINE;
+      let remaining = remainingFor(log);
+      for (const { key } of BUCKETS) {
+        const want = parseQty(state[key]);
+        const quantity = Math.min(want, remaining);
+        if (quantity <= 0) continue;
+        resolved.push({
+          id: makeId(),
+          outflowId,
+          product: log.product,
+          category: log.category,
+          quantity,
+          disposition: key,
+        });
+        remaining -= quantity;
+      }
     }
+
+    if (resolved.length === 0) return;
 
     const input: RecordReturnInput = {
       returnDate,
@@ -143,18 +238,23 @@ export function RecordReturnDialog({
       lines: resolved,
     };
 
-    const { ok, message } = await recordReturn(input);
-    if (ok) {
+    const res = await recordReturn(input);
+    if (res.ok) {
       toast.success(t.activity.returnRecorded);
       onRecorded?.();
       onOpenChange(false);
-    } else {
-      // RPC not live yet -> friendly pending note; otherwise the real error.
-      toast.error(t.activity.returnFailed, {
-        description: message?.includes("record_return")
-          ? t.activity.returnPending
-          : message,
+    } else if (res.kind === "network") {
+      // Offline / connection dropped: queue the whole return and replay it when
+      // back online. record_return skips already-recorded line ids, so a replay
+      // after a partially-observed success can never double-restock.
+      enqueueReturn(input);
+      toast.success(t.outbox.returnSavedOffline, {
+        description: t.outbox.returnSavedOfflineDesc,
       });
+      onRecorded?.();
+      onOpenChange(false);
+    } else {
+      toast.error(t.activity.returnFailed, { description: res.message });
     }
   };
 
@@ -180,27 +280,20 @@ export function RecordReturnDialog({
         ) : (
           <div className="space-y-3 py-2">
             {eggLogs.map((log) => {
-              const max = log.quantity_butir;
-              const state = lines[log.id] ?? { qty: "", disposition: "restock" };
+              const max = remainingFor(log);
+              const state = lines[log.id] ?? EMPTY_LINE;
               const unit = unitLabel(log.product);
-              const entered = parseQty(state.qty);
-              const hasQty = !isNaN(entered) && entered > 0;
-              const atMax = hasQty && entered >= max;
-              const isRestock = state.disposition === "restock";
-              const isRetakan = state.disposition === "retakan";
+              const sum = lineSum(state);
+              const hasQty = sum > 0;
+              const atMax = hasQty && sum >= max;
+              const hasRetakan = parseQty(state.retakan) > 0;
 
               return (
                 <div
                   key={log.id}
                   className={cn(
                     "rounded-lg border border-l-[3px] bg-card p-3 space-y-2.5 transition-colors",
-                    !hasQty
-                      ? "border-l-border"
-                      : isRestock
-                        ? "border-l-emerald-600 dark:border-l-emerald-400"
-                        : isRetakan
-                          ? "border-l-amber-600 dark:border-l-amber-400"
-                          : "border-l-destructive"
+                    hasQty ? "border-l-primary" : "border-l-border"
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -209,96 +302,52 @@ export function RecordReturnDialog({
                       <span className="font-semibold truncate">{log.product}</span>
                     </div>
                     <Badge variant="secondary" className="shrink-0 text-xs tabular-nums">
-                      {t.activity.returnSold}: {max.toLocaleString()} {unit}
+                      {t.activity.returnSold}: {log.quantity_butir.toLocaleString()} {unit}
                     </Badge>
                   </div>
 
-                  <div className="flex items-end gap-3">
-                    <div className="space-y-1.5 flex-1 min-w-0">
-                      <Label
-                        htmlFor={`ret-qty-${log.id}`}
-                        className="text-xs text-muted-foreground"
-                      >
-                        {t.activity.returnQuantity} ({unit})
-                      </Label>
-                      <Input
-                        id={`ret-qty-${log.id}`}
-                        inputMode="decimal"
-                        placeholder="0"
-                        value={state.qty}
-                        onChange={(e) => setQty(log.id, e.target.value, max)}
-                        aria-describedby={`ret-sub-${log.id}`}
-                        className={cn(
-                          "h-11 text-base tabular-nums transition-colors",
-                          hasQty &&
-                            (isRestock
-                              ? "border-emerald-600 dark:border-emerald-400 focus-visible:ring-emerald-600"
-                              : isRetakan
-                                ? "border-amber-600 dark:border-amber-400 focus-visible:ring-amber-600"
-                                : "border-destructive focus-visible:ring-destructive")
-                        )}
-                      />
-                    </div>
-
-                    {/* Restock / retakan / write-off toggle — 44px tap targets */}
-                    <div
-                      role="group"
-                      aria-label={t.activity.returnDisposition}
-                      className="flex rounded-lg border p-1 gap-1 bg-muted/40"
-                    >
-                      <button
-                        type="button"
-                        aria-pressed={isRestock}
-                        onClick={() => setDisposition(log.id, "restock")}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-md px-3 h-11 text-xs font-medium transition-colors",
-                          isRestock
-                            ? "bg-emerald-600 text-white shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        <PackageCheck className="h-3.5 w-3.5" />
-                        {t.activity.returnRestock}
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={isRetakan}
-                        onClick={() => setDisposition(log.id, "retakan")}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-md px-3 h-11 text-xs font-medium transition-colors",
-                          isRetakan
-                            ? "bg-amber-600 text-white shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                        {t.activity.returnRetakan}
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={state.disposition === "writeoff"}
-                        onClick={() => setDisposition(log.id, "writeoff")}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-md px-3 h-11 text-xs font-medium transition-colors",
-                          state.disposition === "writeoff"
-                            ? "bg-destructive text-destructive-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        {t.activity.returnWriteOff}
-                      </button>
-                    </div>
+                  {/* Split the returned amount across the three dispositions at once. */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {BUCKETS.map(({ key, icon: Icon, accent, focus }) => {
+                      const val = state[key];
+                      const active = parseQty(val) > 0;
+                      return (
+                        <div key={key} className="space-y-1.5 min-w-0">
+                          <Label
+                            htmlFor={`ret-${key}-${log.id}`}
+                            className={cn(
+                              "flex items-center gap-1 text-xs font-medium",
+                              active ? accent : "text-muted-foreground"
+                            )}
+                          >
+                            <Icon className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{bucketLabel(key)}</span>
+                          </Label>
+                          <Input
+                            id={`ret-${key}-${log.id}`}
+                            inputMode="decimal"
+                            placeholder="0"
+                            value={val}
+                            onChange={(e) => setBucket(log.id, key, e.target.value, max)}
+                            aria-describedby={`ret-sub-${log.id}`}
+                            className={cn(
+                              "h-11 text-base tabular-nums text-center transition-colors",
+                              active && focus
+                            )}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {isRetakan && (
+                  {hasRetakan && (
                     <p className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400">
                       <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
                       {t.activity.returnRetakanHelp}
                     </p>
                   )}
 
-                  {/* Live subtotal + over-max hint */}
+                  {/* Live total + over-max hint */}
                   <div id={`ret-sub-${log.id}`} className="min-h-[16px]">
                     {atMax ? (
                       <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
@@ -310,7 +359,7 @@ export function RecordReturnDialog({
                     ) : hasQty ? (
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {t.activity.returnOfSold
-                          .replace("{qty}", entered.toLocaleString())
+                          .replace("{qty}", sum.toLocaleString())
                           .replace("{max}", max.toLocaleString())
                           .replace("{unit}", unit)}
                       </span>

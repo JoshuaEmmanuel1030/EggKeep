@@ -13,6 +13,7 @@ import { useInventorySync } from "@/hooks/useInventorySync";
 import { useActivityLogs } from "@/hooks/useActivityLogs";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useOutflowOutbox } from "@/hooks/useOutflowOutbox";
+import { useReturnOutbox } from "@/hooks/useReturnOutbox";
 import { OutflowOutboxBanner } from "@/components/OutflowOutboxBanner";
 import { toast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -50,6 +51,11 @@ const Index = () => {
     discard: discardOutboxOrder,
     retry: retryOutboxOrder,
   } = useOutflowOutbox({ onOrderSynced: handleOutboxSynced });
+
+  // Offline outbox replay for returns (retur): a return recorded while offline is
+  // queued in localStorage and replayed here on start/reconnect/focus. Refetch
+  // stock+logs after a synced return so restock/retakan changes show up.
+  useReturnOutbox({ onSynced: handleOutboxSynced });
 
   const handleInflowSubmit = useCallback(async (entries: InflowEntry[], userEmail: string) => {
     const success = await addMultipleInflows(entries);

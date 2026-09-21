@@ -485,6 +485,12 @@ export const en = {
     retry: 'Retry',
     discard: 'Discard',
     discardConfirm: 'Discard this queued order? It will NOT be recorded in inventory.',
+    returnSavedOffline: 'Return saved offline',
+    returnSavedOfflineDesc: 'No connection — this return was queued and will sync automatically when you are back online.',
+    returnSyncedTitle: 'Queued returns synced',
+    returnSyncedDesc: 'queued return(s) recorded',
+    returnSyncFailedTitle: 'A queued return was rejected',
+    returnSyncFailedDesc: 'The server rejected a queued return (e.g. it exceeds what was sold, or the order was voided). It was not recorded.',
   },
 
   // App update prompt (PWA)
