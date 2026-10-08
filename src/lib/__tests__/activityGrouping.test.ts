@@ -5,6 +5,7 @@ import {
   canEditEntry,
   editWindowHoursRemaining,
   clampReturnQty,
+  returnCode,
 } from "../activityGrouping";
 
 const base = {
@@ -132,5 +133,17 @@ describe("return quantity clamp", () => {
 
   it("handles exact-max as valid", () => {
     expect(clampReturnQty(155, 155)).toBe(155);
+  });
+});
+
+describe("returnCode", () => {
+  it("omits zero buckets", () => {
+    expect(returnCode({ restock: 25, retakan: 25, writeoff: 0, total: 50 })).toBe("25B 25R");
+  });
+  it("renders all three when present", () => {
+    expect(returnCode({ restock: 20, retakan: 25, writeoff: 5, total: 50 })).toBe("20B 25R 5A");
+  });
+  it("is empty when nothing returned", () => {
+    expect(returnCode({ restock: 0, retakan: 0, writeoff: 0, total: 0 })).toBe("");
   });
 });

@@ -1,6 +1,7 @@
 // Pure helpers behind the Activities feed. Extracted so the grouping /
 // edit-window / return-clamp rules can be unit-tested without a DOM.
 import { differenceInHours, parseISO } from "date-fns";
+import type { ReturnsSummary } from "@/hooks/usePriorReturns";
 
 export interface OrderLike {
   buyerName?: string;
@@ -46,4 +47,14 @@ export function clampReturnQty(raw: string | number, max: number): number {
   const num = typeof raw === "number" ? raw : parseFloat(String(raw).replace(",", "."));
   if (isNaN(num) || num <= 0) return 0;
   return Math.min(num, max);
+}
+
+// "25B 25R" — Baik/Retak/Afkir order, zero buckets omitted. "" when nothing
+// returned. Letters are fixed Indonesian regardless of UI language.
+export function returnCode(r: ReturnsSummary): string {
+  const parts: string[] = [];
+  if (r.restock > 0) parts.push(`${r.restock.toLocaleString()}B`);
+  if (r.retakan > 0) parts.push(`${r.retakan.toLocaleString()}R`);
+  if (r.writeoff > 0) parts.push(`${r.writeoff.toLocaleString()}A`);
+  return parts.join(" ");
 }
