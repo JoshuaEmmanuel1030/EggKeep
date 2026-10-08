@@ -19,6 +19,9 @@ vi.mock("@/hooks/useVoidEntry", () => ({
 vi.mock("@/hooks/useItemTypes", () => ({
   useItemTypes: () => ({ conversionMap: {} }),
 }));
+vi.mock("@/hooks/usePackSKUs", () => ({
+  usePackSKUs: () => ({ skus: [] }),
+}));
 vi.mock("@/hooks/useRecordReturn", () => ({
   useRecordReturn: () => ({ recordReturn: vi.fn(), saving: false }),
 }));

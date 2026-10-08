@@ -42,6 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 import { orderBucketKey, returnCode } from "@/lib/activityGrouping";
 import { usePriorReturns, ReturnsSummary } from "@/hooks/usePriorReturns";
+import { usePackSKUs } from "@/hooks/usePackSKUs";
 
 // Unit label for a logged quantity in the product's native stock unit
 // (kg-native: weight-sold eggs log kg, count eggs log butir, others pcs).
@@ -795,6 +796,21 @@ function DeliveredLine({
   );
 }
 
+// A compact amber pill showing how many eggs came back + the B/R/A code.
+// Used on pack-SKU order lines, where the line's unit (packs) differs from the
+// return's unit (egg butir/kg), so we annotate rather than swap the number.
+// Renders nothing when the matched egg product has no returns.
+function ReturnBubble({ returns }: { returns?: ReturnsSummary }) {
+  const { t } = useLanguage();
+  if (!returns || returns.total <= 0) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums">
+      <Undo2 className="h-3 w-3" />
+      {t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · {returnCode(returns)}
+    </span>
+  );
+}
+
 interface BuyerOrderCardProps {
   order: BuyerOrder;
   onEditClick: (log: ActivityLog) => void;
@@ -835,6 +851,16 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
     }
     return m;
   }, [eggLogs, returnsMap]);
+
+  // Catalog-driven pack SKU -> egg product, so a pack line can show the return
+  // recorded against its underlying egg. Several SKUs can map to the same egg
+  // (e.g. KP10B/KP6B -> KAMPUNG BIASA); each such line shows that egg's return.
+  const { skus } = usePackSKUs();
+  const skuToEgg = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const s of skus) m[s.code] = s.eggProduct;
+    return m;
+  }, [skus]);
 
   const outflowDateFormatted = order.outflowDate
     ? format(parseISO(order.outflowDate), "MMM d, yyyy")
@@ -886,6 +912,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
                 <span className="text-muted-foreground">×</span>
                 <span className="font-semibold">{line.packQty}</span>
                 <span className="text-muted-foreground text-xs">{t.activity.packs}</span>
+                <ReturnBubble returns={returnsByProduct[skuToEgg[line.skuCode] ?? ""]} />
               </>
             )}
             {line.eggProduct && line.looseQty && (

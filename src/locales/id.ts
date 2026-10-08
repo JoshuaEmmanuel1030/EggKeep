@@ -344,7 +344,7 @@ export const id = {
     returnNoEggLines: 'Pesanan ini tidak punya baris telur untuk diretur.',
     returnSold: 'Terjual',
     wasQty: 'semula {qty}',
-    returnedBadge: '{n} diretur',
+    returnedBadge: '{n} retur',
     returnQuantity: 'Diretur',
     returnOfSold: 'Retur {qty} dari {max} {unit} terjual',
     returnOverMax: 'Hanya {max} {unit} yang terjual — dibatasi.',
