@@ -76,27 +76,25 @@ assume the old numeric map.
 Keeping one hook (one query, one aggregation path) for both the dialog cap and
 the feed annotation avoids a second, drifting copy of the same logic.
 
-## Component 2 — pure display helpers
+## Component 2 — one pure helper
 
 **File:** `src/lib/activityGrouping.ts` (alongside `clampReturnQty`)
 
 ```ts
 import { ReturnsSummary } from "@/hooks/usePriorReturns";
 
-// Actually delivered = sold minus everything returned (all three dispositions).
-export function deliveredQty(sold: number, returns?: ReturnsSummary): number;
-
 // "25B 25R" — B/R/A order, zero buckets omitted. "" when nothing returned.
 export function returnCode(returns: ReturnsSummary): string;
 ```
 
-- `deliveredQty` returns `sold` unchanged when `returns` is undefined or total 0.
-- `returnCode` formats each non-zero bucket as `<qty><letter>` joined by a space;
-  quantities use `toLocaleString()` (kg decimals preserved, e.g. `12,5B`).
+- Formats each non-zero bucket as `<qty><letter>` joined by a space; quantities
+  use `toLocaleString()` (kg decimals preserved, e.g. `12,5B`).
 
-**Tests** (`src/lib/__tests__/activityGrouping.test.ts`): zero-suppression
-(`25B 25R`, no `0A`), full three-way (`20B 25R 5A`), empty (`""`), and
-`deliveredQty` subtracting the total (and passing through when no returns).
+Delivered is just `sold - (returns?.total ?? 0)` — inlined at the render sites,
+not a named function.
+
+**Test** (`src/lib/__tests__/activityGrouping.test.ts`): zero-suppression
+(`25B 25R`, no `0A`), full three-way (`20B 25R 5A`), empty (`""`).
 
 ## Component 3 — feed wiring
 
@@ -120,6 +118,11 @@ A shared presentational snippet (local to `GroupedActivityLog.tsx`) given a
   `← was <sold>` next to it, and on the line below an amber indicator
   `({total} returned · {code})` using
   `t.activity.returnedBadge` (e.g. `{n} returned`).
+
+> Ultra note: `← was {sold}` is redundant — sold = delivered + returned, so the
+> `{total} returned` badge already implies it. It's kept only because it was in
+> the approved mockup. Dropping it removes the `wasQty` i18n key and one number
+> from each line. Say the word and it goes.
 
 Wired into the existing egg-line render sites:
 
