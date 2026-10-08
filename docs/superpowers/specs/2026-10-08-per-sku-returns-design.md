@@ -47,14 +47,14 @@ Apply via Supabase MCP `apply_migration` against `lgtixzpjbkzapecirbfj` **before
 
 **Row model:** one input row per order line.
 - **Pack line** (`skuCode` + `packQty`): egg product = `usePackSKUs` `code→eggProduct`; sold **pieces** = `packQty × eggsPerPack` (from the SKU catalog). `skuCode` is carried onto the emitted return lines.
-- **Loose egg line** (`eggProduct` + `looseQty`): egg product = `eggProduct`; sold pieces = `looseQty` for butir eggs, or `looseQty × eggsPerUnit` if the loose line is a kg egg. `skuCode` = undefined.
+- **Loose egg line** (`eggProduct` + `looseQty`): egg product = `eggProduct`; sold pieces = `looseQty` for butir eggs, or `looseQty × 15.5` if the loose line is a kg egg. `skuCode` = undefined.
 
 Each row still splits across the three classes, now labelled **OK / Retak / Hancur**.
 
 **Units:** the user types **pieces** in every box. Convert to native per egg product:
-`native = unit==='kg' ? round(pieces / eggsPerUnit, 2) : pieces` (eggsPerUnit from `conversionMap`, fallback 15.5).
+`native = unit==='kg' ? round(pieces / 15.5, 2) : pieces`. A **flat 15.5** is used for every kg-native (Negeri) product (owner's call — `NEGERI_PIECES_PER_KG = 15.5` as one named constant, not the catalog `eggsPerUnit`). kg-native is detected by `conversionMap[eggProduct].unit === 'kg'`; everything else is 1 piece = 1 butir.
 
-**Shared-egg cap (the careful part):** several rows can map to the same egg product. The returnable budget is that egg's `remaining_native = outflow.quantity_butir − priorReturns.total` (from `usePriorReturns`, already native). Group rows by egg product and enforce that the **sum of all rows' converted-native quantities for that egg ≤ remaining_native**. Display the cap in pieces (`remaining_native × eggsPerUnit` for kg). The combined clamp, not just per-row, prevents KP10B+KP6B together exceeding Kampung Biasa's sold. Keep a running native remainder on submit (like the existing per-bucket clamp) so rounding can never push the summed native qty over the RPC cap.
+**Shared-egg cap (the careful part):** several rows can map to the same egg product. The returnable budget is that egg's `remaining_native = outflow.quantity_butir − priorReturns.total` (from `usePriorReturns`, already native). Group rows by egg product and enforce that the **sum of all rows' converted-native quantities for that egg ≤ remaining_native**. Display the cap in pieces (`remaining_native × 15.5` for kg). The combined clamp, not just per-row, prevents KP10B+KP6B together exceeding Kampung Biasa's sold. Keep a running native remainder on submit (like the existing per-bucket clamp) so rounding can never push the summed native qty over the RPC cap.
 
 **Submit:** emit one `ReturnLineInput` per (row, non-zero class): `{ id, outflowId (the egg's pooled outflow), skuCode, product (egg), category, quantity (native), disposition }`. The RPC sums them per `outflow_id` under the one cap.
 
@@ -91,11 +91,11 @@ The retakan help text (`returnRetakanHelp`) stays — Retak still means the tagg
 - No backfill of `sku_code` on existing return rows (they keep matching by product).
 - No change to offline outbox plumbing beyond carrying the new `skuCode`/`sku_code` field through the existing payload.
 
-## Open decisions for review
+## Decisions (resolved 2026-10-08)
 
-1. **EN class labels** — spec uses the Indonesian warehouse terms **OK / Retak / Hancur** in both locales (so the O/R/H letters match). Prefer English (OK / Cracked / Destroyed) with letters still O/R/H? 
-2. **Loose egg lines** — assumed rare alongside pack SKUs; they store `sku_code = null` and match by egg product. Confirm that's acceptable.
-3. **Negeri conversion factor** — per-product `eggsPerUnit` from the catalog (so Merah vs Biasa can differ), fallback 15.5. Confirm not a flat 15.5 for all Negeri.
+1. **Class labels** — **OK / Retak / Hancur** in BOTH locales (letters O/R/H match the labels).
+2. **Negeri conversion** — **flat 15.5** for every kg-native product (`NEGERI_PIECES_PER_KG = 15.5`), not per-product catalog `eggsPerUnit`.
+3. **Loose egg lines** — matched **by egg product, `sku_code = null`** (today's delivered/returned behaviour). Context: loose eggs are a separate walk-in/cash (tunai) retail channel, quantity-based, not SKU orders — so they rarely appear in a SKU buyer-order card. Only pack lines get per-SKU attribution.
 
 ## Verify gate
 
