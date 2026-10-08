@@ -122,7 +122,7 @@ export function RecordReturnDialog({
   const priorByOutflow = usePriorReturns(Object.values(resolvedIds));
   const remainingFor = (log: ActivityLog): number => {
     const outflowId = resolvedIds[log.id];
-    const prior = outflowId ? priorByOutflow[outflowId] ?? 0 : 0;
+    const prior = outflowId ? priorByOutflow[outflowId]?.total ?? 0 : 0;
     return remainingReturnable(log.quantity_butir, prior);
   };
 
