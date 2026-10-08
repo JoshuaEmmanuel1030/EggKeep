@@ -343,6 +343,8 @@ export const en = {
     returnDescriptionBuyer: 'Log eggs {buyer} sent back on this order.',
     returnNoEggLines: 'This order has no egg lines to return.',
     returnSold: 'Sold',
+    wasQty: 'was {qty}',
+    returnedBadge: '{n} returned',
     returnQuantity: 'Returned',
     returnOfSold: 'Returning {qty} of {max} {unit} sold',
     returnOverMax: 'Only {max} {unit} were sold — capped to that.',

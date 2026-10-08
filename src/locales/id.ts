@@ -343,6 +343,8 @@ export const id = {
     returnDescriptionBuyer: 'Catat telur yang dikembalikan {buyer} pada pesanan ini.',
     returnNoEggLines: 'Pesanan ini tidak punya baris telur untuk diretur.',
     returnSold: 'Terjual',
+    wasQty: 'semula {qty}',
+    returnedBadge: '{n} diretur',
     returnQuantity: 'Diretur',
     returnOfSold: 'Retur {qty} dari {max} {unit} terjual',
     returnOverMax: 'Hanya {max} {unit} yang terjual — dibatasi.',
