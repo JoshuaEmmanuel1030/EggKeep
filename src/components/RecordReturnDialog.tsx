@@ -108,7 +108,7 @@ export function RecordReturnDialog({
   onRecorded,
 }: RecordReturnDialogProps) {
   const { t } = useLanguage();
-  const { conversionMap } = useItemTypes();
+  const { conversionMap, boxCapacityMap } = useItemTypes();
   const { skus } = usePackSKUs();
   const { findRelatedEntryId } = useVoidEntry();
   const { recordReturn, saving } = useRecordReturn();
@@ -125,10 +125,26 @@ export function RecordReturnDialog({
   const [resolvedIds, setResolvedIds] = useState<Record<string, string | null>>({});
 
   const skuMap = useMemo(() => {
+    const byCode: Record<string, (typeof skus)[number]> = {};
+    for (const s of skus) byCode[s.code] = s;
     const m: Record<string, { eggProduct: string; eggsPerPack: number }> = {};
-    for (const s of skus) m[s.code] = { eggProduct: s.eggProduct, eggsPerPack: s.eggsPerPack };
+    for (const s of skus) {
+      // Box SKU (e.g. OSVN10B): it carries no egg count of its own — eggs come
+      // from its nested base pack × box capacity (packs/box), mirroring
+      // resolveBoxLine in outflowCalculator. Without this, eggProduct/eggsPerPack
+      // are blank, the cap resolves to 0, and the input won't accept any value.
+      if (s.basePackCode && s.boxMode) {
+        const base = byCode[s.basePackCode];
+        const capacity = boxCapacityMap[s.boxMode]?.[s.basePackCode] ?? 0;
+        if (base && capacity > 0) {
+          m[s.code] = { eggProduct: base.eggProduct, eggsPerPack: base.eggsPerPack * capacity };
+          continue;
+        }
+      }
+      m[s.code] = { eggProduct: s.eggProduct, eggsPerPack: s.eggsPerPack };
+    }
     return m;
-  }, [skus]);
+  }, [skus, boxCapacityMap]);
 
   // The first egg log per product -> its outflow id / native sold qty / category.
   const eggLogByProduct = useMemo(() => {

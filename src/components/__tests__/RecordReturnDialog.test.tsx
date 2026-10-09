@@ -23,11 +23,13 @@ vi.mock("@/hooks/useVoidEntry", () => ({
 }));
 vi.mock("@/hooks/useItemTypes", () => ({
   // NEGERI BIASA is kg-native; conversionMap drives the unit label.
+  // boxCapacityMap: OSVN10B (box) holds 18 of its base pack N10B.
   useItemTypes: () => ({
     conversionMap: {
       "NEGERI BIASA": { unit: "kg" },
       "KAMPUNG BIASA": { unit: "btr" },
     },
+    boxCapacityMap: { osave: { N10B: 18 } },
   }),
 }));
 vi.mock("@/hooks/usePackSKUs", () => ({
@@ -36,6 +38,10 @@ vi.mock("@/hooks/usePackSKUs", () => ({
       { code: "KP10B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 10 },
       { code: "KP6B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 6 },
       { code: "N30B", eggProduct: "NEGERI BIASA", eggsPerPack: 30 },
+      // Base pack for the box below: 10 NEGERI BIASA eggs per pack.
+      { code: "N10B", eggProduct: "NEGERI BIASA", eggsPerPack: 10 },
+      // Box SKU: no eggProduct/eggsPerPack of its own — resolved via base × capacity.
+      { code: "OSVN10B", eggProduct: "", eggsPerPack: 0, basePackCode: "N10B", boxMode: "osave" },
     ],
   }),
 }));
@@ -234,5 +240,30 @@ describe("RecordReturnDialog", () => {
     await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
     const { lines } = recordReturnMock.mock.calls[0]![0];
     expect(lines[0]).toEqual(expect.objectContaining({ skuCode: "N30B", quantity: 2, disposition: "restock" }));
+  });
+
+  it("accepts input for a box SKU (eggs resolved via base pack × capacity)", async () => {
+    // Regression: a box SKU (OSVN10B) carries no egg count of its own, so the
+    // row's cap resolved to 0 and the input rejected every keystroke. It must
+    // resolve eggProduct/eggs via its base pack (N10B ×18) so entry works.
+    const negeriLog: ActivityLog = {
+      id: "1", user_id: "u1", action_type: "outflow", category: "egg",
+      product: "NEGERI BIASA", quantity_butir: 100, // native kg
+      recorded_at: "2026-10-05T07:21:00.000Z", created_at: "2026-10-05T07:21:00.000Z",
+      client_id: "c",
+    };
+    renderDialog({
+      eggLogs: [negeriLog],
+      orderLines: [{ skuCode: "OSVN10B", packQty: 1 }],
+    });
+    const okBox = (await screen.findAllByLabelText(/ok/i))[0] as HTMLInputElement;
+    fireEvent.change(okBox, { target: { value: "31" } }); // was blocked before the fix
+    expect(okBox.value).toBe("31"); // input now accepts the value
+    fireEvent.click(screen.getByRole("button", { name: /record return/i }));
+    await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
+    const { lines } = recordReturnMock.mock.calls[0]![0];
+    expect(lines[0]).toEqual(
+      expect.objectContaining({ skuCode: "OSVN10B", product: "NEGERI BIASA", quantity: 2, disposition: "restock" })
+    );
   });
 });
