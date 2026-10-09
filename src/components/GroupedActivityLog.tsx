@@ -41,7 +41,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { orderBucketKey, returnCode } from "@/lib/activityGrouping";
-import { usePriorReturns, ReturnsSummary } from "@/hooks/usePriorReturns";
+import { usePriorReturns, ReturnsSummary, OutflowReturns } from "@/hooks/usePriorReturns";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 
 // Unit label for a logged quantity in the product's native stock unit
@@ -604,7 +604,7 @@ interface DateSectionProps {
   getEditWindowHours: (createdAt: string) => number;
   onVoidOrderClick: (logs: ActivityLog[]) => void;
   onReturnClick: (req: ReturnRequest) => void;
-  returnsMap: Record<string, ReturnsSummary>;
+  returnsMap: Record<string, OutflowReturns>;
 }
 
 function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: DateSectionProps) {
@@ -792,7 +792,7 @@ function DeliveredLine({
         </span>
       </span>
       <span className="text-[11px] text-amber-700 dark:text-amber-400 tabular-nums">
-        ({t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · {returnCode(returns)})
+        ({t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · {returnCode(returns)}) {unit}
       </span>
     </span>
   );
@@ -820,7 +820,7 @@ interface BuyerOrderCardProps {
   getEditWindowHours: (createdAt: string) => number;
   onVoidOrderClick: (logs: ActivityLog[]) => void;
   onReturnClick: (req: ReturnRequest) => void;
-  returnsMap: Record<string, ReturnsSummary>;
+  returnsMap: Record<string, OutflowReturns>;
 }
 
 function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: BuyerOrderCardProps) {
@@ -863,6 +863,15 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
     for (const s of skus) m[s.code] = s.eggProduct;
     return m;
   }, [skus]);
+
+  // A pack line shows ONLY its own per-SKU return (from the egg outflow's bySku),
+  // so two SKUs sharing one egg don't both show the egg's pooled total (doubling).
+  const skuReturns = (skuCode: string): ReturnsSummary | undefined => {
+    const eggProduct = skuToEgg[skuCode];
+    const log = eggLogs.find((l) => l.product === eggProduct);
+    const outflow = log ? returnsMap[log.metadata?.relatedEntryId ?? ""] : undefined;
+    return outflow?.bySku?.[skuCode];
+  };
 
   const outflowDateFormatted = order.outflowDate
     ? format(parseISO(order.outflowDate), "MMM d, yyyy")
@@ -914,7 +923,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
                 <span className="text-muted-foreground">×</span>
                 <span className="font-semibold">{line.packQty}</span>
                 <span className="text-muted-foreground text-xs">{t.activity.packs}</span>
-                <ReturnBubble returns={returnsByProduct[skuToEgg[line.skuCode] ?? ""]} />
+                <ReturnBubble returns={skuReturns(line.skuCode)} />
               </>
             )}
             {line.eggProduct && line.looseQty && (
@@ -1030,7 +1039,7 @@ interface EntryProps {
 
 interface ReturnableEntryProps extends EntryProps {
   onReturnClick: (req: ReturnRequest) => void;
-  returnsMap: Record<string, ReturnsSummary>;
+  returnsMap: Record<string, OutflowReturns>;
 }
 
 function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, onReturnClick, returnsMap }: ReturnableEntryProps) {
