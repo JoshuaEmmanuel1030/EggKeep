@@ -16,6 +16,9 @@ export interface ReturnLineInput {
   // Returned amount in the product's NATIVE unit (kg / butir / pcs) — no conversions.
   quantity: number;
   disposition: ReturnDisposition;
+  // The pack SKU this return was entered under (null for loose/manual returns),
+  // so the feed can attribute a pooled-egg return to its order line.
+  skuCode?: string;
 }
 
 export interface RecordReturnInput {

@@ -138,10 +138,10 @@ describe("return quantity clamp", () => {
 
 describe("returnCode", () => {
   it("omits zero buckets", () => {
-    expect(returnCode({ restock: 25, retakan: 25, writeoff: 0, total: 50 })).toBe("25B 25R");
+    expect(returnCode({ restock: 25, retakan: 25, writeoff: 0, total: 50 })).toBe("25O 25R");
   });
   it("renders all three when present", () => {
-    expect(returnCode({ restock: 20, retakan: 25, writeoff: 5, total: 50 })).toBe("20B 25R 5A");
+    expect(returnCode({ restock: 20, retakan: 25, writeoff: 5, total: 50 })).toBe("20O 25R 5H");
   });
   it("is empty when nothing returned", () => {
     expect(returnCode({ restock: 0, retakan: 0, writeoff: 0, total: 0 })).toBe("");

@@ -49,12 +49,12 @@ export function clampReturnQty(raw: string | number, max: number): number {
   return Math.min(num, max);
 }
 
-// "25B 25R" — Baik/Retak/Afkir order, zero buckets omitted. "" when nothing
-// returned. Letters are fixed Indonesian regardless of UI language.
+// "25O 25R" — OK/Retak/Hancur order, zero buckets omitted. "" when nothing
+// returned. Letters are fixed regardless of UI language.
 export function returnCode(r: ReturnsSummary): string {
   const parts: string[] = [];
-  if (r.restock > 0) parts.push(`${r.restock.toLocaleString()}B`);
+  if (r.restock > 0) parts.push(`${r.restock.toLocaleString()}O`);
   if (r.retakan > 0) parts.push(`${r.retakan.toLocaleString()}R`);
-  if (r.writeoff > 0) parts.push(`${r.writeoff.toLocaleString()}A`);
+  if (r.writeoff > 0) parts.push(`${r.writeoff.toLocaleString()}H`);
   return parts.join(" ");
 }
