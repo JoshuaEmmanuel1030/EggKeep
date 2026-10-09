@@ -172,6 +172,11 @@ export function RecordReturnDialog({
     }));
   }, [orderLines, skuMap, eggLogs]);
 
+  // Stable primitive identity for the row set, so the reset effect doesn't refire
+  // on every render just because a hook (e.g. usePackSKUs) hands back a fresh array
+  // ref — which would loop setState → re-render → new rows → reset forever.
+  const rowsKey = useMemo(() => rows.map((r) => r.key).join("|"), [rows]);
+
   // Sum of prior returns per outflow, so a 2nd partial return caps to what's
   // actually left (matches the server's cumulative cap) instead of the full sold qty.
   const priorByOutflow = usePriorReturns(Object.values(resolvedIds));
@@ -220,7 +225,9 @@ export function RecordReturnDialog({
       setReturnDate(format(new Date(), "yyyy-MM-dd"));
       setResolvedIds({});
     }
-  }, [open, rows]);
+    // Depend on the stable primitive key, not the `rows` object identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, rowsKey]);
 
   // Resolve each log's outflow row id once on open (async). Feeds the cap and is
   // reused on confirm so we don't re-query.
