@@ -23,7 +23,8 @@ import { useVoidEntry } from "@/hooks/useVoidEntry";
 import { useRecordReturn } from "@/hooks/useRecordReturn";
 import { usePriorReturns } from "@/hooks/usePriorReturns";
 import { enqueueReturn } from "@/lib/returnOutbox";
-import { remainingReturnable } from "@/lib/returnsCap";
+import { remainingReturnable, piecesToNative, nativeToPieces } from "@/lib/returnsCap";
+import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { ActivityLog } from "@/types/activityLog";
 import {
   RecordReturnInput,
@@ -39,6 +40,10 @@ interface RecordReturnDialogProps {
   // The EGG activity logs belonging to this order (or a single manual outflow).
   // Each log is one outflow row -> one or more returnable disposition lines.
   eggLogs: ActivityLog[];
+  // The order's pack lines. When present (and non-empty), the dialog renders one
+  // row PER pack SKU (pieces entered per line), grouping rows by egg product under
+  // a shared cap. Absent/empty -> fall back to one row per egg log (loose/manual).
+  orderLines?: Array<{ skuCode?: string; packQty?: number; eggProduct?: string; looseQty?: number }>;
   onRecorded?: () => void;
 }
 
@@ -99,10 +104,12 @@ export function RecordReturnDialog({
   onOpenChange,
   buyerName,
   eggLogs,
+  orderLines,
   onRecorded,
 }: RecordReturnDialogProps) {
   const { t } = useLanguage();
   const { conversionMap } = useItemTypes();
+  const { skus } = usePackSKUs();
   const { findRelatedEntryId } = useVoidEntry();
   const { recordReturn, saving } = useRecordReturn();
   // Held in a ref so the resolve effect keys only off open/eggLogs, never the
@@ -117,13 +124,78 @@ export function RecordReturnDialog({
   // confirm. Also drives the prior-returns cap below.
   const [resolvedIds, setResolvedIds] = useState<Record<string, string | null>>({});
 
+  const skuMap = useMemo(() => {
+    const m: Record<string, { eggProduct: string; eggsPerPack: number }> = {};
+    for (const s of skus) m[s.code] = { eggProduct: s.eggProduct, eggsPerPack: s.eggsPerPack };
+    return m;
+  }, [skus]);
+
+  // The first egg log per product -> its outflow id / native sold qty / category.
+  const eggLogByProduct = useMemo(() => {
+    const m: Record<string, ActivityLog> = {};
+    for (const log of eggLogs) if (!(log.product in m)) m[log.product] = log;
+    return m;
+  }, [eggLogs]);
+
+  // One entry row per order line (pack SKU) when orderLines is given; otherwise
+  // fall back to one row per egg log (loose/manual — unchanged behaviour).
+  interface Row {
+    key: string;
+    label: string;
+    eggProduct: string;
+    skuCode?: string;
+    soldPieces?: number;
+    // Pack rows take entry in PIECES (converted to native on submit). The
+    // loose/manual fallback rows take entry directly in the egg's NATIVE unit.
+    pieces: boolean;
+  }
+  const rows: Row[] = useMemo(() => {
+    const packLines = (orderLines ?? []).filter((l) => l.skuCode && l.packQty);
+    if (packLines.length > 0) {
+      return packLines.map((l) => {
+        const sku = skuMap[l.skuCode!];
+        return {
+          key: l.skuCode!,
+          label: l.skuCode!,
+          eggProduct: sku?.eggProduct ?? l.skuCode!,
+          skuCode: l.skuCode!,
+          soldPieces: sku ? l.packQty! * sku.eggsPerPack : undefined,
+          pieces: true,
+        };
+      });
+    }
+    return eggLogs.map((log) => ({
+      key: log.id,
+      label: log.product,
+      eggProduct: log.product,
+      pieces: false,
+    }));
+  }, [orderLines, skuMap, eggLogs]);
+
   // Sum of prior returns per outflow, so a 2nd partial return caps to what's
   // actually left (matches the server's cumulative cap) instead of the full sold qty.
   const priorByOutflow = usePriorReturns(Object.values(resolvedIds));
-  const remainingFor = (log: ActivityLog): number => {
+
+  // Resolved outflow id for a row's egg product (via its egg log).
+  const outflowIdForProduct = (product: string): string | null => {
+    const log = eggLogByProduct[product];
+    return log ? resolvedIds[log.id] ?? null : null;
+  };
+
+  // Remaining returnable in the egg's NATIVE unit (minus prior returns).
+  const remainingNativeForProduct = (product: string): number => {
+    const log = eggLogByProduct[product];
+    if (!log) return 0;
     const outflowId = resolvedIds[log.id];
     const prior = outflowId ? priorByOutflow[outflowId]?.total ?? 0 : 0;
     return remainingReturnable(log.quantity_butir, prior);
+  };
+
+  // Remaining returnable in a row's ENTRY unit: pieces for pack rows, native for
+  // the loose/manual fallback. Shared across all rows of the same egg product.
+  const remainingEntryForRow = (row: Row): number => {
+    const native = remainingNativeForProduct(row.eggProduct);
+    return row.pieces ? nativeToPieces(native, conversionMap[row.eggProduct]?.unit) : native;
   };
 
   const unitLabel = (product: string): string =>
@@ -140,15 +212,15 @@ export function RecordReturnDialog({
   useEffect(() => {
     if (open) {
       const init: Record<string, LineState> = {};
-      eggLogs.forEach((log) => {
-        init[log.id] = { ...EMPTY_LINE };
+      rows.forEach((row) => {
+        init[row.key] = { ...EMPTY_LINE };
       });
       setLines(init);
       setReason("");
       setReturnDate(format(new Date(), "yyyy-MM-dd"));
       setResolvedIds({});
     }
-  }, [open, eggLogs]);
+  }, [open, rows]);
 
   // Resolve each log's outflow row id once on open (async). Feeds the cap and is
   // reused on confirm so we don't re-query.
@@ -170,28 +242,36 @@ export function RecordReturnDialog({
   const lineSum = (state: LineState): number =>
     parseQty(state.restock) + parseQty(state.retakan) + parseQty(state.writeoff);
 
+  // Rows mapping to the same egg product share that egg's returnable budget.
+  const sameEggRows = (row: Row): Row[] =>
+    rows.filter((r) => r.eggProduct === row.eggProduct);
+
   const setBucket = (
-    logId: string,
+    row: Row,
     key: ReturnDisposition,
     raw: string,
-    max: number
+    maxPieces: number
   ) => {
     // Allow only digits + one decimal separator.
     const cleaned = raw.replace(/[^0-9.,]/g, "");
     setLines((prev) => {
-      const state = prev[logId] ?? { ...EMPTY_LINE };
-      const others = lineSum({ ...state, [key]: "" }); // other two buckets
+      const state = prev[row.key] ?? { ...EMPTY_LINE };
+      const otherBuckets = lineSum({ ...state, [key]: "" }); // this row's other two buckets
+      // Pieces already claimed by OTHER rows mapping to the same egg.
+      const otherRowsPieces = sameEggRows(row)
+        .filter((r) => r.key !== row.key)
+        .reduce((sum, r) => sum + lineSum(prev[r.key] ?? EMPTY_LINE), 0);
       const num = parseQty(cleaned);
-      // Clamp this bucket so the line's TOTAL never exceeds what was sold.
-      const room = Math.max(0, max - others);
+      // Clamp so this bucket keeps the egg-group's TOTAL pieces within the cap.
+      const room = Math.max(0, maxPieces - otherBuckets - otherRowsPieces);
       const next = num > room ? String(room) : cleaned;
-      return { ...prev, [logId]: { ...state, [key]: next } };
+      return { ...prev, [row.key]: { ...state, [key]: next } };
     });
   };
 
   const enteredLines = useMemo(
-    () => eggLogs.filter((log) => lineSum(lines[log.id] ?? EMPTY_LINE) > 0),
-    [eggLogs, lines]
+    () => rows.filter((row) => lineSum(lines[row.key] ?? EMPTY_LINE) > 0),
+    [rows, lines]
   );
 
   const canSubmit = enteredLines.length > 0 && !saving;
@@ -199,33 +279,46 @@ export function RecordReturnDialog({
   const handleConfirm = async () => {
     if (!canSubmit) return;
 
+    // Running native budget per egg product, shared across all its rows, so
+    // pieces→native rounding can never push the summed native qty over the cap.
+    const eggRemaining: Record<string, number> = {};
+
     const resolved: ReturnLineInput[] = [];
-    for (const log of enteredLines) {
-      const outflowId = resolvedIds[log.id] ?? (await findRelatedEntryId(log));
-      if (!outflowId) {
+    for (const row of enteredLines) {
+      const log = eggLogByProduct[row.eggProduct];
+      const outflowId =
+        outflowIdForProduct(row.eggProduct) ?? (log ? await findRelatedEntryId(log) : null);
+      if (!outflowId || !log) {
         toast.error(
-          t.activity.returnLineUnresolved.replace("{product}", log.product)
+          t.activity.returnLineUnresolved.replace("{product}", row.label)
         );
         return;
       }
-      // Emit one line per non-zero bucket, all sharing this outflowId. Enforce the
-      // returnable cap (sold minus prior returns) with a running remainder so the
-      // combined total can never exceed it, even if the UI clamp was bypassed.
-      const state = lines[log.id] ?? EMPTY_LINE;
-      let remaining = remainingFor(log);
+      if (!(row.eggProduct in eggRemaining)) {
+        eggRemaining[row.eggProduct] = remainingNativeForProduct(row.eggProduct);
+      }
+      const unit = conversionMap[row.eggProduct]?.unit;
+      // Emit one line per non-zero bucket, all sharing this outflowId. The user
+      // typed PIECES; convert to the egg's native unit and clamp to the running
+      // remainder so the egg-group's combined native qty never exceeds the cap.
+      const state = lines[row.key] ?? EMPTY_LINE;
       for (const { key } of BUCKETS) {
-        const want = parseQty(state[key]);
-        const quantity = Math.min(want, remaining);
+        const entered = parseQty(state[key]);
+        if (entered <= 0) continue;
+        // Pack rows entered pieces -> convert to native; fallback rows are already native.
+        const want = row.pieces ? piecesToNative(entered, unit) : entered;
+        const quantity = Math.min(want, eggRemaining[row.eggProduct]);
         if (quantity <= 0) continue;
         resolved.push({
           id: makeId(),
           outflowId,
-          product: log.product,
+          skuCode: row.skuCode,
+          product: row.eggProduct,
           category: log.category,
           quantity,
           disposition: key,
         });
-        remaining -= quantity;
+        eggRemaining[row.eggProduct] -= quantity;
       }
     }
 
@@ -273,16 +366,22 @@ export function RecordReturnDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {eggLogs.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">
             {t.activity.returnNoEggLines}
           </p>
         ) : (
           <div className="space-y-3 py-2">
-            {eggLogs.map((log) => {
-              const max = remainingFor(log);
-              const state = lines[log.id] ?? EMPTY_LINE;
-              const unit = unitLabel(log.product);
+            {rows.map((row) => {
+              const state = lines[row.key] ?? EMPTY_LINE;
+              // Pack rows enter pieces; fallback rows enter the egg's native unit.
+              const unit = row.pieces ? "butir" : unitLabel(row.eggProduct);
+              // Shared egg budget minus what OTHER rows of the same egg already claimed.
+              const eggMax = remainingEntryForRow(row);
+              const otherRowsSum = sameEggRows(row)
+                .filter((r) => r.key !== row.key)
+                .reduce((s, r) => s + lineSum(lines[r.key] ?? EMPTY_LINE), 0);
+              const max = Math.max(0, eggMax - otherRowsSum);
               const sum = lineSum(state);
               const hasQty = sum > 0;
               const atMax = hasQty && sum >= max;
@@ -290,7 +389,7 @@ export function RecordReturnDialog({
 
               return (
                 <div
-                  key={log.id}
+                  key={row.key}
                   className={cn(
                     "rounded-lg border border-l-[3px] bg-card p-3 space-y-2.5 transition-colors",
                     hasQty ? "border-l-primary" : "border-l-border"
@@ -299,10 +398,10 @@ export function RecordReturnDialog({
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <Egg className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <span className="font-semibold truncate">{log.product}</span>
+                      <span className="font-semibold truncate">{row.label}</span>
                     </div>
                     <Badge variant="secondary" className="shrink-0 text-xs tabular-nums">
-                      {t.activity.returnSold}: {log.quantity_butir.toLocaleString()} {unit}
+                      {t.activity.returnSold}: {(row.soldPieces ?? max).toLocaleString()} {unit}
                     </Badge>
                   </div>
 
@@ -314,7 +413,7 @@ export function RecordReturnDialog({
                       return (
                         <div key={key} className="space-y-1.5 min-w-0">
                           <Label
-                            htmlFor={`ret-${key}-${log.id}`}
+                            htmlFor={`ret-${key}-${row.key}`}
                             className={cn(
                               "flex items-center gap-1 text-xs font-medium",
                               active ? accent : "text-muted-foreground"
@@ -324,12 +423,12 @@ export function RecordReturnDialog({
                             <span className="truncate">{bucketLabel(key)}</span>
                           </Label>
                           <Input
-                            id={`ret-${key}-${log.id}`}
+                            id={`ret-${key}-${row.key}`}
                             inputMode="decimal"
                             placeholder="0"
                             value={val}
-                            onChange={(e) => setBucket(log.id, key, e.target.value, max)}
-                            aria-describedby={`ret-sub-${log.id}`}
+                            onChange={(e) => setBucket(row, key, e.target.value, eggMax)}
+                            aria-describedby={`ret-sub-${row.key}`}
                             className={cn(
                               "h-11 text-base tabular-nums text-center transition-colors",
                               active && focus
@@ -348,7 +447,7 @@ export function RecordReturnDialog({
                   )}
 
                   {/* Live total + over-max hint */}
-                  <div id={`ret-sub-${log.id}`} className="min-h-[16px]">
+                  <div id={`ret-sub-${row.key}`} className="min-h-[16px]">
                     {atMax ? (
                       <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
                         <AlertCircle className="h-3 w-3" />

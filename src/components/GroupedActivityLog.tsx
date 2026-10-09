@@ -93,6 +93,7 @@ interface DateGroup {
 interface ReturnRequest {
   buyerName?: string;
   eggLogs: ActivityLog[];
+  orderLines?: BuyerOrder["orderLines"];
 }
 
 export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", loading = false, hasActiveFilters = false, onVoided }: GroupedActivityLogProps) {
@@ -319,6 +320,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
         onOpenChange={setReturnDialogOpen}
         buyerName={returnRequest?.buyerName}
         eggLogs={returnRequest?.eggLogs ?? []}
+        orderLines={returnRequest?.orderLines}
         onRecorded={onVoided}
       />
       <AlertDialog open={confirmVoidOrderOpen} onOpenChange={setConfirmVoidOrderOpen}>
@@ -949,7 +951,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
               size="sm"
               variant="outline"
               className="h-11 gap-1.5"
-              onClick={() => onReturnClick({ buyerName: order.buyerName, eggLogs })}
+              onClick={() => onReturnClick({ buyerName: order.buyerName, eggLogs, orderLines: order.orderLines })}
             >
               <Undo2 className="h-4 w-4" />
               {t.activity.recordReturn}

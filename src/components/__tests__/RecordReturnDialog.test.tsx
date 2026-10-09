@@ -23,7 +23,21 @@ vi.mock("@/hooks/useVoidEntry", () => ({
 }));
 vi.mock("@/hooks/useItemTypes", () => ({
   // NEGERI BIASA is kg-native; conversionMap drives the unit label.
-  useItemTypes: () => ({ conversionMap: { "NEGERI BIASA": { unit: "kg" } } }),
+  useItemTypes: () => ({
+    conversionMap: {
+      "NEGERI BIASA": { unit: "kg" },
+      "KAMPUNG BIASA": { unit: "btr" },
+    },
+  }),
+}));
+vi.mock("@/hooks/usePackSKUs", () => ({
+  usePackSKUs: () => ({
+    skus: [
+      { code: "KP10B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 10 },
+      { code: "KP6B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 6 },
+      { code: "N30B", eggProduct: "NEGERI BIASA", eggsPerPack: 30 },
+    ],
+  }),
 }));
 // No prior returns by default -> the cap equals the full sold quantity.
 import type { OutflowReturns } from "@/hooks/usePriorReturns";
@@ -171,5 +185,54 @@ describe("RecordReturnDialog", () => {
   it("shows the empty message when there are no egg lines", () => {
     renderDialog({ eggLogs: [] });
     expect(screen.getByText(/no egg lines to return/i)).toBeInTheDocument();
+  });
+
+  it("emits one line per SKU with the entered pieces (butir egg)", async () => {
+    // Two KAMPUNG BIASA SKUs share one egg outflow; the dialog shows a row per SKU.
+    const kampungLog: ActivityLog = {
+      id: "1", user_id: "u1", action_type: "outflow", category: "egg",
+      product: "KAMPUNG BIASA", quantity_butir: 10092,
+      recorded_at: "2026-10-05T07:21:00.000Z", created_at: "2026-10-05T07:21:00.000Z",
+      client_id: "c",
+    };
+    renderDialog({
+      eggLogs: [kampungLog],
+      orderLines: [
+        { skuCode: "KP10B", packQty: 840 },
+        { skuCode: "KP6B", packQty: 282 },
+      ],
+    });
+    // One OK box per SKU row (labelled OK now).
+    const okBoxes = await screen.findAllByLabelText(/ok/i);
+    expect(okBoxes).toHaveLength(2);
+    fireEvent.change(okBoxes[0], { target: { value: "20" } }); // KP10B
+    fireEvent.change(okBoxes[1], { target: { value: "11" } }); // KP6B
+    fireEvent.click(screen.getByRole("button", { name: /record return/i }));
+
+    await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
+    const { lines } = recordReturnMock.mock.calls[0]![0];
+    expect(lines).toEqual([
+      expect.objectContaining({ skuCode: "KP10B", product: "KAMPUNG BIASA", quantity: 20, disposition: "restock", outflowId: "outflow-1" }),
+      expect.objectContaining({ skuCode: "KP6B", product: "KAMPUNG BIASA", quantity: 11, disposition: "restock", outflowId: "outflow-1" }),
+    ]);
+  });
+
+  it("converts Negeri pieces to kg (flat 15.5) on submit", async () => {
+    const negeriLog: ActivityLog = {
+      id: "1", user_id: "u1", action_type: "outflow", category: "egg",
+      product: "NEGERI BIASA", quantity_butir: 100, // native kg
+      recorded_at: "2026-10-05T07:21:00.000Z", created_at: "2026-10-05T07:21:00.000Z",
+      client_id: "c",
+    };
+    renderDialog({
+      eggLogs: [negeriLog],
+      orderLines: [{ skuCode: "N30B", packQty: 50 }],
+    });
+    const okBox = (await screen.findAllByLabelText(/ok/i))[0];
+    fireEvent.change(okBox, { target: { value: "31" } }); // 31 pcs -> 2.00 kg
+    fireEvent.click(screen.getByRole("button", { name: /record return/i }));
+    await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
+    const { lines } = recordReturnMock.mock.calls[0]![0];
+    expect(lines[0]).toEqual(expect.objectContaining({ skuCode: "N30B", quantity: 2, disposition: "restock" }));
   });
 });
