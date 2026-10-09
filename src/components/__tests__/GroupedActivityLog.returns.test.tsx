@@ -73,7 +73,7 @@ const packLog: ActivityLog = {
 afterEach(() => cleanup());
 
 describe("GroupedActivityLog — returns annotation", () => {
-  it("shows delivered qty, original, and B/R/A code on a returned egg line", () => {
+  it("shows delivered qty, original, and O/R/H code on a returned egg line", () => {
     render(
       <LanguageProvider>
         <GroupedActivityLog logs={[log]} viewMode="grouped" />
@@ -82,7 +82,7 @@ describe("GroupedActivityLog — returns annotation", () => {
     expect(screen.getByText("150")).toBeInTheDocument(); // 200 - 50 delivered
     expect(screen.getByText(/was 200/i)).toBeInTheDocument();
     expect(screen.getByText(/50 returned/i)).toBeInTheDocument();
-    expect(screen.getByText(/25B 25R/)).toBeInTheDocument(); // no 0A
+    expect(screen.getByText(/25O 25R/)).toBeInTheDocument(); // no 0A
   });
 
   it("shows a return bubble on a pack-SKU line via its underlying egg", () => {
@@ -93,6 +93,6 @@ describe("GroupedActivityLog — returns annotation", () => {
     );
     // Pack qty is unchanged (282 packs); the return rides in a bubble instead.
     expect(screen.getByText("282")).toBeInTheDocument();
-    expect(screen.getByText(/11 returned · 11B/)).toBeInTheDocument();
+    expect(screen.getByText(/11 returned · 11O/)).toBeInTheDocument();
   });
 });
