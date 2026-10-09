@@ -8,6 +8,10 @@ export interface ReturnsSummary {
   total: number;
 }
 
+export interface OutflowReturns extends ReturnsSummary {
+  bySku: Record<string, ReturnsSummary>; // key "" for null sku_code
+}
+
 type Disposition = "restock" | "retakan" | "writeoff";
 
 /**
@@ -19,8 +23,8 @@ type Disposition = "restock" | "retakan" | "writeoff";
  */
 export function usePriorReturns(
   outflowIds: (string | null | undefined)[]
-): Record<string, ReturnsSummary> {
-  const [map, setMap] = useState<Record<string, ReturnsSummary>>({});
+): Record<string, OutflowReturns> {
+  const [map, setMap] = useState<Record<string, OutflowReturns>>({});
   // Stable dependency key so the effect only re-runs when the id set changes.
   const key = Array.from(new Set(outflowIds.filter(Boolean) as string[])).sort().join(",");
 
@@ -34,15 +38,21 @@ export function usePriorReturns(
     (async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from as any)("returns")
-        .select("outflow_id, quantity, disposition")
+        .select("outflow_id, quantity, disposition, sku_code")
         .in("outflow_id", ids);
       if (cancelled || error || !data) return;
-      const next: Record<string, ReturnsSummary> = {};
-      for (const r of data as { outflow_id: string; quantity: number; disposition: Disposition }[]) {
-        const s =
+      const next: Record<string, OutflowReturns> = {};
+      for (const r of data as {
+        outflow_id: string; quantity: number; disposition: Disposition; sku_code: string | null;
+      }[]) {
+        const o =
           next[r.outflow_id] ??
-          (next[r.outflow_id] = { restock: 0, retakan: 0, writeoff: 0, total: 0 });
+          (next[r.outflow_id] = { restock: 0, retakan: 0, writeoff: 0, total: 0, bySku: {} });
         const q = Number(r.quantity);
+        o[r.disposition] += q;
+        o.total += q;
+        const skuKey = r.sku_code ?? "";
+        const s = o.bySku[skuKey] ?? (o.bySku[skuKey] = { restock: 0, retakan: 0, writeoff: 0, total: 0 });
         s[r.disposition] += q;
         s.total += q;
       }

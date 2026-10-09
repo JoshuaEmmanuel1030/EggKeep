@@ -26,8 +26,8 @@ vi.mock("@/hooks/useItemTypes", () => ({
   useItemTypes: () => ({ conversionMap: { "NEGERI BIASA": { unit: "kg" } } }),
 }));
 // No prior returns by default -> the cap equals the full sold quantity.
-import type { ReturnsSummary } from "@/hooks/usePriorReturns";
-const priorReturnsMock = vi.fn<() => Record<string, ReturnsSummary>>(() => ({}));
+import type { OutflowReturns } from "@/hooks/usePriorReturns";
+const priorReturnsMock = vi.fn<() => Record<string, OutflowReturns>>(() => ({}));
 vi.mock("@/hooks/usePriorReturns", () => ({
   usePriorReturns: () => priorReturnsMock(),
 }));
@@ -156,7 +156,7 @@ describe("RecordReturnDialog", () => {
   it("caps to what's still returnable after a prior partial return", async () => {
     // 100 of the 155 sold already came back -> only 55 kg is still returnable.
     priorReturnsMock.mockReturnValue({
-      "outflow-1": { restock: 100, retakan: 0, writeoff: 0, total: 100 },
+      "outflow-1": { restock: 100, retakan: 0, writeoff: 0, total: 100, bySku: {} },
     });
     renderDialog();
     fireEvent.change(restockInput(), { target: { value: "5" } });
