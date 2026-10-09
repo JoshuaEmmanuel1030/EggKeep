@@ -29,6 +29,7 @@ export async function callRecordReturn(input: RecordReturnInput): Promise<Return
           category: l.category,
           quantity: l.quantity,
           disposition: l.disposition,
+          sku_code: l.skuCode ?? null,
         })),
       },
     });

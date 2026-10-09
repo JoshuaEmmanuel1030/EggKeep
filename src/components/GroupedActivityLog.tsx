@@ -40,7 +40,9 @@ import {
   Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { orderBucketKey } from "@/lib/activityGrouping";
+import { orderBucketKey, returnCode } from "@/lib/activityGrouping";
+import { usePriorReturns, ReturnsSummary, OutflowReturns } from "@/hooks/usePriorReturns";
+import { usePackSKUs } from "@/hooks/usePackSKUs";
 
 // Unit label for a logged quantity in the product's native stock unit
 // (kg-native: weight-sold eggs log kg, count eggs log butir, others pcs).
@@ -91,11 +93,24 @@ interface DateGroup {
 interface ReturnRequest {
   buyerName?: string;
   eggLogs: ActivityLog[];
+  orderLines?: BuyerOrder["orderLines"];
 }
 
 export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", loading = false, hasActiveFilters = false, onVoided }: GroupedActivityLogProps) {
   const { t } = useLanguage();
   const { canEdit, getEditWindowHours, voidOutflow, voidInflow, findRelatedEntryId } = useVoidEntry();
+
+  // Per-outflow return breakdown for every egg outflow line in the feed, so each
+  // line can show actually-delivered qty. Keyed by outflows.id via relatedEntryId.
+  const returnsMap = usePriorReturns(
+    useMemo(
+      () =>
+        logs
+          .filter((l) => l.category === "egg" && l.action_type === "outflow")
+          .map((l) => l.metadata?.relatedEntryId),
+      [logs]
+    )
+  );
 
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ActivityLog | null>(null);
@@ -305,6 +320,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
         onOpenChange={setReturnDialogOpen}
         buyerName={returnRequest?.buyerName}
         eggLogs={returnRequest?.eggLogs ?? []}
+        orderLines={returnRequest?.orderLines}
         onRecorded={onVoided}
       />
       <AlertDialog open={confirmVoidOrderOpen} onOpenChange={setConfirmVoidOrderOpen}>
@@ -361,6 +377,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
                   isEditable={isEditable}
                   getEditWindowHours={getEditWindowHours}
                   onReturnClick={handleReturnClick}
+                  returnsMap={returnsMap}
                 />
               </TimelineRow>
             ))}
@@ -386,6 +403,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
             getEditWindowHours={getEditWindowHours}
             onVoidOrderClick={handleVoidOrderClick}
             onReturnClick={handleReturnClick}
+            returnsMap={returnsMap}
           />
         ))}
       </div>
@@ -586,9 +604,10 @@ interface DateSectionProps {
   getEditWindowHours: (createdAt: string) => number;
   onVoidOrderClick: (logs: ActivityLog[]) => void;
   onReturnClick: (req: ReturnRequest) => void;
+  returnsMap: Record<string, OutflowReturns>;
 }
 
-function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick }: DateSectionProps) {
+function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: DateSectionProps) {
   const { t } = useLanguage();
   const hasQuickOutflows = group.quickOutflows.size > 0;
   const hasManualOutflows = group.manualOutflows.length > 0;
@@ -631,6 +650,7 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
                     getEditWindowHours={getEditWindowHours}
                     onVoidOrderClick={onVoidOrderClick}
                     onReturnClick={onReturnClick}
+                    returnsMap={returnsMap}
                   />
                 </TimelineRow>
               ))}
@@ -651,6 +671,7 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
                     isEditable={isEditable}
                     getEditWindowHours={getEditWindowHours}
                     onReturnClick={onReturnClick}
+                    returnsMap={returnsMap}
                   />
                 </TimelineRow>
               ))}
@@ -735,6 +756,63 @@ function TimeSync({ time, isSynced }: { time?: string; isSynced?: boolean }) {
   );
 }
 
+// Renders a quantity as "delivered" when a return trimmed it: the net number,
+// the struck-through original, and an amber (N returned · code) badge. Falls
+// back to the plain number+unit when there are no returns.
+function DeliveredLine({
+  sold,
+  unit,
+  returns,
+  struck,
+}: {
+  sold: number;
+  unit: string;
+  returns?: ReturnsSummary;
+  struck?: boolean;
+}) {
+  const { t } = useLanguage();
+  if (!returns || returns.total <= 0) {
+    return (
+      <>
+        <span className={cn("font-bold tabular-nums", struck && "line-through")}>
+          {sold.toLocaleString()}
+        </span>
+        <span className="text-xs text-muted-foreground">{unit}</span>
+      </>
+    );
+  }
+  const delivered = sold - returns.total;
+  return (
+    <span className="inline-flex flex-col gap-0.5 min-w-0">
+      <span className="flex items-center gap-1.5">
+        <span className="font-bold tabular-nums">{delivered.toLocaleString()}</span>
+        <span className="text-xs text-muted-foreground">{unit}</span>
+        <span className="text-[11px] text-muted-foreground line-through tabular-nums">
+          {t.activity.wasQty.replace("{qty}", sold.toLocaleString())}
+        </span>
+      </span>
+      <span className="text-[11px] text-amber-700 dark:text-amber-400 tabular-nums">
+        ({t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · {returnCode(returns)}) {unit}
+      </span>
+    </span>
+  );
+}
+
+// A compact amber pill showing how many eggs came back + the B/R/A code.
+// Used on pack-SKU order lines, where the line's unit (packs) differs from the
+// return's unit (egg butir/kg), so we annotate rather than swap the number.
+// Renders nothing when the matched egg product has no returns.
+function ReturnBubble({ returns }: { returns?: ReturnsSummary }) {
+  const { t } = useLanguage();
+  if (!returns || returns.total <= 0) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums">
+      <Undo2 className="h-3 w-3" />
+      {t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · {returnCode(returns)}
+    </span>
+  );
+}
+
 interface BuyerOrderCardProps {
   order: BuyerOrder;
   onEditClick: (log: ActivityLog) => void;
@@ -742,9 +820,10 @@ interface BuyerOrderCardProps {
   getEditWindowHours: (createdAt: string) => number;
   onVoidOrderClick: (logs: ActivityLog[]) => void;
   onReturnClick: (req: ReturnRequest) => void;
+  returnsMap: Record<string, OutflowReturns>;
 }
 
-function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick }: BuyerOrderCardProps) {
+function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: BuyerOrderCardProps) {
   const { t } = useLanguage();
   const unitLabel = useStockUnitLabel();
   const [expanded, setExpanded] = useState(false);
@@ -758,6 +837,41 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
   // EGG outflow rows are the returnable lines.
   const eggLogs = order.logs.filter((l) => l.category === "egg" && l.action_type === "outflow");
   const canReturn = !isVoided && eggLogs.length > 0;
+
+  // Sum returns per egg product across this order's egg outflow logs, so a line
+  // or material row can be matched by product name.
+  const returnsByProduct = useMemo(() => {
+    const m: Record<string, ReturnsSummary> = {};
+    for (const l of eggLogs) {
+      const r = returnsMap[l.metadata?.relatedEntryId ?? ""];
+      if (!r) continue;
+      const acc = m[l.product] ?? (m[l.product] = { restock: 0, retakan: 0, writeoff: 0, total: 0 });
+      acc.restock += r.restock;
+      acc.retakan += r.retakan;
+      acc.writeoff += r.writeoff;
+      acc.total += r.total;
+    }
+    return m;
+  }, [eggLogs, returnsMap]);
+
+  // Catalog-driven pack SKU -> egg product, so a pack line can show the return
+  // recorded against its underlying egg. Several SKUs can map to the same egg
+  // (e.g. KP10B/KP6B -> KAMPUNG BIASA); each such line shows that egg's return.
+  const { skus } = usePackSKUs();
+  const skuToEgg = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const s of skus) m[s.code] = s.eggProduct;
+    return m;
+  }, [skus]);
+
+  // A pack line shows ONLY its own per-SKU return (from the egg outflow's bySku),
+  // so two SKUs sharing one egg don't both show the egg's pooled total (doubling).
+  const skuReturns = (skuCode: string): ReturnsSummary | undefined => {
+    const eggProduct = skuToEgg[skuCode];
+    const log = eggLogs.find((l) => l.product === eggProduct);
+    const outflow = log ? returnsMap[log.metadata?.relatedEntryId ?? ""] : undefined;
+    return outflow?.bySku?.[skuCode];
+  };
 
   const outflowDateFormatted = order.outflowDate
     ? format(parseISO(order.outflowDate), "MMM d, yyyy")
@@ -809,6 +923,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
                 <span className="text-muted-foreground">×</span>
                 <span className="font-semibold">{line.packQty}</span>
                 <span className="text-muted-foreground text-xs">{t.activity.packs}</span>
+                <ReturnBubble returns={skuReturns(line.skuCode)} />
               </>
             )}
             {line.eggProduct && line.looseQty && (
@@ -817,8 +932,12 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
                   {line.eggProduct}
                 </Badge>
                 <span className="text-muted-foreground">×</span>
-                <span className="font-semibold">{line.looseQty}</span>
-                <span className="text-muted-foreground text-xs">{t.activity.loose}</span>
+                <DeliveredLine
+                  sold={line.looseQty}
+                  unit={t.activity.loose}
+                  returns={returnsByProduct[line.eggProduct]}
+                  struck={isVoided}
+                />
               </>
             )}
           </div>
@@ -841,7 +960,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
               size="sm"
               variant="outline"
               className="h-11 gap-1.5"
-              onClick={() => onReturnClick({ buyerName: order.buyerName, eggLogs })}
+              onClick={() => onReturnClick({ buyerName: order.buyerName, eggLogs, orderLines: order.orderLines })}
             >
               <Undo2 className="h-4 w-4" />
               {t.activity.recordReturn}
@@ -896,8 +1015,11 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
                   {item.type === 'packaging' && <Package className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />}
                   {item.type === 'box' && <Box className="h-3 w-3 text-blue-500" />}
                   <span className="text-muted-foreground">{item.product}:</span>
-                  <span className="font-medium">{item.quantity.toLocaleString()}</span>
-                  <span className="text-muted-foreground">{unitLabel(item.product, item.type)}</span>
+                  <DeliveredLine
+                    sold={item.quantity}
+                    unit={unitLabel(item.product, item.type)}
+                    returns={item.type === 'egg' ? returnsByProduct[item.product] : undefined}
+                  />
                 </div>
               ))}
             </div>
@@ -917,9 +1039,10 @@ interface EntryProps {
 
 interface ReturnableEntryProps extends EntryProps {
   onReturnClick: (req: ReturnRequest) => void;
+  returnsMap: Record<string, OutflowReturns>;
 }
 
-function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, onReturnClick }: ReturnableEntryProps) {
+function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, onReturnClick, returnsMap }: ReturnableEntryProps) {
   const { t } = useLanguage();
   const unitLabel = useStockUnitLabel();
   const formattedTime = format(parseISO(log.recorded_at), "HH:mm");
@@ -942,10 +1065,12 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           </Badge>
           <span className={cn("font-semibold", isVoided && "line-through")}>{log.product}</span>
           <span className="text-muted-foreground">·</span>
-          <span className={cn("font-bold tabular-nums", isVoided && "line-through")}>
-            {log.quantity_butir.toLocaleString()}
-          </span>
-          <span className="text-xs text-muted-foreground">{unitLabel(log.product, log.category)}</span>
+          <DeliveredLine
+            sold={log.quantity_butir}
+            unit={unitLabel(log.product, log.category)}
+            returns={returnsMap[log.metadata?.relatedEntryId ?? ""]}
+            struck={isVoided}
+          />
         </div>
         <TimeSync time={formattedTime} isSynced={log.isSynced} />
       </div>
@@ -1061,7 +1186,7 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
 }
 
 // Chronological view entry - unified display for all log types, timeline-styled.
-function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, onReturnClick }: ReturnableEntryProps) {
+function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, onReturnClick, returnsMap }: ReturnableEntryProps) {
   const { t } = useLanguage();
   const unitLabel = useStockUnitLabel();
   const formattedDateTime = format(parseISO(log.recorded_at), "MMM d, HH:mm");
@@ -1103,18 +1228,23 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
 
           <span className={cn("font-semibold truncate", isVoided && "line-through")}>{log.product}</span>
           <span className="text-muted-foreground shrink-0">·</span>
-          <span
-            className={cn(
-              "font-bold tabular-nums shrink-0",
-              isInflow && "text-emerald-700 dark:text-emerald-400",
-              isVoided && "line-through"
-            )}
-          >
-            {isInflow ? "+" : "-"}{log.quantity_butir.toLocaleString()}
-          </span>
-          <span className="text-xs text-muted-foreground shrink-0">
-            {unitLabel(log.product, log.category)}
-          </span>
+          {isInflow ? (
+            <>
+              <span className={cn("font-bold tabular-nums text-emerald-700 dark:text-emerald-400", isVoided && "line-through")}>
+                +{log.quantity_butir.toLocaleString()}
+              </span>
+              <span className="text-xs text-muted-foreground shrink-0">
+                {unitLabel(log.product, log.category)}
+              </span>
+            </>
+          ) : (
+            <DeliveredLine
+              sold={log.quantity_butir}
+              unit={unitLabel(log.product, log.category)}
+              returns={returnsMap[log.metadata?.relatedEntryId ?? ""]}
+              struck={isVoided}
+            />
+          )}
 
           {isQuickOutflow && log.metadata?.buyerName && (
             <Badge variant="outline" className="text-xs gap-1 shrink-0">
