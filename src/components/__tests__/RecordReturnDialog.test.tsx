@@ -60,9 +60,9 @@ function renderDialog(over: Partial<React.ComponentProps<typeof RecordReturnDial
   );
 }
 
-const restockInput = () => screen.getByLabelText(/restock/i) as HTMLInputElement;
-const retakanInput = () => screen.getByLabelText(/retakan/i) as HTMLInputElement;
-const writeoffInput = () => screen.getByLabelText(/write off/i) as HTMLInputElement;
+const restockInput = () => screen.getByLabelText(/ok/i) as HTMLInputElement;
+const retakanInput = () => screen.getByLabelText(/retak/i) as HTMLInputElement;
+const writeoffInput = () => screen.getByLabelText(/hancur/i) as HTMLInputElement;
 
 describe("RecordReturnDialog", () => {
   beforeEach(() => {
