@@ -859,8 +859,15 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
   // (e.g. KP10B/KP6B -> KAMPUNG BIASA); each such line shows that egg's return.
   const { skus } = usePackSKUs();
   const skuToEgg = useMemo(() => {
+    const byCode: Record<string, (typeof skus)[number]> = {};
+    for (const s of skus) byCode[s.code] = s;
     const m: Record<string, string> = {};
-    for (const s of skus) m[s.code] = s.eggProduct;
+    for (const s of skus) {
+      // Box SKUs (e.g. OSVN10O) carry no eggProduct of their own — their egg
+      // comes from the nested base pack. Resolve it so box-SKU lines match their
+      // returns (mirrors the dialog's skuMap); normal packs use eggProduct directly.
+      m[s.code] = (s.basePackCode ? byCode[s.basePackCode]?.eggProduct : null) || s.eggProduct;
+    }
     return m;
   }, [skus]);
 

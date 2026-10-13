@@ -135,7 +135,7 @@ export function RecordReturnDialog({
       // are blank, the cap resolves to 0, and the input won't accept any value.
       if (s.basePackCode && s.boxMode) {
         const base = byCode[s.basePackCode];
-        const capacity = boxCapacityMap[s.boxMode]?.[s.basePackCode] ?? 0;
+        const capacity = boxCapacityMap?.[s.boxMode]?.[s.basePackCode] ?? 0;
         if (base && capacity > 0) {
           m[s.code] = { eggProduct: base.eggProduct, eggsPerPack: base.eggsPerPack * capacity };
           continue;

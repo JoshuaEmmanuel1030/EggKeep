@@ -15,7 +15,9 @@ vi.mock("@/hooks/useVoidEntry", () => ({
     findRelatedEntryId: vi.fn(),
   }),
 }));
-vi.mock("@/hooks/useItemTypes", () => ({ useItemTypes: () => ({ conversionMap: {} }) }));
+vi.mock("@/hooks/useItemTypes", () => ({
+  useItemTypes: () => ({ conversionMap: {}, boxCapacityMap: { osave: { N10O: 18 } } }),
+}));
 vi.mock("@/hooks/useRecordReturn", () => ({
   useRecordReturn: () => ({ recordReturn: vi.fn(), saving: false }),
 }));
@@ -29,13 +31,21 @@ vi.mock("@/hooks/usePriorReturns", () => ({
         KP6B: { restock: 11, retakan: 0, writeoff: 0, total: 11 },
       },
     },
+    // A box SKU return keyed by its own code (OSVN10O), on the NEGERI OMEGA outflow.
+    "outflow-3": {
+      restock: 12, retakan: 0, writeoff: 0, total: 12,
+      bySku: { OSVN10O: { restock: 12, retakan: 0, writeoff: 0, total: 12 } },
+    },
   }),
 }));
-// KP10B/KP6B are built from KAMPUNG BIASA eggs — the SKU->egg map the pack line uses.
+// KP10B/KP6B are normal packs (eggProduct set). OSVN10O is a BOX SKU: it carries no
+// eggProduct of its own — its egg comes from base pack N10O -> NEGERI OMEGA.
 vi.mock("@/hooks/usePackSKUs", () => ({
   usePackSKUs: () => ({ skus: [
     { code: "KP10B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 10 },
     { code: "KP6B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 6 },
+    { code: "N10O", eggProduct: "NEGERI OMEGA", eggsPerPack: 10 },
+    { code: "OSVN10O", eggProduct: "", eggsPerPack: 0, basePackCode: "N10O", boxMode: "osave" },
   ] }),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -70,6 +80,20 @@ const sharedEggLog: ActivityLog = {
     orderType: "quick_outflow", buyerName: "Astro", relatedEntryId: "outflow-2",
     orderLines: [{ skuCode: "KP10B", packQty: 840 }, { skuCode: "KP6B", packQty: 282 }],
     relatedProducts: [{ product: "KAMPUNG BIASA", quantity: 10092, type: "egg" }],
+  },
+};
+
+// A box-SKU order line (OSVN10O) whose egg (NEGERI OMEGA, via base pack N10O) had
+// a return. Regression: box SKUs carry no eggProduct, so the feed must resolve it
+// through the base pack or the per-SKU bubble never renders.
+const boxEggLog: ActivityLog = {
+  id: "3", user_id: "u1", action_type: "outflow", category: "egg",
+  product: "NEGERI OMEGA", quantity_butir: 580.65,
+  recorded_at: "2026-10-05T07:21:00.000Z", created_at: "2026-10-05T07:21:00.000Z",
+  client_id: "c3",
+  metadata: {
+    orderType: "quick_outflow", buyerName: "Osave", relatedEntryId: "outflow-3",
+    orderLines: [{ skuCode: "OSVN10O", packQty: 50 }],
   },
 };
 
@@ -109,5 +133,14 @@ describe("GroupedActivityLog — returns annotation", () => {
     fireEvent.click(screen.getByText(/View materials breakdown/i));
     // 31 total returned against KAMPUNG BIASA shows on its delivered line.
     expect(screen.getByText(/31 returned · 31O/)).toBeInTheDocument();
+  });
+
+  it("shows the return bubble on a BOX SKU line (egg resolved via base pack)", () => {
+    render(
+      <LanguageProvider>
+        <GroupedActivityLog logs={[boxEggLog]} viewMode="grouped" />
+      </LanguageProvider>
+    );
+    expect(screen.getByText(/12 returned · 12O/)).toBeInTheDocument(); // OSVN10O bubble
   });
 });
