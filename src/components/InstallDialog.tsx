@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Smartphone, Download, CheckCircle, Share, Chrome, Globe } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -13,11 +15,16 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-export function InstallButton() {
+interface InstallDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+// Install-to-home-screen instructions, now tucked inside the Settings menu
+// (was a standalone header button). Controlled dialog so the menu item opens it.
+export function InstallDialog({ open, onOpenChange }: InstallDialogProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [isSamsungInternet, setIsSamsungInternet] = useState(false);
   const { t } = useLanguage();
 
   useEffect(() => {
@@ -26,14 +33,6 @@ export function InstallButton() {
       setIsInstalled(true);
       return;
     }
-
-    // Check if iOS
-    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    setIsIOS(isIOSDevice);
-
-    // Check if Samsung Internet Browser
-    const isSamsung = /SamsungBrowser/.test(navigator.userAgent);
-    setIsSamsungInternet(isSamsung);
 
     // Listen for install prompt
     const handleBeforeInstall = (e: Event) => {
@@ -60,42 +59,31 @@ export function InstallButton() {
     setDeferredPrompt(null);
   };
 
-  if (isInstalled) {
-    return (
-      <Button variant="ghost" size="sm" className="gap-1.5 h-8 sm:h-9 px-2 sm:px-3 text-success" disabled>
-        <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-        <span className="hidden sm:inline text-xs">{t.install.appInstalled}</span>
-      </Button>
-    );
-  }
-
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5 h-8 sm:h-9 px-2 sm:px-3">
-          <Smartphone className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          <span className="hidden sm:inline">{t.install.title}</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 sm:w-96" align="end">
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <Smartphone className="h-5 w-5 text-primary" />
-            <h4 className="font-semibold">{t.install.title}</h4>
+            {t.install.title}
+          </DialogTitle>
+          <DialogDescription>{t.install.installOnDevice}</DialogDescription>
+        </DialogHeader>
+
+        {isInstalled ? (
+          <div className="flex items-center gap-2 text-success py-4">
+            <CheckCircle className="h-5 w-5" />
+            <span className="text-sm font-medium">{t.install.appInstalled}</span>
           </div>
-          
-          <p className="text-sm text-muted-foreground">
-            {t.install.installOnDevice}
-          </p>
+        ) : (
+          <div className="space-y-4">
+            {deferredPrompt && (
+              <Button onClick={handleInstall} className="w-full gap-2">
+                <Download className="h-4 w-4" />
+                {t.install.installNow}
+              </Button>
+            )}
 
-          {deferredPrompt && (
-            <Button onClick={handleInstall} className="w-full gap-2">
-              <Download className="h-4 w-4" />
-              {t.install.installNow}
-            </Button>
-          )}
-
-          <div className="space-y-4 pt-2">
             {/* Android Chrome Instructions */}
             <div className="space-y-2 p-3 bg-muted rounded-lg">
               <div className="flex items-center gap-2">
@@ -166,8 +154,8 @@ export function InstallButton() {
               ✨ {t.install.findOnHomeScreen}
             </p>
           </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

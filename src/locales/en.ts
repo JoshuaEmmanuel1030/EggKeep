@@ -4,6 +4,7 @@ export const en = {
     exportCsv: 'Export CSV',
     logout: 'Logout',
     inventoryTracker: 'Inventory Tracker',
+    settings: 'Settings',
   },
 
   // Navigation

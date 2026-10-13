@@ -4,6 +4,7 @@ export const id = {
     exportCsv: 'Ekspor CSV',
     logout: 'Keluar',
     inventoryTracker: 'Pelacak Inventaris',
+    settings: 'Pengaturan',
   },
 
   // Navigation

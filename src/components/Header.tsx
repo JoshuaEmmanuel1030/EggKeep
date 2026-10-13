@@ -1,12 +1,11 @@
-import { Egg, Download, LogOut, ClipboardList, RefreshCw } from "lucide-react";
+import { Egg, Download, LogOut, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { LanguageToggle } from "@/components/LanguageToggle";
-import { InstallButton } from "@/components/InstallButton";
+import { SettingsMenu } from "@/components/SettingsMenu";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useStockCountStatus } from "@/hooks/useStockCountStatus";
-import { refreshApp } from "@/lib/pwaUpdate";
 
 interface HeaderProps {
   onExport?: () => void;
@@ -42,16 +41,6 @@ export function Header({ onExport }: HeaderProps) {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => refreshApp()}
-            title={t.update.refreshApp}
-            aria-label={t.update.refreshApp}
-            className="h-8 w-8 sm:h-9 sm:w-9"
-          >
-            <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
             onClick={() => navigate("/stock-count")}
             title={t.nav.stockCount}
             aria-label={t.nav.stockCount}
@@ -68,7 +57,7 @@ export function Header({ onExport }: HeaderProps) {
               <span className="hidden sm:inline">{t.header.exportCsv}</span>
             </Button>
           )}
-          <InstallButton />
+          <SettingsMenu />
           <LanguageToggle />
           <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3">
             <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
