@@ -801,9 +801,32 @@ function DeliveredLine({
         </span>
       </span>
       <span className="text-[11px] text-amber-700 dark:text-amber-400 tabular-nums">
-        ({t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · {returnCode(returns)}) {unit}
+        ({t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · <ReturnCodeParts returns={returns} />) {unit}
       </span>
     </span>
+  );
+}
+
+// The O/R/H return code, each segment bold in its disposition colour:
+// O (OK/restock) green, R (Retak/retakan) orange, H (Hancur/writeoff) red.
+// Reuses returnCode so the order + zero-suppression stay single-sourced.
+const RETURN_CODE_COLOR: Record<string, string> = {
+  O: "text-emerald-600 dark:text-emerald-400",
+  R: "text-orange-600 dark:text-orange-400",
+  H: "text-red-600 dark:text-red-400",
+};
+function ReturnCodeParts({ returns }: { returns: ReturnsSummary }) {
+  const code = returnCode(returns);
+  if (!code) return null;
+  return (
+    <>
+      {code.split(" ").map((seg, i) => (
+        <span key={i}>
+          {i > 0 ? " " : ""}
+          <span className={cn("font-bold", RETURN_CODE_COLOR[seg.slice(-1)])}>{seg}</span>
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -826,7 +849,7 @@ function ReturnBubble({ returns, unit }: { returns?: ReturnsSummary; unit?: stri
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums">
       <Undo2 className="h-3 w-3" />
-      {t.activity.returnedBadge.replace("{n}", pieces.total.toLocaleString())} · {returnCode(pieces)}
+      {t.activity.returnedBadge.replace("{n}", pieces.total.toLocaleString())} · <ReturnCodeParts returns={pieces} />
     </span>
   );
 }

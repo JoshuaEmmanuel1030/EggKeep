@@ -114,7 +114,9 @@ describe("GroupedActivityLog — returns annotation", () => {
     expect(screen.getByText("150")).toBeInTheDocument(); // 200 - 50 delivered
     expect(screen.getByText(/was 200/i)).toBeInTheDocument();
     expect(screen.getByText(/50 returned/i)).toBeInTheDocument();
-    expect(screen.getByText(/25O 25R/)).toBeInTheDocument(); // no 0A
+    // code is colour-coded per disposition -> each segment is its own span.
+    expect(screen.getByText("25O")).toBeInTheDocument();
+    expect(screen.getByText("25R")).toBeInTheDocument(); // no H segment (0)
   });
 
   it("shows each pack SKU's own return (no doubling)", () => {
@@ -123,8 +125,8 @@ describe("GroupedActivityLog — returns annotation", () => {
         <GroupedActivityLog logs={[sharedEggLog]} viewMode="grouped" />
       </LanguageProvider>
     );
-    expect(screen.getByText(/20 returned · 20O/)).toBeInTheDocument(); // KP10B
-    expect(screen.getByText(/11 returned · 11O/)).toBeInTheDocument(); // KP6B
+    expect(screen.getByText("20O")).toBeInTheDocument(); // KP10B's own code
+    expect(screen.getByText("11O")).toBeInTheDocument(); // KP6B's own code (not doubled)
     // The egg's pooled total (31) shows once in materials — see next test.
   });
 
@@ -137,7 +139,8 @@ describe("GroupedActivityLog — returns annotation", () => {
     // Open the materials breakdown where the pooled egg figure lives.
     fireEvent.click(screen.getByText(/View materials breakdown/i));
     // 31 total returned against KAMPUNG BIASA shows on its delivered line.
-    expect(screen.getByText(/31 returned · 31O/)).toBeInTheDocument();
+    expect(screen.getByText(/31 returned/)).toBeInTheDocument();
+    expect(screen.getByText("31O")).toBeInTheDocument();
   });
 
   it("shows the return bubble on a BOX SKU line in butir (kg egg converted)", () => {
@@ -147,6 +150,7 @@ describe("GroupedActivityLog — returns annotation", () => {
       </LanguageProvider>
     );
     // 10.58 kg stored -> 164 butir on the order line (kg conversion stays in materials).
-    expect(screen.getByText(/164 returned · 164O/)).toBeInTheDocument();
+    expect(screen.getByText(/164 returned/)).toBeInTheDocument();
+    expect(screen.getByText("164O")).toBeInTheDocument();
   });
 });
