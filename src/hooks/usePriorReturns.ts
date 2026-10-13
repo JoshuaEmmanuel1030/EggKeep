@@ -22,7 +22,10 @@ type Disposition = "restock" | "retakan" | "writeoff";
  * The `returns` table isn't in the generated Supabase types yet, hence the cast.
  */
 export function usePriorReturns(
-  outflowIds: (string | null | undefined)[]
+  outflowIds: (string | null | undefined)[],
+  // Bump this to force a refetch (e.g. right after a return is recorded) — the
+  // id set is unchanged by a new return, so without it the feed wouldn't update.
+  refreshToken?: number
 ): Record<string, OutflowReturns> {
   const [map, setMap] = useState<Record<string, OutflowReturns>>({});
   // Stable dependency key so the effect only re-runs when the id set changes.
@@ -61,7 +64,7 @@ export function usePriorReturns(
     return () => {
       cancelled = true;
     };
-  }, [key]);
+  }, [key, refreshToken]);
 
   return map;
 }

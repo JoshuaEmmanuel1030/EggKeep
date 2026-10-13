@@ -101,6 +101,10 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
   const { t } = useLanguage();
   const { canEdit, getEditWindowHours, voidOutflow, voidInflow, findRelatedEntryId } = useVoidEntry();
 
+  // Bumped after a return is recorded so the bubbles refetch immediately (the
+  // outflow-id set doesn't change, so usePriorReturns needs this nudge).
+  const [returnsRefresh, setReturnsRefresh] = useState(0);
+
   // Per-outflow return breakdown for every egg outflow line in the feed, so each
   // line can show actually-delivered qty. Keyed by outflows.id via relatedEntryId.
   const returnsMap = usePriorReturns(
@@ -110,7 +114,8 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
           .filter((l) => l.category === "egg" && l.action_type === "outflow")
           .map((l) => l.metadata?.relatedEntryId),
       [logs]
-    )
+    ),
+    returnsRefresh
   );
 
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
@@ -322,7 +327,10 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
         buyerName={returnRequest?.buyerName}
         eggLogs={returnRequest?.eggLogs ?? []}
         orderLines={returnRequest?.orderLines}
-        onRecorded={onVoided}
+        onRecorded={() => {
+          setReturnsRefresh((n) => n + 1); // refetch bubbles immediately
+          onVoided?.();
+        }}
       />
       <AlertDialog open={confirmVoidOrderOpen} onOpenChange={setConfirmVoidOrderOpen}>
         <AlertDialogContent>
