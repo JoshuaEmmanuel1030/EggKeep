@@ -15,8 +15,12 @@ vi.mock("@/hooks/useVoidEntry", () => ({
     findRelatedEntryId: vi.fn(),
   }),
 }));
+// NEGERI OMEGA is kg-native -> its order-line bubble must convert back to butir.
 vi.mock("@/hooks/useItemTypes", () => ({
-  useItemTypes: () => ({ conversionMap: {}, boxCapacityMap: { osave: { N10O: 18 } } }),
+  useItemTypes: () => ({
+    conversionMap: { "NEGERI OMEGA": { unit: "kg" } },
+    boxCapacityMap: { osave: { N10O: 18 } },
+  }),
 }));
 vi.mock("@/hooks/useRecordReturn", () => ({
   useRecordReturn: () => ({ recordReturn: vi.fn(), saving: false }),
@@ -32,9 +36,10 @@ vi.mock("@/hooks/usePriorReturns", () => ({
       },
     },
     // A box SKU return keyed by its own code (OSVN10O), on the NEGERI OMEGA outflow.
+    // Stored in kg (10.58) -> the bubble must show butir (10.58 * 15.5 = 164).
     "outflow-3": {
-      restock: 12, retakan: 0, writeoff: 0, total: 12,
-      bySku: { OSVN10O: { restock: 12, retakan: 0, writeoff: 0, total: 12 } },
+      restock: 10.58, retakan: 0, writeoff: 0, total: 10.58,
+      bySku: { OSVN10O: { restock: 10.58, retakan: 0, writeoff: 0, total: 10.58 } },
     },
   }),
 }));
@@ -135,12 +140,13 @@ describe("GroupedActivityLog — returns annotation", () => {
     expect(screen.getByText(/31 returned · 31O/)).toBeInTheDocument();
   });
 
-  it("shows the return bubble on a BOX SKU line (egg resolved via base pack)", () => {
+  it("shows the return bubble on a BOX SKU line in butir (kg egg converted)", () => {
     render(
       <LanguageProvider>
         <GroupedActivityLog logs={[boxEggLog]} viewMode="grouped" />
       </LanguageProvider>
     );
-    expect(screen.getByText(/12 returned · 12O/)).toBeInTheDocument(); // OSVN10O bubble
+    // 10.58 kg stored -> 164 butir on the order line (kg conversion stays in materials).
+    expect(screen.getByText(/164 returned · 164O/)).toBeInTheDocument();
   });
 });

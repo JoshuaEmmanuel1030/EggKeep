@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { orderBucketKey, returnCode } from "@/lib/activityGrouping";
+import { nativeToPieces } from "@/lib/returnsCap";
 import { usePriorReturns, ReturnsSummary, OutflowReturns } from "@/hooks/usePriorReturns";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 
@@ -798,17 +799,26 @@ function DeliveredLine({
   );
 }
 
-// A compact amber pill showing how many eggs came back + the B/R/A code.
-// Used on pack-SKU order lines, where the line's unit (packs) differs from the
-// return's unit (egg butir/kg), so we annotate rather than swap the number.
-// Renders nothing when the matched egg product has no returns.
-function ReturnBubble({ returns }: { returns?: ReturnsSummary }) {
+// A compact amber pill showing how many eggs came back + the O/R/H code.
+// Used on pack-SKU order lines. Returns are stored in the egg's NATIVE unit (kg
+// for Negeri); on the order line we always show BUTIR/pieces (kg conversion is
+// reserved for the materials breakdown), so kg-native products are converted back
+// to pieces at the flat 15.5. Renders nothing when there's no return.
+function ReturnBubble({ returns, unit }: { returns?: ReturnsSummary; unit?: string }) {
   const { t } = useLanguage();
   if (!returns || returns.total <= 0) return null;
+  const toP = (n: number) => nativeToPieces(n, unit);
+  const restock = toP(returns.restock);
+  const retakan = toP(returns.retakan);
+  const writeoff = toP(returns.writeoff);
+  // Sum the converted buckets so the displayed total always matches the code.
+  const pieces: ReturnsSummary = {
+    restock, retakan, writeoff, total: restock + retakan + writeoff,
+  };
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums">
       <Undo2 className="h-3 w-3" />
-      {t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · {returnCode(returns)}
+      {t.activity.returnedBadge.replace("{n}", pieces.total.toLocaleString())} · {returnCode(pieces)}
     </span>
   );
 }
@@ -930,7 +940,10 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
                 <span className="text-muted-foreground">×</span>
                 <span className="font-semibold">{line.packQty}</span>
                 <span className="text-muted-foreground text-xs">{t.activity.packs}</span>
-                <ReturnBubble returns={skuReturns(line.skuCode)} />
+                <ReturnBubble
+                  returns={skuReturns(line.skuCode)}
+                  unit={unitLabel(skuToEgg[line.skuCode] ?? "", "egg")}
+                />
               </>
             )}
             {line.eggProduct && line.looseQty && (
