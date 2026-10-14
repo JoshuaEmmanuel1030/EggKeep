@@ -100,11 +100,13 @@ export function ActivityLogList({
     return Array.from(buyerNames).sort();
   }, [logs]);
 
-  // Get unique suppliers from logs for the filter dropdown
+  // Get unique suppliers from logs for the filter dropdown.
+  // Only inflows carry real supplier names; on outflows the same
+  // invoice_supplier column holds the invoice/PO number, so exclude them.
   const suppliersInLogs = useMemo(() => {
     const supplierNames = new Set<string>();
     logs.forEach(log => {
-      if (log.invoice_supplier) {
+      if (log.action_type === "inflow" && log.invoice_supplier) {
         supplierNames.add(log.invoice_supplier);
       }
     });
