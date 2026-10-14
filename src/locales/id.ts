@@ -183,10 +183,10 @@ export const id = {
 
   // Inflow
   inflow: {
-    title: 'Catat Barang Masuk',
+    title: 'Catat Instock',
     addEntry: 'Tambah Entri',
     invoiceSupplier: 'Faktur/Pemasok',
-    recordInflow: 'Catat Masuk',
+    recordInflow: 'Catat Instock',
     selectCategories: 'Pilih Kategori',
     addToInventory: 'Tambah ke Inventaris',
     stockAdded: 'Stok Ditambahkan',
@@ -294,7 +294,7 @@ export const id = {
     // Section headers
     quickOutflows: 'Outflow Cepat',
     manualOutflows: 'Outflow Manual',
-    inflows: 'Inflow',
+    inflows: 'Instock',
     // Filters
     filterByType: 'Filter Berdasarkan Jenis',
     all: 'Semua',
@@ -332,7 +332,7 @@ export const id = {
     emptyFilteredHint: 'Coba hapus filter atau perlebar rentang tanggal.',
     // Summary strip
     todayOrders: 'Pesanan keluar',
-    todayInflows: 'Barang masuk',
+    todayInflows: 'Instock',
     todayPending: 'Menunggu sinkron',
     // Void order
     voidOrder: 'Batalkan pesanan',
