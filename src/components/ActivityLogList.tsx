@@ -85,6 +85,7 @@ export function ActivityLogList({
   const [actionTypeFilter, setActionTypeFilter] = useState<ActionTypeFilter>("all");
   const [buyerFilter, setBuyerFilter] = useState<string>("all");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
+  const [invoiceFilter, setInvoiceFilter] = useState<string>("all");
   const [skuFilter, setSkuFilter] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -111,6 +112,19 @@ export function ActivityLogList({
       }
     });
     return Array.from(supplierNames).sort();
+  }, [logs]);
+
+  // Get unique invoice/PO references from logs for the filter dropdown.
+  // These are the invoice_supplier values on outflows (the counterpart of
+  // the supplier names on inflows).
+  const invoicesInLogs = useMemo(() => {
+    const invoiceRefs = new Set<string>();
+    logs.forEach(log => {
+      if (log.action_type === "outflow" && log.invoice_supplier) {
+        invoiceRefs.add(log.invoice_supplier);
+      }
+    });
+    return Array.from(invoiceRefs).sort();
   }, [logs]);
 
   // Filter logs based on action type filter (including voided tab)
@@ -140,6 +154,11 @@ export function ActivityLogList({
         if (log.invoice_supplier !== supplierFilter) return false;
       }
 
+      // Invoice/PO filter
+      if (invoiceFilter && invoiceFilter !== "all") {
+        if (log.invoice_supplier !== invoiceFilter) return false;
+      }
+
       // SKU/Product filter
       if (skuFilter.trim()) {
         const term = skuFilter.toLowerCase().trim();
@@ -162,14 +181,15 @@ export function ActivityLogList({
 
       return true;
     });
-  }, [logs, actionTypeFilter, buyerFilter, supplierFilter, skuFilter, dateRange]);
+  }, [logs, actionTypeFilter, buyerFilter, supplierFilter, invoiceFilter, skuFilter, dateRange]);
 
-  const hasActiveFilters = actionTypeFilter !== "all" || buyerFilter !== "all" || 
-    supplierFilter !== "all" || skuFilter.trim() !== "" || dateRange?.from || dateRange?.to;
+  const hasActiveFilters = actionTypeFilter !== "all" || buyerFilter !== "all" ||
+    supplierFilter !== "all" || invoiceFilter !== "all" || skuFilter.trim() !== "" || dateRange?.from || dateRange?.to;
 
   const activeFilterCount = [
     buyerFilter !== "all",
     supplierFilter !== "all",
+    invoiceFilter !== "all",
     skuFilter.trim() !== "",
     dateRange?.from || dateRange?.to,
   ].filter(Boolean).length;
@@ -178,6 +198,7 @@ export function ActivityLogList({
     setActionTypeFilter("all");
     setBuyerFilter("all");
     setSupplierFilter("all");
+    setInvoiceFilter("all");
     setSkuFilter("");
     setDateRange(undefined);
   };
@@ -466,6 +487,24 @@ export function ActivityLogList({
                       {suppliersInLogs.map(supplier => (
                         <SelectItem key={supplier} value={supplier}>
                           {supplier}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Invoice/PO Filter */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">{t.activity.filterByInvoice}</Label>
+                  <Select value={invoiceFilter} onValueChange={setInvoiceFilter}>
+                    <SelectTrigger className="h-10 bg-background">
+                      <SelectValue placeholder={t.activity.selectInvoice} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t.activity.allInvoices}</SelectItem>
+                      {invoicesInLogs.map(invoice => (
+                        <SelectItem key={invoice} value={invoice}>
+                          {invoice}
                         </SelectItem>
                       ))}
                     </SelectContent>
