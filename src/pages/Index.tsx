@@ -241,7 +241,9 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="activity" className="m-0">
-            <div className="max-w-2xl mx-auto">
+            {/* On phones the feed is single-column at 2xl width; on tablets/laptops
+                it expands to use the full available canvas (2-col entry grid inside). */}
+            <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-none mx-auto">
               <ActivityLogList
                 logs={logs}
                 loading={logsLoading}

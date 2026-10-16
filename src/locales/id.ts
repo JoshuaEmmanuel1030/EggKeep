@@ -366,6 +366,10 @@ export const id = {
     returnFailed: 'Gagal mencatat retur',
     returnPending: 'Fitur retur belum aktif — akan tersimpan setelah pembaruan dirilis.',
     returnLineUnresolved: 'Tidak menemukan baris pesanan asli untuk {product}.',
+    // Date labels — distinguish the two timestamps on each card
+    createdAt: 'Dibuat pada',
+    orderDate: 'Tanggal pesanan',
+    inflowDate: 'Tanggal masuk',
   },
 
   // Install

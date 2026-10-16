@@ -534,7 +534,9 @@ export function ActivityLogList({
               viewMode={viewMode}
             />
           ) : (
-            <ScrollArea className="h-auto sm:h-[calc(100vh-420px)] min-h-0 sm:min-h-[300px] max-h-none sm:max-h-[600px] pr-2 sm:pr-4">
+            // On phones the feed is scroll-capped so the filter bar stays in view.
+            // On tablets/laptops the full viewport height is available — no cap.
+            <ScrollArea className="h-auto sm:h-[calc(100vh-420px)] lg:h-[calc(100vh-340px)] min-h-0 sm:min-h-[300px] max-h-none sm:max-h-[600px] lg:max-h-none pr-2 sm:pr-4 lg:pr-6">
               <GroupedActivityLog logs={filteredLogs} showVoided={actionTypeFilter === "voided"} viewMode={viewMode} onVoided={onVoided} />
             </ScrollArea>
           )}
