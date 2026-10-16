@@ -366,6 +366,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
   }
 
   // Chronological view - flat list sorted by time, on a continuous timeline rail.
+  // On phones: single-column with rail + dots. On lg+: 2-column card grid, rail hidden.
   if (viewMode === "chronological") {
     const sortedLogs = [...logs].sort((a, b) =>
       new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()
@@ -374,10 +375,10 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
     return (
       <div className="space-y-4">
         <StatusStrip summary={summary} />
-        <div className="relative pl-6">
-          {/* Continuous rail */}
-          <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gradient-to-b from-primary/40 via-border to-transparent" />
-          <div className="space-y-2.5">
+        <div className="relative pl-6 lg:pl-0">
+          {/* Continuous rail — hidden on lg+ where the grid layout takes over */}
+          <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gradient-to-b from-primary/40 via-border to-transparent lg:hidden" />
+          <div className="space-y-2.5 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
             {sortedLogs.map((log, i) => (
               <TimelineRow key={log.id} index={i} tone={rowTone(log)} animate={animateEntrance}>
                 <ChronologicalEntry
@@ -592,11 +593,11 @@ function TimelineRow({
       className={cn("relative", animate && "animate-timeline-rise")}
       style={animate ? { animationDelay: `${Math.min(index * 45, 400)}ms` } : undefined}
     >
-      {/* Node dot centered on the rail (rail sits at left-[7px] in the parent) */}
+      {/* Node dot centered on the rail (phone only — hidden in the lg+ grid layout) */}
       <span
         aria-hidden
         className={cn(
-          "absolute -left-[22px] top-4 h-3 w-3 rounded-full ring-4 ring-background",
+          "absolute -left-[22px] top-4 h-3 w-3 rounded-full ring-4 ring-background lg:hidden",
           toneDot(tone)
         )}
       />
@@ -639,11 +640,14 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
         </div>
       </div>
 
-      {/* Timeline column: rail + nodes */}
-      <div className="relative pl-6">
-        <div className="absolute left-[7px] top-1 bottom-1 w-px bg-gradient-to-b from-primary/40 via-border to-transparent" />
+      {/* Timeline column: rail + nodes (phone) / 2-col card grid (tablet/laptop).
+          On lg+ the rail and dot nodes hide and the three sub-sections flow into a
+          CSS grid, making full use of the wider canvas without disrupting the
+          familiar single-column layout on phones. */}
+      <div className="relative pl-6 lg:pl-0">
+        <div className="absolute left-[7px] top-1 bottom-1 w-px bg-gradient-to-b from-primary/40 via-border to-transparent lg:hidden" />
 
-        <div className="space-y-5">
+        <div className="space-y-5 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0">
           {/* Quick Outflows */}
           {hasQuickOutflows && (
             <div className="space-y-2.5">
@@ -752,15 +756,25 @@ function EntryCard({
 }
 
 // Quiet metadata: time + sync cloud.
-function TimeSync({ time, isSynced }: { time?: string; isSynced?: boolean }) {
+// `label` (optional) renders a tiny uppercase caption above the time so viewers
+// can distinguish "Created at HH:mm" (the entry's recording timestamp) from the
+// order/inflow event date shown elsewhere on the card.
+function TimeSync({ time, isSynced, label }: { time?: string; isSynced?: boolean; label?: string }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-      {time ? <span className="tabular-nums font-medium">{time}</span> : null}
-      {isSynced === false ? (
-        <CloudOff className="h-3.5 w-3.5 text-yellow-500" />
-      ) : (
-        <Cloud className="h-3.5 w-3.5 text-green-500" />
+    <div className="flex flex-col items-end gap-0 shrink-0">
+      {label && (
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60 leading-none mb-0.5">
+          {label}
+        </span>
       )}
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {time ? <span className="tabular-nums font-medium">{time}</span> : null}
+        {isSynced === false ? (
+          <CloudOff className="h-3.5 w-3.5 text-yellow-500" />
+        ) : (
+          <Cloud className="h-3.5 w-3.5 text-green-500" />
+        )}
+      </div>
     </div>
   );
 }
@@ -951,12 +965,14 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
                 </Badge>
               )}
               {outflowDateFormatted && (
-                <span className="text-[11px] text-muted-foreground">{outflowDateFormatted}</span>
+                <span className="text-[11px] text-muted-foreground">
+                  <span className="font-medium">{t.activity.orderDate}:</span> {outflowDateFormatted}
+                </span>
               )}
             </div>
           )}
         </div>
-        <TimeSync time={formattedTime} isSynced={order.isSynced} />
+        <TimeSync time={formattedTime} isSynced={order.isSynced} label={t.activity.createdAt} />
       </div>
 
       {/* Order Lines */}
@@ -1123,7 +1139,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
             struck={isVoided}
           />
         </div>
-        <TimeSync time={formattedTime} isSynced={log.isSynced} />
+        <TimeSync time={formattedTime} isSynced={log.isSynced} label={t.activity.createdAt} />
       </div>
 
       {isVoided && log.void_reason && (
@@ -1194,7 +1210,7 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
           </span>
           <span className="text-xs text-muted-foreground">{unitLabel(log.product, log.category)}</span>
         </div>
-        <TimeSync time={formattedTime} isSynced={log.isSynced} />
+        <TimeSync time={formattedTime} isSynced={log.isSynced} label={t.activity.createdAt} />
       </div>
 
       {log.invoice_supplier && (
@@ -1204,6 +1220,7 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
       <div className="flex items-center gap-3 flex-wrap mt-1.5">
         {log.metadata?.inflowDate && (
           <span className="text-[11px] text-muted-foreground">
+            <span className="font-medium">{t.activity.inflowDate}:</span>{" "}
             {format(parseISO(log.metadata.inflowDate), "MMM d, yyyy")}
           </span>
         )}

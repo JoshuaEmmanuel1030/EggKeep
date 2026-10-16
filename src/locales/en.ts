@@ -366,6 +366,10 @@ export const en = {
     returnFailed: 'Could not record return',
     returnPending: "Returns aren't live yet — this will save once the update ships.",
     returnLineUnresolved: 'Could not find the original order line for {product}.',
+    // Date labels — distinguish the two timestamps on each card
+    createdAt: 'Created at',
+    orderDate: 'Order date',
+    inflowDate: 'Inflow date',
   },
 
   // Install
