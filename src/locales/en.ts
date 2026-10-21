@@ -202,8 +202,8 @@ export const en = {
 
   // Outflow
   outflow: {
-    title: 'Record Outflow',
-    quickBuilder: 'Quick Outflow — Order Builder',
+    title: 'Record Order',
+    quickBuilder: 'Quick Order Builder',
     manualEntry: 'Manual Entry',
     buyer: 'Buyer',
     selectBuyer: 'Select buyer...',

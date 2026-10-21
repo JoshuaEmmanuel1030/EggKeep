@@ -202,7 +202,7 @@ export const id = {
 
   // Outflow
   outflow: {
-    title: 'Catat Barang Keluar',
+    title: 'Catat Pesanan',
     quickBuilder: 'Pembuat Pesanan Cepat',
     manualEntry: 'Entri Manual',
     buyer: 'Pembeli',
