@@ -54,6 +54,7 @@ export function todayStats(logs: ActivityLog[], now: Date = new Date()): { order
           orderLines: log.metadata?.orderLines || [],
           outflowDate: log.metadata?.outflowDate,
           recordedAt: log.recorded_at,
+          dcId: log.metadata?.dcId,
         })
       );
   }
@@ -77,6 +78,7 @@ export function countEntries(logs: ActivityLog[]): number {
         orderLines: log.metadata?.orderLines || [],
         outflowDate: log.metadata?.outflowDate,
         recordedAt: log.recorded_at,
+        dcId: log.metadata?.dcId,
       })
     );
   }

@@ -30,11 +30,14 @@ export function orderLinesSignature(lines: DupOrderLine[] | null | undefined): s
 }
 
 // Full match key: an order is a possible duplicate of another only when buyer,
-// delivery date, AND line signature all agree.
+// DC, delivery date, AND line signature all agree. Orders without a DC (and all
+// orders logged before DCs existed) keep the old key.
 export function orderDuplicateKey(
   buyerName: string,
   outflowDate: string,
-  lines: DupOrderLine[] | null | undefined
+  lines: DupOrderLine[] | null | undefined,
+  dcId?: string | null
 ): string {
-  return `${buyerName} ${outflowDate} ${orderLinesSignature(lines)}`;
+  const key = `${buyerName} ${outflowDate} ${orderLinesSignature(lines)}`;
+  return dcId ? `${key} @${dcId}` : key;
 }

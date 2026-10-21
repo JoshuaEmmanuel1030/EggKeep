@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { format, isThisYear, isToday, isYesterday, parseISO } from "date-fns";
-import { Cloud, CloudOff, Egg, FileText, Package, Pencil, Square, Store, Undo2, type LucideIcon } from "lucide-react";
+import { Cloud, CloudOff, Egg, FileText, MapPin, Package, Pencil, Square, Store, Undo2, type LucideIcon } from "lucide-react";
 import { ActivityLog } from "@/types/activityLog";
 import { CATEGORY_LABELS } from "@/types/inventory";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -251,6 +251,11 @@ function FeedRow({
           <span className={cn("min-w-0 truncate text-[17px] font-bold text-ek-fg", voided && "line-through")}>
             {order ? order.buyerName : log.product}
           </span>
+          {order?.dcName && (
+            <span className="shrink-0 whitespace-nowrap rounded-md bg-ek-muted px-[7px] py-0.5 font-mono text-xs font-semibold text-ek-mfg">
+              {order.dcName}
+            </span>
+          )}
           {order?.invoiceRef && (
             <span className="shrink-0 whitespace-nowrap rounded-md bg-ek-muted px-[7px] py-0.5 font-mono text-xs font-semibold text-ek-mfg">
               {order.invoiceRef}
@@ -326,6 +331,12 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
                 <span className="inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border border-ek-border px-[9px] py-[3px] font-medium text-ek-fg">
                   <FileText aria-hidden className="h-3.5 w-3.5" />
                   {order.invoiceRef}
+                </span>
+              )}
+              {order.dcName && (
+                <span className="inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border border-ek-border px-[9px] py-[3px] font-medium text-ek-fg">
+                  <MapPin aria-hidden className="h-3.5 w-3.5" />
+                  {t.activity.dc} {order.dcName}
                 </span>
               )}
               {order.outflowDate && (

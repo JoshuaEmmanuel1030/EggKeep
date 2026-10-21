@@ -38,6 +38,7 @@ import {
   Pencil,
   Undo2,
   Inbox,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { orderBucketKey, returnCode } from "@/lib/activityGrouping";
@@ -74,6 +75,7 @@ export interface BuyerOrder {
   timestamp: string;
   outflowDate?: string;
   invoiceRef?: string;
+  dcName?: string;
   isSynced: boolean;
   logs: ActivityLog[];
 }
@@ -154,6 +156,7 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
           orderLines: log.metadata.orderLines || [],
           outflowDate: log.metadata.outflowDate,
           recordedAt: log.recorded_at,
+          dcId: log.metadata?.dcId,
         });
         if (!seenOrderKeys.has(key)) {
           seenOrderKeys.add(key);
@@ -199,6 +202,7 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
           orderLines: log.metadata.orderLines || [],
           outflowDate: log.metadata.outflowDate,
           recordedAt: log.recorded_at,
+          dcId: log.metadata?.dcId,
         });
 
         if (!group.quickOutflows.has(orderKey)) {
@@ -209,6 +213,7 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
             timestamp: log.recorded_at,
             outflowDate: log.metadata.outflowDate,
             invoiceRef: log.metadata.invoiceRef,
+            dcName: log.metadata.dcName,
             isSynced: log.isSynced ?? true,
             logs: [log],
           });
@@ -1008,12 +1013,18 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
               {order.buyerName}
             </span>
           </div>
-          {(order.invoiceRef || outflowDateFormatted) && (
+          {(order.invoiceRef || order.dcName || outflowDateFormatted) && (
             <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
               {order.invoiceRef && (
                 <Badge variant="outline" className="text-[11px] gap-1 font-normal">
                   <FileText className="h-3 w-3" />
                   {order.invoiceRef}
+                </Badge>
+              )}
+              {order.dcName && (
+                <Badge variant="outline" className="text-[11px] gap-1 font-normal">
+                  <MapPin className="h-3 w-3" />
+                  {order.dcName}
                 </Badge>
               )}
               {outflowDateFormatted && (
@@ -1367,6 +1378,12 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
             <Badge variant="outline" className="text-xs gap-1 shrink-0">
               <Store className="h-3 w-3" />
               {log.metadata.buyerName}
+            </Badge>
+          )}
+          {isQuickOutflow && log.metadata?.dcName && (
+            <Badge variant="outline" className="text-xs gap-1 shrink-0">
+              <MapPin className="h-3 w-3" />
+              {log.metadata.dcName}
             </Badge>
           )}
         </div>

@@ -92,6 +92,35 @@ export type Database = {
           },
         ]
       }
+      buyer_dcs: {
+        Row: {
+          buyer_id: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          buyer_id: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          buyer_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "buyer_dcs_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "buyers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       buyers: {
         Row: {
           created_at: string

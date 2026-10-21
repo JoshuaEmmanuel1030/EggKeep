@@ -6,27 +6,22 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { OrderLine, BoxModeType, Buyer } from "@/types/quickOutflow";
+import { OrderLine, Buyer } from "@/types/quickOutflow";
 import { ConversionMap } from "@/types/inventory";
 import {
   PackSKU,
   BoxCapacityMap,
   LabelsPerPackMap,
-  ALL_BOX_MODES,
   calculateLineMaterials,
-  isSKUSupportedForBoxMode,
-  isLogisticsOnlyMode
 } from "@/lib/outflowCalculator";
 import { parseCountInput } from "@/lib/stockCount";
-import { Trash2, ChevronsUpDown, Check, Tag, Egg, Package, Box } from "lucide-react";
+import { Trash2, ChevronsUpDown, Check, Tag, Egg, Package, Box, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface OrderLineItemProps {
   line: OrderLine;
   index: number;
-  boxMode: BoxModeType;
-  boxesRequired: boolean;
   selectedBuyer: Buyer | null;
   skus: PackSKU[];
   conversionMap: ConversionMap;
@@ -41,8 +36,6 @@ interface OrderLineItemProps {
 export function OrderLineItem({
   line,
   index,
-  boxMode,
-  boxesRequired,
   selectedBuyer,
   skus,
   conversionMap,
@@ -71,25 +64,15 @@ export function OrderLineItem({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line.looseQty]);
 
-  // Calculate materials for this line
+  // Calculate materials for this line. No order-level box mode: boxes come only
+  // from Box SKUs (same call the builder makes).
   const materials = useMemo(() => {
-    return calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
-  }, [line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap]);
+    return calculateLineMaterials(line, null, true, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
+  }, [line, skus, conversionMap, boxCapacityMap, labelsPerPackMap]);
 
   // Detect if the selected SKU is a Box SKU
   const selectedSku = skus.find((s) => s.code === line.skuCode);
   const isBoxSku = !!selectedSku?.basePackCode;
-
-  // The box mode actually applied to this line (per-line override wins over the
-  // order default). Used for the SKU-support warning so it tracks the override.
-  const effectiveBoxMode = line.boxModeOverride || boxMode;
-
-  // Check if current SKU is supported for the effective box mode
-  const skuSupported = useMemo(() => {
-    if (!line.skuCode) return true;
-    if (isBoxSku) return true;
-    return isSKUSupportedForBoxMode(line.skuCode, effectiveBoxMode, boxCapacityMap);
-  }, [line.skuCode, effectiveBoxMode, boxCapacityMap, isBoxSku]);
 
   return (
     <div className="space-y-3 p-4 border rounded-lg bg-card">
@@ -273,25 +256,6 @@ export function OrderLineItem({
         </div>
       )}
 
-      {/* Per-line box mode — free pick for any buyer/line. Defaults to the order's
-          mode; override it (e.g. trays) to mix packaging within a single order. */}
-      <div className="space-y-1">
-        <Label className="text-xs">{t.outflow.boxModeOverride}</Label>
-        <Select
-          value={line.boxModeOverride || boxMode}
-          onValueChange={(v) => onUpdate({ boxModeOverride: v as BoxModeType })}
-        >
-          <SelectTrigger className="h-10 w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ALL_BOX_MODES.map((mode) => (
-              <SelectItem key={mode} value={mode}>{mode}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Mini calculator display */}
       {materials && (
         <div className="space-y-1 p-3 bg-muted/50 rounded-md text-sm">
@@ -322,7 +286,7 @@ export function OrderLineItem({
             </div>
           )}
           
-          {boxesRequired && !materials.isLogisticsOnly && materials.boxesPcs > 0 && (
+          {materials.boxesPcs > 0 && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Box className="h-3.5 w-3.5" />
               <span>
@@ -333,27 +297,17 @@ export function OrderLineItem({
               </span>
             </div>
           )}
-
-          {materials.isLogisticsOnly && line.lineType === "pack" && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Box className="h-3.5 w-3.5" />
-              <span className="text-xs italic">{t.outflow.logisticsOnly}</span>
-            </div>
-          )}
-
-          {materials.traysUsed && materials.traysUsed > 0 && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Box className="h-3.5 w-3.5" />
-              <span className="text-xs italic">~ {materials.traysUsed} {t.outflow.traysNoInventory}</span>
-            </div>
-          )}
         </div>
       )}
 
-      {/* SKU not supported warning (tracks the effective per-line mode) */}
-      {line.skuCode && !skuSupported && !isLogisticsOnlyMode(effectiveBoxMode) && (
-        <div className="text-xs text-amber-600 flex items-center gap-1">
-          ⚠️ {line.skuCode} {t.outflow.notConfiguredFor} {effectiveBoxMode}. {t.outflow.considerKeranjang}
+      {/* Box SKU whose box×pack capacity isn't configured: it would deduct
+          nothing, so the builder holds the order — say why. */}
+      {isBoxSku && line.packQty > 0 && !materials && (
+        <div className="flex items-center gap-1 text-xs text-amber-600">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            {t.outflow.boxSkuNoCapacity} ({selectedSku.boxMode} × {selectedSku.basePackCode})
+          </span>
         </div>
       )}
 

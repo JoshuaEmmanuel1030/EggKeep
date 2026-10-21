@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Buyer, BoxModeType } from "@/types/quickOutflow";
+import { Buyer } from "@/types/quickOutflow";
 import {
   Dialog,
   DialogContent,
@@ -20,27 +20,10 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-
-const BOX_MODES: BoxModeType[] = [
-  "box kecil",
-  "box osave",
-  "box osave polos",
-  "keranjang",
-  "tray",
-  "plastic",
-];
 
 const buyerSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  defaultBoxMode: z.string().min(1, "Box mode is required"),
 });
 
 type BuyerFormData = z.infer<typeof buyerSchema>;
@@ -64,26 +47,11 @@ export function BuyerDialog({
 
   const form = useForm<BuyerFormData>({
     resolver: zodResolver(buyerSchema),
-    defaultValues: {
-      name: "",
-      defaultBoxMode: "box kecil",
-    },
+    defaultValues: { name: "" },
   });
 
   useEffect(() => {
-    if (open) {
-      if (buyer) {
-        form.reset({
-          name: buyer.name,
-          defaultBoxMode: buyer.defaultBoxMode,
-        });
-      } else {
-        form.reset({
-          name: "",
-          defaultBoxMode: "box kecil",
-        });
-      }
-    }
+    if (open) form.reset({ name: buyer?.name ?? "" });
   }, [open, buyer, form]);
 
   const handleSubmit = async (data: BuyerFormData) => {
@@ -110,31 +78,6 @@ export function BuyerDialog({
                   <FormControl>
                     <Input {...field} placeholder="Enter buyer name" autoFocus />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="defaultBoxMode"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.catalog.defaultBoxMode}</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder={t.common.selectDots} />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {BOX_MODES.map((mode) => (
-                        <SelectItem key={mode} value={mode}>
-                          {mode}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

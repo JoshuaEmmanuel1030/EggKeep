@@ -10,16 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Printer, Share2, AlertTriangle, Package, CheckCircle2 } from "lucide-react";
 import { StockSummary, ConversionMap } from "@/types/inventory";
-import { AggregatedMaterials, BoxModeType } from "@/types/quickOutflow";
+import { AggregatedMaterials } from "@/types/quickOutflow";
 import { useItemTypes } from "@/hooks/useItemTypes";
 
 interface QueuedOrder {
   id: string;
-  buyer: { id: string; name: string; defaultBoxMode: BoxModeType };
+  buyer: { id: string; name: string };
   date: string;
   invoiceRef: string;
-  boxMode: BoxModeType;
-  boxesRequired: boolean;
+  dcName?: string;
   lines: unknown[];
   aggregates: AggregatedMaterials;
 }
@@ -177,7 +176,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
       const eggs = Array.from(order.aggregates.eggsByProduct.entries())
         .map(([p, q]) => butirToDisplay(p, q))
         .join(", ");
-      lines.push(`• ${order.buyer.name}${order.invoiceRef ? ` (${order.invoiceRef})` : ""}: ${eggs}`);
+      lines.push(`• ${order.buyer.name}${order.dcName ? ` – ${order.dcName}` : ""}${order.invoiceRef ? ` (${order.invoiceRef})` : ""}: ${eggs}`);
     }
 
     const text = encodeURIComponent(lines.join("\n"));
@@ -364,7 +363,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
                       )}
                     </div>
                     <p className="text-muted-foreground print:text-black text-xs mt-0.5">
-                      {eggLine || "No eggs"} • {order.boxMode}
+                      {eggLine || "No eggs"}{order.dcName && ` • ${order.dcName}`}
                     </p>
                   </div>
                 );

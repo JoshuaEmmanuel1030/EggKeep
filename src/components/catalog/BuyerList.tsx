@@ -20,10 +20,12 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Loader2, History } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Loader2, History, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useBuyerDcs } from "@/hooks/useBuyerDcs";
 import { BuyerDialog } from "./BuyerDialog";
+import { BuyerDcsDialog } from "./BuyerDcsDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { RenameWarningDialog } from "./RenameWarningDialog";
 import { checkBuyerDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
@@ -124,8 +126,11 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
   const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
   const [historyBuyer, setHistoryBuyer] = useState<Buyer | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const { dcsForBuyer } = useBuyerDcs();
+  const [dcsBuyer, setDcsBuyer] = useState<Buyer | null>(null);
+  const [dcsOpen, setDcsOpen] = useState(false);
   const [renameWarn, setRenameWarn] = useState<{
-    data: { name: string; defaultBoxMode: string };
+    data: { name: string };
     oldName: string;
     deps: DependencyCheckResult;
   } | null>(null);
@@ -191,7 +196,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
     }
   };
 
-  const performSave = async (data: { name: string; defaultBoxMode: string }) => {
+  const performSave = async (data: { name: string }) => {
     try {
       if (editingBuyer && updateBuyer) {
         await updateBuyer.mutateAsync({ id: editingBuyer.id, ...data });
@@ -207,7 +212,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
     }
   };
 
-  const handleSave = async (data: { name: string; defaultBoxMode: string }) => {
+  const handleSave = async (data: { name: string }) => {
     // Guard buyer renames: order history filters by buyerName in activity_logs metadata,
     // so renaming a used buyer hides their past orders.
     if (editingBuyer && data.name !== editingBuyer.name) {
@@ -257,7 +262,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
           <TableHeader>
             <TableRow>
               <TableHead>{t.catalog.name}</TableHead>
-              <TableHead>{t.catalog.defaultBoxMode}</TableHead>
+              <TableHead>{t.catalog.dcs}</TableHead>
               <TableHead className="text-right">{t.catalog.actions}</TableHead>
             </TableRow>
           </TableHeader>
@@ -269,46 +274,66 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredBuyers.map((buyer) => (
-                <TableRow key={buyer.id}>
-                  <TableCell className="font-medium">{buyer.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{buyer.defaultBoxMode}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="View buyer history"
-                        onClick={() => { setHistoryBuyer(buyer); setHistoryOpen(true); }}
-                      >
-                        <History className="h-4 w-4" />
-                      </Button>
-                      {isAdmin && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Edit buyer"
-                            onClick={() => handleEdit(buyer)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Delete buyer"
-                            onClick={() => handleDeleteClick(buyer)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </>
+              filteredBuyers.map((buyer) => {
+                const buyerDcs = dcsForBuyer(buyer.id);
+                return (
+                  <TableRow key={buyer.id}>
+                    <TableCell className="font-medium">{buyer.name}</TableCell>
+                    <TableCell>
+                      {buyerDcs.length === 0 ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {buyerDcs.map((dc) => (
+                            <Badge key={dc.id} variant="outline">{dc.name}</Badge>
+                          ))}
+                        </div>
                       )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="View buyer history"
+                          onClick={() => { setHistoryBuyer(buyer); setHistoryOpen(true); }}
+                        >
+                          <History className="h-4 w-4" />
+                        </Button>
+                        {isAdmin && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={t.catalog.manageDcs}
+                              title={t.catalog.manageDcs}
+                              onClick={() => { setDcsBuyer(buyer); setDcsOpen(true); }}
+                            >
+                              <MapPin className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Edit buyer"
+                              onClick={() => handleEdit(buyer)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Delete buyer"
+                              onClick={() => handleDeleteClick(buyer)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -327,6 +352,8 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
         open={historyOpen}
         onOpenChange={setHistoryOpen}
       />
+
+      <BuyerDcsDialog buyer={dcsBuyer} open={dcsOpen} onOpenChange={setDcsOpen} />
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}

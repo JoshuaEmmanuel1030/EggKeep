@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateLineMaterials, resolveBoxLine, PackSKU } from "@/lib/outflowCalculator";
+import { calculateLineMaterials, aggregateOrderMaterials, resolveBoxLine, PackSKU } from "@/lib/outflowCalculator";
 import { OrderLine } from "@/types/quickOutflow";
 import { ConversionMap } from "@/types/inventory";
 
@@ -48,6 +48,25 @@ describe("Box SKU desugaring", () => {
     expect(m!.packagingItem).toBe("OSAVE PACK");
     expect(m!.boxesPcs).toBe(5);         // 90 / 18
     expect(m!.boxType).toBe("box osave");
+  });
+
+  it("with no order-level box mode, only Box SKU lines produce boxes", () => {
+    // The Purchase Order builder passes boxMode null + boxesRequired true.
+    const packLine: OrderLine = { id: "3", lineType: "pack", skuCode: "N10B", packQty: 90 };
+    const plain = calculateLineMaterials(packLine, null, true, skus, conversionMap, boxCapacityMap, {});
+    expect(plain!.packagingPcs).toBe(90);
+    expect(plain!.boxesPcs).toBe(0);
+    expect(plain!.boxType).toBeNull();
+
+    const boxed = calculateLineMaterials(boxLine, null, true, skus, conversionMap, boxCapacityMap, {});
+    const before = calculateLineMaterials(boxLine, "box osave", true, skus, conversionMap, boxCapacityMap, {});
+    expect(boxed).toEqual(before);
+    expect(boxed!.boxesPcs).toBe(5);
+    expect(boxed!.boxType).toBe("box osave");
+
+    const agg = aggregateOrderMaterials([packLine, boxLine], null, true, skus, conversionMap, boxCapacityMap, {});
+    expect([...agg.boxesByType]).toEqual([["box osave", 5]]);
+    expect(agg.packagingByItem.get("OSAVE PACK")).toBe(180);
   });
 
   it("calculateLineMaterials returns null for an unconfigured box×pack", () => {

@@ -165,7 +165,8 @@ export function ActivityLogList({
           line => line.skuCode?.toLowerCase().includes(term)
         );
         const matchesBuyer = log.metadata?.buyerName?.toLowerCase().includes(term);
-        if (!matchesProduct && !matchesSku && !matchesBuyer) return false;
+        const matchesDc = log.metadata?.dcName?.toLowerCase().includes(term);
+        if (!matchesProduct && !matchesSku && !matchesBuyer && !matchesDc) return false;
       }
 
       // Date range filter
