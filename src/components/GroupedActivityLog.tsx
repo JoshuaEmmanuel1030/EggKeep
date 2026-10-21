@@ -35,7 +35,6 @@ import {
   CloudUpload,
   Truck,
   FileText,
-  Pencil,
   Undo2,
   Inbox,
   MapPin,
@@ -272,7 +271,15 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
 
   // Destructive: first confirm intent, then collect a reason.
   const handleVoidOrderClick = (logs: ActivityLog[]) => {
-    setPendingVoidOrderLogs(logs);
+    // Rows already voided on their own (e.g. from the chronological view) are
+    // skipped, so the count is right and nothing tries to void them twice.
+    const live = logs.filter((l) => !l.voided_at);
+    if (live.length === 0) return;
+    if (live.length === 1) {
+      handleEditClick(live[0]); // one row: the single-entry void-with-reason flow
+      return;
+    }
+    setPendingVoidOrderLogs(live);
     setConfirmVoidOrderOpen(true);
   };
 
@@ -702,7 +709,6 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
                 <TimelineRow key={idx} index={rowIndex++} tone="quick" animate={animate}>
                   <BuyerOrderCard
                     order={order}
-                    onEditClick={onEditClick}
                     isEditable={isEditable}
                     getEditWindowHours={getEditWindowHours}
                     onVoidOrderClick={onVoidOrderClick}
@@ -970,7 +976,6 @@ export function useOrderReturns(order: BuyerOrder, returnsMap: Record<string, Ou
 
 interface BuyerOrderCardProps {
   order: BuyerOrder;
-  onEditClick: (log: ActivityLog) => void;
   isEditable: (log: ActivityLog) => boolean;
   getEditWindowHours: (createdAt: string) => number;
   onVoidOrderClick: (logs: ActivityLog[]) => void;
@@ -978,7 +983,7 @@ interface BuyerOrderCardProps {
   returnsMap: Record<string, OutflowReturns>;
 }
 
-function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: BuyerOrderCardProps) {
+function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: BuyerOrderCardProps) {
   const { t } = useLanguage();
   const unitLabel = useStockUnitLabel();
   const [expanded, setExpanded] = useState(false);
@@ -1094,29 +1099,18 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
               {t.activity.recordReturn}
             </Button>
           )}
+          {/* One void action per order (any number of materials); the old pencil
+              opened the same void-with-reason flow for just one row. */}
           {canEditOrder && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11"
-                onClick={() => onEditClick(firstLog)}
-                title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
-                aria-label={t.activity.editEntry}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              {order.logs.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-11 text-xs text-destructive hover:text-destructive px-3"
-                  onClick={() => onVoidOrderClick(order.logs)}
-                >
-                  {t.activity.voidOrder}
-                </Button>
-              )}
-            </>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-11 text-xs text-destructive hover:text-destructive px-3"
+              onClick={() => onVoidOrderClick(order.logs)}
+              title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
+            >
+              {t.activity.voidOrder}
+            </Button>
           )}
         </div>
       )}
@@ -1225,13 +1219,12 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           {canEditEntry && (
             <Button
               variant="ghost"
-              size="icon"
-              className="h-11 w-11"
+              size="sm"
+              className="h-11 text-xs text-destructive hover:text-destructive px-3"
               onClick={() => onEditClick(log)}
               title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
-              aria-label={t.activity.editEntry}
             >
-              <Pencil className="h-4 w-4" />
+              {t.activity.voidEntry}
             </Button>
           )}
         </div>
@@ -1293,13 +1286,12 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
         <div className="flex justify-end pt-2.5">
           <Button
             variant="ghost"
-            size="icon"
-            className="h-11 w-11"
+            size="sm"
+            className="h-11 text-xs text-destructive hover:text-destructive px-3"
             onClick={() => onEditClick(log)}
             title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
-            aria-label={t.activity.editEntry}
           >
-            <Pencil className="h-4 w-4" />
+            {t.activity.voidEntry}
           </Button>
         </div>
       )}
@@ -1422,13 +1414,12 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           {canEditEntry && (
             <Button
               variant="ghost"
-              size="icon"
-              className="h-11 w-11"
+              size="sm"
+              className="h-11 text-xs text-destructive hover:text-destructive px-3"
               onClick={() => onEditClick(log)}
               title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
-              aria-label={t.activity.editEntry}
             >
-              <Pencil className="h-4 w-4" />
+              {t.activity.voidEntry}
             </Button>
           )}
         </div>

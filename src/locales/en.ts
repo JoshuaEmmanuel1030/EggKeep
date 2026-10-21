@@ -317,14 +317,13 @@ export const en = {
     options: 'Options',
     selectDateRange: 'Select dates',
     // Edit/Void
-    editEntry: 'Edit Entry',
     voidEntry: 'Void Entry',
     voidReason: 'Reason for voiding',
     voidReasonPlaceholder: 'Enter reason for this correction...',
     voidWarning: 'This will restore inventory and mark this entry as voided.',
     confirmVoid: 'Confirm Void',
     editWindowExpired: 'Edit window expired (48 hours)',
-    withinEditWindow: 'Editable for {hours} more hours',
+    withinEditWindow: 'Can be voided for {hours} more hours',
     // Timeline
     entries: 'entries',
     entry: 'entry',

@@ -1,11 +1,10 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { format, isThisYear, isToday, isYesterday, parseISO } from "date-fns";
-import { Cloud, CloudOff, Egg, FileText, MapPin, Package, Pencil, Square, Store, Undo2, type LucideIcon } from "lucide-react";
+import { Cloud, CloudOff, Egg, FileText, MapPin, Package, Square, Store, Undo2, type LucideIcon } from "lucide-react";
 import { ActivityLog } from "@/types/activityLog";
 import { CATEGORY_LABELS } from "@/types/inventory";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { EntryKind } from "@/lib/activityGrouping";
 import { nativeToPieces } from "@/lib/returnsCap";
@@ -307,7 +306,6 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
   const eggLogs = eggLogsOf(entry);
   const canReturn = !voided && eggLogs.length > 0; // never true for inflows
   const canEdit = feed.isEditable(log);
-  const canVoidOrder = !!order && canEdit && order.logs.length > 1;
   const businessDate = kind === "inflow" ? log.metadata?.inflowDate : log.metadata?.outflowDate;
 
   return (
@@ -395,7 +393,7 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
       </div>
 
       {/* At 1024px the panel is 376px wide: the text buttons shrink (labels
-          truncate) and Edit keeps its 48px, so nothing runs off-screen. */}
+          truncate), so nothing runs off-screen. */}
       {!voided && (canReturn || canEdit) && (
         <div className="flex items-center gap-2.5 border-t border-ek-border bg-card px-7 py-3.5">
           {canReturn && (
@@ -411,31 +409,16 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
               <span className="truncate">{t.activity.recordReturn}</span>
             </Button>
           )}
+          {/* One void action: the whole order for Purchase Orders, the entry for
+              Cash / Inflow. Same 48h rule as before (no separate pencil). */}
           {canEdit && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label={t.activity.editEntry}
-                  className="h-12 w-12 shrink-0 rounded-[11px] border-ek-border bg-card text-ek-fg hover:bg-ek-muted hover:text-ek-fg [&_svg]:size-[18px]"
-                  onClick={() => feed.handleEditClick(log)}
-                >
-                  <Pencil />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {t.activity.withinEditWindow.replace("{hours}", String(feed.getEditWindowHours(log.created_at)))}
-              </TooltipContent>
-            </Tooltip>
-          )}
-          {canVoidOrder && (
             <Button
               variant="ghost"
               className="ml-auto h-12 min-w-0 rounded-[11px] px-[18px] text-[15px] font-semibold text-red-600 hover:bg-red-50 hover:text-red-700"
-              onClick={() => feed.handleVoidOrderClick(order.logs)}
+              title={t.activity.withinEditWindow.replace("{hours}", String(feed.getEditWindowHours(log.created_at)))}
+              onClick={() => (order ? feed.handleVoidOrderClick(order.logs) : feed.handleEditClick(log))}
             >
-              <span className="truncate">{t.activity.voidOrder}</span>
+              <span className="truncate">{order ? t.activity.voidOrder : t.activity.voidEntry}</span>
             </Button>
           )}
         </div>

@@ -317,14 +317,13 @@ export const id = {
     options: 'Opsi',
     selectDateRange: 'Pilih tanggal',
     // Edit/Void
-    editEntry: 'Ubah Entri',
     voidEntry: 'Batalkan Entri',
     voidReason: 'Alasan pembatalan',
     voidReasonPlaceholder: 'Masukkan alasan koreksi ini...',
     voidWarning: 'Ini akan mengembalikan inventaris dan menandai entri sebagai dibatalkan.',
     confirmVoid: 'Konfirmasi Pembatalan',
     editWindowExpired: 'Jendela edit telah berakhir (48 jam)',
-    withinEditWindow: 'Dapat diedit selama {hours} jam lagi',
+    withinEditWindow: 'Dapat dibatalkan selama {hours} jam lagi',
     // Timeline
     entries: 'entri',
     entry: 'entri',

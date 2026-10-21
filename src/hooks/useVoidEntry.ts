@@ -152,8 +152,16 @@ export function useVoidEntry() {
   ): Promise<string | null> => {
     const table = activityLog.action_type === 'inflow' ? 'inflows' : 'outflows';
 
+    // An already-voided log has nothing left to void. Without this guard the
+    // heuristic below could match — and void — ANOTHER order's live row with
+    // the same product + quantity (e.g. "Void order" on an order where one row
+    // was already voided on its own).
+    if (activityLog.voided_at) return null;
+
     // 1. Direct lookup via the id stored on the log at creation (new entries).
-    //    This is the reliable path — no timestamp/clock guessing.
+    //    Inflow/outflow rows are inserted with this exact id, so it is
+    //    authoritative: if that row is gone or already voided, there is nothing
+    //    to void — never fall back to guessing for a log that has an id.
     const relatedId = activityLog.metadata?.relatedEntryId;
     if (relatedId) {
       const { data, error } = await supabase
@@ -163,8 +171,7 @@ export function useVoidEntry() {
         .is('voided_at', null)
         .maybeSingle();
 
-      if (!error && data?.id) return data.id;
-      // If the stored id is missing/already voided, fall through to the heuristic.
+      return !error && data?.id ? data.id : null;
     }
 
     // 2. Fallback for legacy rows (no stored id): match by product + quantity +
