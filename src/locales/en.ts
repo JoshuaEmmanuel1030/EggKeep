@@ -11,7 +11,7 @@ export const en = {
   nav: {
     dashboard: 'Dashboard',
     inflow: 'Inflow',
-    outflow: 'Outflow',
+    outflow: 'Orders',
     infos: 'Infos',
     activity: 'Activity',
     catalog: 'Catalog',

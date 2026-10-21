@@ -178,16 +178,10 @@ export function OrderLineItem({
           <div className="space-y-1">
             <Label className="text-xs">{isBoxSku ? t.outflow.quantityBoxes : t.outflow.quantityPacks}</Label>
             <Input
-              type="number"
-              min="1"
+              type="text"
+              inputMode="numeric"
               value={line.packQty || ""}
               onChange={(e) => onUpdate({ packQty: parseInt(e.target.value) || undefined })}
-              onWheel={(e) => e.currentTarget.blur()}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                  e.preventDefault();
-                }
-              }}
               placeholder={t.outflow.enterQty}
               className="h-10"
             />

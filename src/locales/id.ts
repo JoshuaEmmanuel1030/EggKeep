@@ -11,7 +11,7 @@ export const id = {
   nav: {
     dashboard: 'Dasbor',
     inflow: 'Masuk',
-    outflow: 'Keluar',
+    outflow: 'Pesanan',
     infos: 'Info',
     activity: 'Aktivitas',
     catalog: 'Katalog',
