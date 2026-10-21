@@ -8,6 +8,7 @@ import { StockSummary, InflowEntry, OutflowEntry } from "@/types/inventory";
 import { ActivityLogMetadata } from "@/types/activityLog";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface OutflowPageProps {
   stockSummary: StockSummary[];
@@ -17,6 +18,7 @@ interface OutflowPageProps {
 
 export function OutflowPage({ stockSummary, inflows, onSubmit }: OutflowPageProps) {
   const [manualOpen, setManualOpen] = useState(false);
+  const { t } = useLanguage();
 
   return (
     <div className="space-y-6">
@@ -41,7 +43,7 @@ export function OutflowPage({ stockSummary, inflows, onSubmit }: OutflowPageProp
             variant="outline" 
             className="w-full justify-between h-12"
           >
-            <span className="text-sm">Manual Outflow (Legacy / Advanced)</span>
+            <span className="text-sm">{t.outflow.manualToggle}</span>
             <ChevronDown className={cn(
               "h-4 w-4 transition-transform",
               manualOpen && "rotate-180"
