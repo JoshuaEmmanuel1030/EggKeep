@@ -622,7 +622,7 @@ export function ActivityLogList({
               {t.activity.title}
             </CardTitle>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* Export Button */}
               <Button
                 variant="outline"
@@ -644,7 +644,7 @@ export function ActivityLogList({
                 disabled={!hasOutflows}
               >
                 <Download className="h-4 w-4" />
-                Export SKU BOM
+                <span className="hidden sm:inline">Export</span> SKU BOM
               </Button>
 
               {/* View Toggle */}
@@ -882,7 +882,7 @@ export function ActivityLogList({
               viewMode={viewMode}
             />
           ) : (
-            <ScrollArea className="h-auto sm:h-[calc(100vh-420px)] min-h-0 sm:min-h-[300px] max-h-none sm:max-h-[600px] pr-2 sm:pr-4">
+            <ScrollArea className="[&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:px-1 h-auto sm:h-[calc(100vh-420px)] min-h-0 sm:min-h-[300px] max-h-none sm:max-h-[600px] pr-2 sm:pr-4">
               <GroupedActivityLog logs={filteredLogs} showVoided={typeFilter === "voided"} viewMode={viewMode} onVoided={onVoided} />
             </ScrollArea>
           )}
