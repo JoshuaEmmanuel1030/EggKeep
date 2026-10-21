@@ -99,6 +99,19 @@ describe("matchesType", () => {
     expect(matchesType(kastun, "manual")).toBe(true);
     expect(matchesType(kastun, "quick")).toBe(false);
   });
+
+  it("hides an edit's replaced original everywhere but Voided", () => {
+    const lines = [{ skuCode: "KP10B", packQty: 24 }];
+    const superseded = order(lines, at(15, 9), { voided_at: at(15, 9, 20), corrected_by_log_id: "new-1" });
+    expect(matchesType(superseded, "all")).toBe(false);
+    expect(matchesType(superseded, "quick")).toBe(false);
+    expect(matchesType(superseded, "voided")).toBe(true);
+    // The correction itself is a normal live row.
+    const correction = order(lines, at(15, 9), { original_log_id: "old-1" });
+    expect(matchesType(correction, "all")).toBe(true);
+    expect(matchesType(correction, "quick")).toBe(true);
+    expect(matchesType(correction, "voided")).toBe(false);
+  });
 });
 
 describe("countEntries", () => {

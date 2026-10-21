@@ -697,6 +697,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      correct_order: {
+        Args: {
+          p_entries: Json
+          p_logs: Json
+          p_old_log_ids: string[]
+          p_reason: string
+        }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

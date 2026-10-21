@@ -4,13 +4,16 @@ import { isSameDay, parseISO, startOfDay, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import type { ActivityLog } from "@/types/activityLog";
 import { entryKind, orderBucketKey, type EntryKind } from "@/lib/activityGrouping";
+import { isSuperseded } from "@/lib/orderCorrection";
 
 // Type tab: All includes voided (struck through), Voided shows only voided,
-// Orders / Kastun / Inflows exclude voided. Date/buyer/supplier/search still
+// Orders / Kastun / Inflows exclude voided. Originals an edit replaced
+// (superseded) show only under Voided. Date/buyer/supplier/search still
 // apply on top on every tab, Voided included.
 export function matchesType(log: ActivityLog, type: "all" | EntryKind | "voided"): boolean {
-  if (type === "all") return true;
   if (type === "voided") return log.voided_at != null;
+  if (isSuperseded(log)) return false;
+  if (type === "all") return true;
   return !log.voided_at && entryKind(log) === type;
 }
 

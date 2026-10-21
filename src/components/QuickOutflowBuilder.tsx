@@ -14,6 +14,7 @@ import { OrderSummaryPanel } from "./OrderSummaryPanel";
 import { Buyer, OrderLine, AggregatedMaterials } from "@/types/quickOutflow";
 import { StockSummary, InflowEntry, OutflowEntry } from "@/types/inventory";
 import { ActivityLogMetadata } from "@/types/activityLog";
+import { buildOrderEntries, buildOrderMetadata as buildPayloadMetadata, type OrderPayloadInput } from "@/lib/orderPayload";
 import { useBuyers } from "@/hooks/useBuyers";
 import { useBuyerDcs } from "@/hooks/useBuyerDcs";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
@@ -301,49 +302,18 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     removeFromQueue(orderId);
   };
 
-  // Build metadata for activity log
-  const buildOrderMetadata = (order: QueuedOrder): ActivityLogMetadata => {
-    const relatedProducts: Array<{ product: string; quantity: number; type: string }> = [];
-    
-    for (const [product, qty] of order.aggregates.eggsByProduct) {
-      relatedProducts.push({ product, quantity: qty, type: 'egg' });
-    }
-    for (const [item, qty] of order.aggregates.packagingByItem) {
-      relatedProducts.push({ product: item, quantity: qty, type: 'packaging' });
-    }
-    for (const [item, qty] of order.aggregates.labelsByItem) {
-      relatedProducts.push({ product: item, quantity: qty, type: 'label' });
-    }
-    for (const [type, qty] of order.aggregates.boxesByType) {
-      relatedProducts.push({ product: type, quantity: qty, type: 'box' });
-    }
-
-    // Get first SKU for reference
-    const packLine = order.lines.find(l => l.lineType === 'pack' && l.skuCode);
-
-    // Build order lines (what customer actually ordered)
-    const orderLines = order.lines
-      .filter(l => (l.lineType === 'pack' && l.skuCode) || (l.lineType === 'loose' && l.eggProduct))
-      .map(l => ({
-        skuCode: l.skuCode,
-        packQty: l.packQty,
-        eggProduct: l.eggProduct,
-        looseQty: l.looseQty,
-      }));
-    
-    return {
-      orderType: 'quick_outflow',
-      buyerName: order.buyer.name,
-      invoiceRef: order.invoiceRef || undefined,
-      skuCode: packLine?.skuCode,
-      packQty: packLine?.packQty,
-      dcId: order.dcId,
-      dcName: order.dcName,
-      outflowDate: order.date,
-      orderLines,
-      relatedProducts,
-    };
-  };
+  // Order -> shared payload input (entries + metadata come from lib/orderPayload,
+  // which the "Edit order" correction uses too).
+  const toPayloadInput = (order: QueuedOrder): OrderPayloadInput => ({
+    buyerName: order.buyer.name,
+    invoiceRef: order.invoiceRef,
+    date: order.date,
+    dcId: order.dcId,
+    dcName: order.dcName,
+    lines: order.lines,
+    aggregates: order.aggregates,
+  });
+  const buildOrderMetadata = (order: QueuedOrder): ActivityLogMetadata => buildPayloadMetadata(toPayloadInput(order));
 
   const doSubmit = async (ordersToSubmit: QueuedOrder[]) => {
     setSubmitting(true);
@@ -365,55 +335,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       let totalEntries = 0;
 
       for (const order of ordersToSubmit) {
-        const entries: OutflowEntry[] = [];
-
-        for (const [product, quantity] of order.aggregates.eggsByProduct) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "egg",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
-
-        for (const [item, quantity] of order.aggregates.packagingByItem) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product: item,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "packaging",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
-
-        for (const [item, quantity] of order.aggregates.labelsByItem) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product: item,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "label",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
-
-        for (const [boxType, quantity] of order.aggregates.boxesByType) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product: boxType,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "box",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
+        const entries: OutflowEntry[] = buildOrderEntries(toPayloadInput(order), timestamp);
 
         const metadata = buildOrderMetadata(order);
         let success = false;

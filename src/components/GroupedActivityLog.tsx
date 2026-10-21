@@ -18,8 +18,11 @@ import { format, parseISO } from "date-fns";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { useVoidEntry } from "@/hooks/useVoidEntry";
+import { useAuth } from "@/hooks/useAuth";
 import { VoidEntryDialog } from "./VoidEntryDialog";
 import { RecordReturnDialog } from "./RecordReturnDialog";
+import { EditOrderDialog, type EditTarget } from "./EditOrderDialog";
+import { canCorrect, editMinutesLeft } from "@/lib/orderCorrection";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ChevronDown,
@@ -38,6 +41,7 @@ import {
   Undo2,
   Inbox,
   MapPin,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { orderBucketKey, returnCode } from "@/lib/activityGrouping";
@@ -76,6 +80,8 @@ export interface BuyerOrder {
   invoiceRef?: string;
   dcName?: string;
   isSynced: boolean;
+  // Any row was created by an edit (original_log_id set) -> "Edited" badge.
+  edited?: boolean;
   logs: ActivityLog[];
 }
 
@@ -104,7 +110,8 @@ export interface ReturnRequest {
 // the tablet split view so both behave identically.
 export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
   const { t } = useLanguage();
-  const { canEdit, getEditWindowHours, voidOutflow, voidInflow, findRelatedEntryId } = useVoidEntry();
+  const { canEdit, getEditWindowHours, voidOutflow, voidInflow, findRelatedEntryId, isAdmin } = useVoidEntry();
+  const { user } = useAuth();
 
   // Bumped after a return is recorded so the bubbles refetch immediately (the
   // outflow-id set doesn't change, so usePriorReturns needs this nudge).
@@ -137,6 +144,25 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
   // AlertDialog before the reason step.
   const [confirmVoidOrderOpen, setConfirmVoidOrderOpen] = useState(false);
   const [pendingVoidOrderLogs, setPendingVoidOrderLogs] = useState<ActivityLog[]>([]);
+
+  // Edit-order dialog (1h correction window).
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+
+  // Re-render every 30s while any outflow is still inside the edit window, so
+  // Edit buttons disappear when their hour runs out. The tick only triggers a
+  // render; the window itself is always checked against the real clock.
+  const [tick, setTick] = useState(0);
+  const hasEditableAge = useMemo(
+    () => logs.some((l) => l.action_type === "outflow" && !l.voided_at && editMinutesLeft(l.created_at) > 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick re-checks the clock
+    [logs, tick]
+  );
+  useEffect(() => {
+    if (!hasEditableAge) return;
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [hasEditableAge]);
 
   // At-a-glance summary of the currently displayed activity.
   const summary = useMemo(() => {
@@ -214,6 +240,7 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
             invoiceRef: log.metadata.invoiceRef,
             dcName: log.metadata.dcName,
             isSynced: log.isSynced ?? true,
+            edited: !!log.original_log_id,
             logs: [log],
           });
         } else {
@@ -222,6 +249,7 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
           if (!log.isSynced) {
             existing.isSynced = false;
           }
+          if (log.original_log_id) existing.edited = true;
         }
       } else {
         // Manual outflow
@@ -312,6 +340,53 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
     return canEdit(log.created_at, log.user_id) && !log.voided_at;
   };
 
+  // The rows an edit replaces, and the earliest of them: the server checks
+  // every row against the 1h window, so the oldest decides it.
+  const editRows = (target: EditTarget) => (target.kind === "quick" ? target.order.logs : [target.log]);
+  const oldestRow = (rows: ActivityLog[]) =>
+    rows.reduce((a, b) => (new Date(b.created_at) < new Date(a.created_at) ? b : a), rows[0]);
+
+  // Mirrors public.correct_order's checks: owner or admin, inside the window,
+  // every row live (any voided row -> ALREADY_CHANGED) and synced, no returns.
+  const canEditOrder = (target: EditTarget): boolean => {
+    const rows = editRows(target);
+    const first = oldestRow(rows);
+    if (!first) return false;
+    // The card must hold exactly one whole order (one row per material, each
+    // product once): a search hides some rows, and identical orders entered
+    // together merge into one card. Editing either would void the wrong set.
+    if (
+      target.kind === "quick" &&
+      (rows.length !== target.order.materials.length || new Set(rows.map((l) => l.product)).size !== rows.length)
+    ) {
+      return false;
+    }
+    return canCorrect({
+      createdAt: first.created_at,
+      entryUserId: first.user_id,
+      currentUserId: user?.id,
+      isAdmin: !!isAdmin,
+      voided: rows.some((l) => l.voided_at),
+      synced: rows.every((l) => l.isSynced !== false),
+      hasReturns: rows.some(
+        (l) =>
+          l.category === "egg" &&
+          l.action_type === "outflow" &&
+          (returnsMap[l.metadata?.relatedEntryId ?? ""]?.total ?? 0) > 0
+      ),
+    });
+  };
+
+  const editMinutes = (target: EditTarget): number => {
+    const first = oldestRow(editRows(target));
+    return first ? editMinutesLeft(first.created_at) : 0;
+  };
+
+  const handleEditOrderClick = (target: EditTarget) => {
+    setEditTarget(target);
+    setEditOpen(true);
+  };
+
   // Shared dialogs rendered once for the whole feed.
   const dialogs = (
     <>
@@ -329,6 +404,15 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
         onConfirm={handleVoidOrderConfirm}
         loading={voidLoading}
         orderLogsCount={voidOrderLogs.length}
+      />
+      <EditOrderDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        target={editTarget}
+        onSaved={() => {
+          setReturnsRefresh((n) => n + 1);
+          onVoided?.();
+        }}
       />
       <RecordReturnDialog
         open={returnDialogOpen}
@@ -375,9 +459,15 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
     handleEditClick,
     handleReturnClick,
     handleVoidOrderClick,
+    canEditOrder,
+    editMinutes,
+    handleEditOrderClick,
     dialogs,
   };
 }
+
+// The edit hooks the phone cards need, handed down as one prop.
+type OrderEdit = Pick<ReturnType<typeof useActivityFeed>, "canEditOrder" | "editMinutes" | "handleEditOrderClick">;
 
 export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", loading = false, hasActiveFilters = false, onVoided }: GroupedActivityLogProps) {
   const {
@@ -389,8 +479,12 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
     handleEditClick,
     handleReturnClick,
     handleVoidOrderClick,
+    canEditOrder,
+    editMinutes,
+    handleEditOrderClick,
     dialogs,
   } = useActivityFeed(logs, onVoided);
+  const edit: OrderEdit = { canEditOrder, editMinutes, handleEditOrderClick };
 
   // Entrance animation should play on the FIRST mount only — not on every
   // refetch/void, which would re-shimmer the whole feed.
@@ -456,6 +550,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
             onVoidOrderClick={handleVoidOrderClick}
             onReturnClick={handleReturnClick}
             returnsMap={returnsMap}
+            edit={edit}
           />
         ))}
       </div>
@@ -669,9 +764,10 @@ interface DateSectionProps {
   onVoidOrderClick: (logs: ActivityLog[]) => void;
   onReturnClick: (req: ReturnRequest) => void;
   returnsMap: Record<string, OutflowReturns>;
+  edit: OrderEdit;
 }
 
-function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: DateSectionProps) {
+function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap, edit }: DateSectionProps) {
   const { t } = useLanguage();
   const hasQuickOutflows = group.quickOutflows.size > 0;
   const hasManualOutflows = group.manualOutflows.length > 0;
@@ -714,6 +810,7 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
                     onVoidOrderClick={onVoidOrderClick}
                     onReturnClick={onReturnClick}
                     returnsMap={returnsMap}
+                    edit={edit}
                   />
                 </TimelineRow>
               ))}
@@ -735,6 +832,7 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
                     getEditWindowHours={getEditWindowHours}
                     onReturnClick={onReturnClick}
                     returnsMap={returnsMap}
+                    edit={edit}
                   />
                 </TimelineRow>
               ))}
@@ -974,6 +1072,35 @@ export function useOrderReturns(order: BuyerOrder, returnsMap: Record<string, Ou
   return { eggLogs, returnsByProduct, skuToEgg, skuReturns };
 }
 
+// Phone: outline "Edit order" / "Edit entry" button. Callers render it only
+// when canEditOrder (inside the 1h correction window).
+function EditOrderButton({ target, edit, label }: { target: EditTarget; edit: OrderEdit; label: string }) {
+  const { t } = useLanguage();
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="h-11 gap-1.5"
+      title={t.activity.editMinutesLeft.replace("{minutes}", String(edit.editMinutes(target)))}
+      onClick={() => edit.handleEditOrderClick(target)}
+    >
+      <Pencil className="h-4 w-4" />
+      {label}
+    </Button>
+  );
+}
+
+// Small "Edited" tag for rows an edit created (original_log_id set).
+function EditedBadge() {
+  const { t } = useLanguage();
+  return (
+    <Badge variant="outline" className="text-[11px] gap-1 font-normal shrink-0">
+      <Pencil className="h-3 w-3" />
+      {t.activity.edited}
+    </Badge>
+  );
+}
+
 interface BuyerOrderCardProps {
   order: BuyerOrder;
   isEditable: (log: ActivityLog) => boolean;
@@ -981,18 +1108,21 @@ interface BuyerOrderCardProps {
   onVoidOrderClick: (logs: ActivityLog[]) => void;
   onReturnClick: (req: ReturnRequest) => void;
   returnsMap: Record<string, OutflowReturns>;
+  edit: OrderEdit;
 }
 
-function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: BuyerOrderCardProps) {
+function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap, edit }: BuyerOrderCardProps) {
   const { t } = useLanguage();
   const unitLabel = useStockUnitLabel();
   const [expanded, setExpanded] = useState(false);
   const formattedTime = format(parseISO(order.timestamp), "HH:mm");
 
   const firstLog = order.logs[0];
-  const canEditOrder = firstLog && isEditable(firstLog);
+  const canVoidOrder = firstLog && isEditable(firstLog);
   const hoursRemaining = firstLog ? getEditWindowHours(firstLog.created_at) : 0;
   const isVoided = firstLog?.voided_at != null;
+  const editTarget: EditTarget = { kind: "quick", order };
+  const canEditOrder = edit.canEditOrder(editTarget);
 
   const { eggLogs, returnsByProduct, skuToEgg, skuReturns } = useOrderReturns(order, returnsMap);
   const canReturn = !isVoided && eggLogs.length > 0;
@@ -1018,8 +1148,9 @@ function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClic
               {order.buyerName}
             </span>
           </div>
-          {(order.invoiceRef || order.dcName || outflowDateFormatted) && (
+          {(order.invoiceRef || order.dcName || outflowDateFormatted || order.edited) && (
             <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+              {order.edited && <EditedBadge />}
               {order.invoiceRef && (
                 <Badge variant="outline" className="text-[11px] gap-1 font-normal">
                   <FileText className="h-3 w-3" />
@@ -1086,7 +1217,7 @@ function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClic
 
       {/* Action row: quiet, right-aligned. Return is a secondary outline button
           (not a full-width solid) so it doesn't compete with the feed's hierarchy. */}
-      {!isVoided && (canReturn || canEditOrder) && (
+      {!isVoided && (canReturn || canEditOrder || canVoidOrder) && (
         <div className="flex flex-wrap items-center justify-end gap-1 pt-1">
           {canReturn && (
             <Button
@@ -1099,9 +1230,10 @@ function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClic
               {t.activity.recordReturn}
             </Button>
           )}
+          {canEditOrder && <EditOrderButton target={editTarget} edit={edit} label={t.activity.editOrder} />}
           {/* One void action per order (any number of materials); the old pencil
               opened the same void-with-reason flow for just one row. */}
-          {canEditOrder && (
+          {canVoidOrder && (
             <Button
               variant="ghost"
               size="sm"
@@ -1164,7 +1296,15 @@ interface ReturnableEntryProps extends EntryProps {
   returnsMap: Record<string, OutflowReturns>;
 }
 
-function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, onReturnClick, returnsMap }: ReturnableEntryProps) {
+function ManualOutflowEntry({
+  log,
+  onEditClick,
+  isEditable,
+  getEditWindowHours,
+  onReturnClick,
+  returnsMap,
+  edit,
+}: ReturnableEntryProps & { edit: OrderEdit }) {
   const { t } = useLanguage();
   const unitLabel = useStockUnitLabel();
   const formattedTime = format(parseISO(log.recorded_at), "HH:mm");
@@ -1172,6 +1312,8 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
   const hoursRemaining = getEditWindowHours(log.created_at);
   const isVoided = log.voided_at != null;
   const canReturn = !isVoided && log.category === "egg" && log.action_type === "outflow";
+  const editTarget: EditTarget = { kind: "manual", log };
+  const canCorrectEntry = edit.canEditOrder(editTarget);
 
   return (
     <EntryCard tone="outflow" isSynced={log.isSynced} isVoided={isVoided}>
@@ -1185,6 +1327,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           <Badge variant="outline" className="text-xs shrink-0">
             {CATEGORY_LABELS[log.category]}
           </Badge>
+          {log.original_log_id && <EditedBadge />}
           <span className={cn("font-semibold", isVoided && "line-through")}>{log.product}</span>
           <span className="text-muted-foreground">·</span>
           <DeliveredLine
@@ -1203,7 +1346,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
         </div>
       )}
 
-      {!isVoided && (canReturn || canEditEntry) && (
+      {!isVoided && (canReturn || canCorrectEntry || canEditEntry) && (
         <div className="flex flex-wrap items-center justify-end gap-1 pt-2.5">
           {canReturn && (
             <Button
@@ -1216,6 +1359,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
               {t.activity.recordReturn}
             </Button>
           )}
+          {canCorrectEntry && <EditOrderButton target={editTarget} edit={edit} label={t.activity.editCash} />}
           {canEditEntry && (
             <Button
               variant="ghost"
@@ -1378,6 +1522,7 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
               {log.metadata.dcName}
             </Badge>
           )}
+          {log.original_log_id && <EditedBadge />}
         </div>
 
         <TimeSync isSynced={log.isSynced} />

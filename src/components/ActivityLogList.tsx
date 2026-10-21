@@ -59,6 +59,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { GroupedActivityLog } from "./GroupedActivityLog";
 import { ActivitySplitView } from "./ActivitySplitView";
 import { matchesType, presetOf, presetRange, todayStats, type DatePreset, countEntries } from "@/lib/activityFilters";
+import { isSuperseded } from "@/lib/orderCorrection";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { useItemTypes } from "@/hooks/useItemTypes";
@@ -181,9 +182,15 @@ export function ActivityLogList({
       return true;
     });
   }, [logs, typeFilter, buyerFilter, supplierFilter, skuFilter, dateRange]);
+  // The "of M" universe: originals an edit replaced are hidden everywhere but
+  // the Voided tab, so they only count there (keeps N <= M).
+  const totalLogs = useMemo(
+    () => (typeFilter === "voided" ? logs : logs.filter((l) => !isSuperseded(l))),
+    [logs, typeFilter]
+  );
   // Feed rows shown (an order's material rows count once), for the tablet strip.
   const shownEntries = useMemo(() => countEntries(filteredLogs), [filteredLogs]);
-  const totalEntries = useMemo(() => countEntries(logs), [logs]);
+  const totalEntries = useMemo(() => countEntries(totalLogs), [totalLogs]);
 
   const hasActiveFilters = typeFilter !== "all" || buyerFilter !== "all" ||
     supplierFilter !== "all" || skuFilter.trim() !== "" || dateRange?.from || dateRange?.to;
@@ -866,7 +873,7 @@ export function ActivityLogList({
           {hasActiveFilters && (
             <div className="mt-3 pt-3 border-t border-border/50">
               <p className="text-sm text-muted-foreground">
-                Showing <span className="font-medium text-foreground">{filteredLogs.length}</span> of {logs.length} entries
+                Showing <span className="font-medium text-foreground">{filteredLogs.length}</span> of {totalLogs.length} entries
               </p>
             </div>
           )}

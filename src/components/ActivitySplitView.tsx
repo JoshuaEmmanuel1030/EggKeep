@@ -1,6 +1,6 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { format, isThisYear, isToday, isYesterday, parseISO } from "date-fns";
-import { Cloud, CloudOff, Egg, FileText, MapPin, Package, Square, Store, Undo2, type LucideIcon } from "lucide-react";
+import { Cloud, CloudOff, Egg, FileText, MapPin, Package, Pencil, Square, Store, Undo2, type LucideIcon } from "lucide-react";
 import { ActivityLog } from "@/types/activityLog";
 import { CATEGORY_LABELS } from "@/types/inventory";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -19,6 +19,7 @@ import {
   useOrderReturns,
   useStockUnitLabel,
 } from "./GroupedActivityLog";
+import type { EditTarget } from "./EditOrderDialog";
 
 export interface ActivitySplitViewProps {
   // Already-filtered logs to show.
@@ -91,7 +92,14 @@ export function ActivitySplitView({
   const visible = days.flatMap((d) => d.sections.flatMap((s) => s.entries));
   // A filtered-out selection falls back to the first visible entry, and the
   // fallback is stored so clearing the filter doesn't jump back to the old one.
-  const selected = visible.find((e) => e.id === selectedId) ?? visible[0];
+  // An edited entry is replaced by new rows (new id): follow it via original_log_id.
+  const selectedLogIds = useRef<string[]>([]);
+  const logsOf = (e: Entry) => e.order?.logs ?? [e.log];
+  const selected =
+    visible.find((e) => e.id === selectedId) ??
+    visible.find((e) => logsOf(e).some((l) => l.original_log_id && selectedLogIds.current.includes(l.original_log_id))) ??
+    visible[0];
+  if (selected) selectedLogIds.current = logsOf(selected).map((l) => l.id);
   if (selected && selected.id !== selectedId) setSelectedId(selected.id);
 
   const sectionLabel: Record<EntryKind, string> = {
@@ -186,6 +194,9 @@ function VoidedPill({ className }: { className?: string }) {
 }
 
 const isSynced = (e: Entry) => (e.order ? e.order.isSynced : e.log.isSynced !== false);
+// Created by an edit (original_log_id) -> "Edited" tag.
+const isEdited = (e: Entry) => (e.order ? !!e.order.edited : !!e.log.original_log_id);
+const TAG = "shrink-0 whitespace-nowrap rounded-md bg-ek-muted px-[7px] py-0.5 text-xs font-semibold text-ek-mfg";
 
 function FeedRow({
   entry,
@@ -260,6 +271,7 @@ function FeedRow({
               {order.invoiceRef}
             </span>
           )}
+          {isEdited(entry) && <span className={TAG}>{t.activity.edited}</span>}
         </span>
         <span className={cn("truncate text-[14.5px] text-ek-mfg", kind === "inflow" && "font-semibold text-emerald-700")}>
           {summary}
@@ -305,7 +317,14 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
 
   const eggLogs = eggLogsOf(entry);
   const canReturn = !voided && eggLogs.length > 0; // never true for inflows
-  const canEdit = feed.isEditable(log);
+  const canVoid = feed.isEditable(log);
+  // Purchase Orders and Cash entries can be edited (1h window); inflows can't.
+  const editTarget: EditTarget | null = order
+    ? { kind: "quick", order }
+    : kind === "manual"
+      ? { kind: "manual", log }
+      : null;
+  const canEditOrder = !!editTarget && feed.canEditOrder(editTarget);
   const businessDate = kind === "inflow" ? log.metadata?.inflowDate : log.metadata?.outflowDate;
 
   return (
@@ -314,6 +333,7 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
         <div className={cn("flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.07em]", kindColor(kind))}>
           {kind === "quick" && <Store aria-hidden className="h-[18px] w-[18px]" />}
           {kind === "quick" ? t.activity.quickOutflow : kind === "manual" ? t.activity.kastun : t.activity.statInflow}
+          {isEdited(entry) && <span className={cn(TAG, "ml-1 normal-case tracking-normal")}>{t.activity.edited}</span>}
         </div>
         <h2 className="mb-2.5 mt-1.5 flex items-center gap-3 font-display text-[30px] font-semibold tracking-[-0.02em] text-ek-fg">
           <span className={cn("min-w-0 break-words", voided && "text-ek-mfg line-through")}>
@@ -392,10 +412,10 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
         )}
       </div>
 
-      {/* At 1024px the panel is 376px wide: the text buttons shrink (labels
-          truncate), so nothing runs off-screen. */}
-      {!voided && (canReturn || canEdit) && (
-        <div className="flex items-center gap-2.5 border-t border-ek-border bg-card px-7 py-3.5">
+      {/* At 1024px the panel is 376px wide: three full-label buttons don't fit
+          on one line, so the bar wraps instead of truncating them. */}
+      {!voided && (canReturn || canEditOrder || canVoid) && (
+        <div className="flex flex-wrap items-center gap-2.5 border-t border-ek-border bg-card px-7 py-3.5">
           {canReturn && (
             <Button
               className="h-12 min-w-0 gap-2 rounded-[11px] bg-ek-fg px-[18px] text-[15px] font-semibold text-white hover:bg-ek-fg/90 [&_svg]:size-[18px]"
@@ -409,9 +429,20 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
               <span className="truncate">{t.activity.recordReturn}</span>
             </Button>
           )}
+          {canEditOrder && (
+            <Button
+              variant="outline"
+              className="h-12 min-w-0 gap-2 rounded-[11px] border-ek-border bg-card px-[18px] text-[15px] font-semibold text-ek-fg hover:bg-ek-muted hover:text-ek-fg [&_svg]:size-[18px]"
+              title={t.activity.editMinutesLeft.replace("{minutes}", String(feed.editMinutes(editTarget)))}
+              onClick={() => feed.handleEditOrderClick(editTarget)}
+            >
+              <Pencil />
+              <span className="truncate">{order ? t.activity.editOrder : t.activity.editCash}</span>
+            </Button>
+          )}
           {/* One void action: the whole order for Purchase Orders, the entry for
               Cash / Inflow. Same 48h rule as before (no separate pencil). */}
-          {canEdit && (
+          {canVoid && (
             <Button
               variant="ghost"
               className="ml-auto h-12 min-w-0 rounded-[11px] px-[18px] text-[15px] font-semibold text-red-600 hover:bg-red-50 hover:text-red-700"

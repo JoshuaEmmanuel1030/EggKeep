@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { AppSidebar, SidebarKey } from "@/components/AppSidebar";
 import { useIsTabletLandscape } from "@/hooks/use-mobile";
+import { toOutflowLogPayloads } from "@/lib/orderPayload";
 import { InflowForm } from "@/components/InflowForm";
 import { OutflowPage } from "@/components/OutflowPage";
 import { InventoryDashboard } from "@/components/InventoryDashboard";
@@ -100,16 +101,7 @@ const Index = () => {
       // all go through together or none of them do.
       const result = await submitOrderOutflows(entries);
 
-      const logPayloads = entries.map((entry) => ({
-        action_type: 'outflow' as const,
-        product: entry.product,
-        quantity_butir: entry.quantityInButir,
-        recorded_at: new Date().toISOString(),
-        category: entry.category,
-        invoice_supplier: entry.invoiceSupplier,
-        user_email: userEmail,
-        metadata: { ...metadata, relatedEntryId: entry.id },
-      }));
+      const logPayloads = toOutflowLogPayloads(entries, userEmail, metadata, new Date().toISOString());
 
       if (!result.ok) {
         if (result.kind === "network") {
