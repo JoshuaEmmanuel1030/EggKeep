@@ -358,7 +358,7 @@ export function ActivityLogList({
 
         {/* Tools row */}
         <div className="relative z-10 flex shrink-0 items-center gap-2.5 border-b border-ek-border bg-card px-6 py-3">
-          <div className="relative flex min-w-[200px] flex-1 items-center">
+          <div className="relative flex min-w-[160px] flex-1 items-center">
             <Search className="pointer-events-none absolute left-3.5 h-[18px] w-[18px] text-ek-mfg" />
             <Input
               value={skuFilter}

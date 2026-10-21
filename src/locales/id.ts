@@ -202,10 +202,10 @@ export const id = {
 
   // Outflow
   outflow: {
-    title: 'Catat Pesanan',
-    quickBuilder: 'Pembuat Pesanan Cepat',
+    title: 'Catat Kas Tunai',
+    quickBuilder: 'Pembuat Purchase Order',
     manualEntry: 'Entri Manual',
-    manualToggle: 'Pesanan Manual (Lama / Lanjutan)',
+    manualToggle: 'Kas Tunai',
     buyer: 'Pembeli',
     selectBuyer: 'Pilih pembeli...',
     searchBuyer: 'Cari pembeli...',
@@ -248,7 +248,7 @@ export const id = {
     removeFromInventory: 'Hapus dari Inventaris',
     stockRemoved: 'Stok Dihapus',
     itemsRemovedFromInventory: 'item dihapus dari inventaris',
-    outflowNotSaved: 'Pesanan tidak tersimpan. Silakan coba lagi.',
+    outflowNotSaved: 'Kas Tunai tidak tersimpan. Silakan coba lagi.',
     selectCategories: 'Pilih Kategori',
     orderRecorded: 'Pesanan Tercatat',
     orderRecordedDesc: 'item dihapus dari inventaris untuk',
@@ -297,8 +297,8 @@ export const id = {
     groupedView: 'Dikelompokkan',
     chronologicalView: 'Kronologis',
     // Section headers
-    quickOutflows: 'Outflow Cepat',
-    kastun: 'Kastun',
+    quickOutflows: 'Purchase Order',
+    kastun: 'Kas Tunai',
     inflows: 'Instock',
     // Filters
     filterByType: 'Filter Berdasarkan Jenis',
@@ -340,7 +340,7 @@ export const id = {
     todayInflows: 'Instock',
     todayPending: 'Menunggu sinkron',
     // Tablet layout (docs/handoff/activities)
-    orders: 'Pesanan',
+    orders: 'Purchase Order',
     searchActivity: 'Cari pembeli, produk, SKU',
     showEntries: 'Tampilkan {n} entri',
     showingOf: 'Menampilkan {n} dari {total} entri',
@@ -364,7 +364,7 @@ export const id = {
     exportActivityLogHint: 'CSV dari entri yang ditampilkan',
     exportSkuBom: 'BOM SKU',
     exportSkuBomHint: 'Bahan per SKU untuk outflow yang ditampilkan',
-    quickOutflow: 'Outflow cepat',
+    quickOutflow: 'Purchase order',
     waitingToSync: 'Menunggu sinkron',
     outflowOn: 'Keluar {date}',
     invoiceLabel: 'Faktur: {ref}',

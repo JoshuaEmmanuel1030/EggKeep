@@ -202,10 +202,10 @@ export const en = {
 
   // Outflow
   outflow: {
-    title: 'Record Order',
-    quickBuilder: 'Quick Order Builder',
+    title: 'Record Cash',
+    quickBuilder: 'Purchase Order Builder',
     manualEntry: 'Manual Entry',
-    manualToggle: 'Manual Order (Legacy / Advanced)',
+    manualToggle: 'Cash',
     buyer: 'Buyer',
     selectBuyer: 'Select buyer...',
     searchBuyer: 'Search buyer...',
@@ -248,7 +248,7 @@ export const en = {
     removeFromInventory: 'Remove from Inventory',
     stockRemoved: 'Stock Removed',
     itemsRemovedFromInventory: 'item(s) removed from inventory',
-    outflowNotSaved: 'Order not saved. Please try again.',
+    outflowNotSaved: 'Cash entry not saved. Please try again.',
     selectCategories: 'Select Categories',
     orderRecorded: 'Order Recorded',
     orderRecordedDesc: 'item(s) removed from inventory for',
@@ -297,8 +297,8 @@ export const en = {
     groupedView: 'Grouped',
     chronologicalView: 'Chronological',
     // Section headers
-    quickOutflows: 'Quick Outflows',
-    kastun: 'Kastun',
+    quickOutflows: 'Purchase Orders',
+    kastun: 'Cash',
     inflows: 'Inflows',
     // Filters
     filterByType: 'Filter by Type',
@@ -340,7 +340,7 @@ export const en = {
     todayInflows: 'Inflows',
     todayPending: 'Pending sync',
     // Tablet layout (docs/handoff/activities)
-    orders: 'Orders',
+    orders: 'Purchase Orders',
     searchActivity: 'Search buyer, product, SKU',
     showEntries: 'Show {n} entries',
     showingOf: 'Showing {n} of {total} entries',
@@ -364,7 +364,7 @@ export const en = {
     exportActivityLogHint: 'CSV of the entries shown',
     exportSkuBom: 'SKU BOM',
     exportSkuBomHint: 'Per-SKU materials for outflows shown',
-    quickOutflow: 'Quick outflow',
+    quickOutflow: 'Purchase order',
     waitingToSync: 'Waiting to sync',
     outflowOn: 'Outflow {date}',
     invoiceLabel: 'Invoice: {ref}',

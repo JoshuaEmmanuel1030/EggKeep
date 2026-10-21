@@ -691,7 +691,7 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
           {hasQuickOutflows && (
             <div className="space-y-2.5">
               <SectionLabel icon={<ShoppingCart className="h-3.5 w-3.5" />} tone="quick">
-                {t.activity.quickOutflows || "Quick Outflows"}
+                {t.activity.quickOutflows}
               </SectionLabel>
               {Array.from(group.quickOutflows.values()).map((order, idx) => (
                 <TimelineRow key={idx} index={rowIndex++} tone="quick" animate={animate}>
@@ -1331,11 +1331,11 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
             className={cn("text-xs shrink-0", isInflow && "border-emerald-600/60 text-emerald-700 dark:text-emerald-400")}
           >
             {isInflow ? (
-              <><PackagePlus className="h-3 w-3 mr-1" />Inflow</>
+              <><PackagePlus className="h-3 w-3 mr-1" /><span className="capitalize">{t.activity.statInflow}</span></>
             ) : isQuickOutflow ? (
-              <><ShoppingCart className="h-3 w-3 mr-1" />Quick</>
+              <><ShoppingCart className="h-3 w-3 mr-1" />{t.activity.quickOutflow}</>
             ) : (
-              <><PackageMinus className="h-3 w-3 mr-1" />Outflow</>
+              <><PackageMinus className="h-3 w-3 mr-1" />{t.activity.kastun}</>
             )}
           </Badge>
 
