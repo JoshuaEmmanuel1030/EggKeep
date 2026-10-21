@@ -67,6 +67,19 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Tablet handoff palette (docs/handoff/activities). Literal values: the
+        // theme's bg/muted/border are close but not exact matches.
+        ek: {
+          bg: "#f7f4ee",
+          muted: "#f2efe9",
+          border: "#ebe4d8",
+          fg: "#2a2622",
+          mfg: "#7a6f63",
+          nav: "#5c534a",
+          accent: "#fdf0dc",
+          selected: "#fdf3e1",
+          strip: "#fffaf1",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",

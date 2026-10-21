@@ -58,3 +58,15 @@ export function returnCode(r: ReturnsSummary): string {
   if (r.writeoff > 0) parts.push(`${r.writeoff.toLocaleString()}H`);
   return parts.join(" ");
 }
+
+// Which feed section / type tab an entry belongs to. Mirrors the grouping in
+// GroupedActivityLog: a quick outflow needs a buyer, every other outflow is
+// Kastun (manual).
+export type EntryKind = "quick" | "manual" | "inflow";
+export function entryKind(log: {
+  action_type: "inflow" | "outflow";
+  metadata?: { orderType?: string; buyerName?: string };
+}): EntryKind {
+  if (log.action_type === "inflow") return "inflow";
+  return log.metadata?.orderType === "quick_outflow" && log.metadata?.buyerName ? "quick" : "manual";
+}

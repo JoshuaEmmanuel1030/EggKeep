@@ -1,5 +1,8 @@
 import { useState, useCallback, useMemo } from "react";
+import { useLocation } from "react-router-dom";
 import { Header } from "@/components/Header";
+import { AppSidebar, SidebarKey } from "@/components/AppSidebar";
+import { useIsTabletLandscape } from "@/hooks/use-mobile";
 import { InflowForm } from "@/components/InflowForm";
 import { OutflowPage } from "@/components/OutflowPage";
 import { InventoryDashboard } from "@/components/InventoryDashboard";
@@ -30,6 +33,8 @@ import { InfosPage } from "@/components/InfosPage";
 import { InventoryAssistant } from "@/components/InventoryAssistant";
 import { Badge } from "@/components/ui/badge";
 
+const TABS = ["dashboard", "inflow", "outflow", "infos", "activity", "catalog", "users"];
+
 const Index = () => {
   const { inflows, outflows, loading, addMultipleInflows, submitOrderOutflows, refetch: refetchInventory } = useInventorySync();
   const { logs, loading: logsLoading, pendingCount, isOnline, refetch: refetchLogs } = useActivityLogs();
@@ -37,7 +42,14 @@ const Index = () => {
   const { isAdmin } = useUserRole();
   const { itemTypes, conversionMap } = useItemTypes();
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const isTablet = useIsTabletLandscape();
+  // The tablet sidebar on other routes (e.g. /stock-count) deep-links back via
+  // navigate("/", { state: { tab } }).
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = (location.state as { tab?: unknown } | null)?.tab;
+    return typeof tab === "string" && TABS.includes(tab) ? tab : "dashboard";
+  });
 
   // Offline outbox for outflow orders: refetch inventory + logs after a queued
   // order is replayed successfully so this device shows the DB-computed stock.
@@ -152,127 +164,171 @@ const Index = () => {
     [inflows, conversionMap, freshnessDaysByProduct]
   );
 
-  return (
-    <div className="min-h-screen bg-background">
-      <Header onExport={handleExport} />
+  // Shared by both layouts. Mobile keeps its "m-0" panes; on tablet each pane
+  // scrolls on its own and Activities fills the height with its split view.
+  const pane = isTablet ? "m-0 min-h-0 flex-1 overflow-y-auto px-6 py-6" : "m-0";
+  // Tablet has no TabsList, so drop Radix's tabpanel role, its aria-labelledby
+  // (pointing at a trigger that isn't rendered) and the extra tab stop.
+  const paneA11y = isTablet ? { role: undefined, "aria-labelledby": undefined, tabIndex: undefined } : undefined;
 
-      <main className="container py-6 px-4 sm:px-6">
-        <OutflowOutboxBanner
-          orders={outboxOrders}
-          onDiscard={discardOutboxOrder}
-          onRetry={retryOutboxOrder}
+  const tabContents = (
+    <>
+      <TabsContent value="dashboard" className={pane} {...paneA11y}>
+        <InventoryDashboard
+          stockSummary={stockSummary}
+          inflows={inflows}
+          outflows={outflows}
+          freshnessDaysByProduct={freshnessDaysByProduct}
+          loading={loading}
         />
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full h-auto sm:h-12 p-1 gap-1 ${isAdmin ? 'grid-cols-4 sm:grid-cols-7' : 'grid-cols-3 sm:grid-cols-6'}`}>
-            <TabsTrigger value="dashboard" title={t.nav.dashboard} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
-              <LayoutDashboard className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline truncate">{t.nav.dashboard}</span>
-            </TabsTrigger>
-            <TabsTrigger value="inflow" title={t.nav.inflow} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
-              <PackagePlus className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline truncate">{t.nav.inflow}</span>
-            </TabsTrigger>
-            <TabsTrigger value="outflow" title={t.nav.outflow} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
-              <PackageMinus className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline truncate">{t.nav.outflow}</span>
-            </TabsTrigger>
-            <TabsTrigger value="infos" title={t.nav.infos} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
-              <BarChart2 className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline truncate">{t.nav.infos}</span>
-            </TabsTrigger>
-            <TabsTrigger value="activity" title={t.nav.activity} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm relative">
-              <History className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline truncate">{t.nav.activity}</span>
-              {pendingCount > 0 && (
-                <Badge 
-                  variant="destructive" 
-                  className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 p-0 flex items-center justify-center text-[8px] sm:text-[10px]"
-                >
-                  {pendingCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="catalog" title={t.nav.catalog} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
-              <Library className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline truncate">{t.nav.catalog}</span>
-            </TabsTrigger>
-            {isAdmin && (
-              <TabsTrigger value="users" title={t.admin?.users || 'Users'} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
-                <Users className="h-4 w-4 shrink-0" />
-                <span className="hidden xs:inline truncate">{t.admin?.users || 'Users'}</span>
+      </TabsContent>
+
+      <TabsContent value="inflow" className={pane} {...paneA11y}>
+        <div className="max-w-2xl mx-auto">
+          <InflowForm onSubmit={handleInflowSubmit} />
+        </div>
+      </TabsContent>
+
+      <TabsContent value="outflow" className={pane} {...paneA11y}>
+        <div className="max-w-4xl mx-auto">
+          <OutflowPage
+            stockSummary={stockSummary}
+            inflows={inflows}
+            onSubmit={handleOutflowSubmit}
+          />
+        </div>
+      </TabsContent>
+
+      <TabsContent value="infos" className={pane} {...paneA11y}>
+        <div className="max-w-4xl mx-auto">
+          <InfosPage
+            stockSummary={stockSummary}
+            inflows={inflows}
+            outflows={outflows}
+          />
+        </div>
+      </TabsContent>
+
+      {/* data-[state=active]:flex, not flex: a display utility would beat the
+          [hidden] rule Radix relies on for inactive panes. */}
+      <TabsContent
+        value="activity"
+        className={isTablet ? "m-0 min-h-0 flex-1 flex-col data-[state=active]:flex" : "m-0"}
+        {...paneA11y}
+      >
+        {/* Same element in both layouts so rotating keeps the filter state. */}
+        <div className={isTablet ? "contents" : "max-w-2xl mx-auto"}>
+          <ActivityLogList
+            tablet={isTablet}
+            logs={logs}
+            loading={logsLoading}
+            pendingCount={pendingCount}
+            isOnline={isOnline}
+            onVoided={() => { refetchInventory(); refetchLogs(); }}
+          />
+        </div>
+      </TabsContent>
+
+      <TabsContent value="catalog" className={pane} {...paneA11y}>
+        <div className="max-w-4xl mx-auto">
+          <Catalog />
+        </div>
+      </TabsContent>
+
+      {isAdmin && (
+        <TabsContent value="users" className={pane} {...paneA11y}>
+          <div className="max-w-4xl mx-auto">
+            <UserManagement />
+          </div>
+        </TabsContent>
+      )}
+    </>
+  );
+
+  // One tree for both layouts: only the chrome is conditional, and the panes,
+  // banner and assistant keep their positions, so crossing the tablet threshold
+  // (rotating) doesn't remount them and lose an unsaved order or open chat.
+  return (
+    <div className={isTablet ? "flex h-app overflow-hidden bg-background" : "min-h-screen bg-background"}>
+      {isTablet ? (
+        <AppSidebar
+          active={activeTab as SidebarKey}
+          onSelectTab={setActiveTab}
+          pendingCount={pendingCount}
+          isOnline={isOnline}
+          onExport={handleExport}
+        />
+      ) : (
+        <Header onExport={handleExport} />
+      )}
+
+      <main className={isTablet ? "flex min-w-0 flex-1 flex-col" : "container py-6 px-4 sm:px-6"}>
+        <div className={isTablet && outboxOrders.length > 0 ? "px-6 pt-4" : undefined}>
+          <OutflowOutboxBanner
+            orders={outboxOrders}
+            onDiscard={discardOutboxOrder}
+            onRetry={retryOutboxOrder}
+          />
+        </div>
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className={isTablet ? "flex min-h-0 flex-1 flex-col" : "space-y-6"}
+        >
+          {!isTablet && (
+            <TabsList className={`grid w-full h-auto sm:h-12 p-1 gap-1 ${isAdmin ? 'grid-cols-4 sm:grid-cols-7' : 'grid-cols-3 sm:grid-cols-6'}`}>
+              <TabsTrigger value="dashboard" title={t.nav.dashboard} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+                <LayoutDashboard className="h-4 w-4 shrink-0" />
+                <span className="hidden xs:inline truncate">{t.nav.dashboard}</span>
               </TabsTrigger>
-            )}
-          </TabsList>
-
-          <TabsContent value="dashboard" className="m-0">
-            <InventoryDashboard
-              stockSummary={stockSummary}
-              inflows={inflows}
-              outflows={outflows}
-              freshnessDaysByProduct={freshnessDaysByProduct}
-              loading={loading}
-            />
-          </TabsContent>
-
-          <TabsContent value="inflow" className="m-0">
-            <div className="max-w-2xl mx-auto">
-              <InflowForm onSubmit={handleInflowSubmit} />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="outflow" className="m-0">
-            <div className="max-w-4xl mx-auto">
-              <OutflowPage 
-                stockSummary={stockSummary} 
-                inflows={inflows} 
-                onSubmit={handleOutflowSubmit} 
-              />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="infos" className="m-0">
-            <div className="max-w-4xl mx-auto">
-              <InfosPage 
-                stockSummary={stockSummary} 
-                inflows={inflows} 
-                outflows={outflows} 
-              />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="activity" className="m-0">
-            <div className="max-w-2xl mx-auto">
-              <ActivityLogList
-                logs={logs}
-                loading={logsLoading}
-                pendingCount={pendingCount}
-                isOnline={isOnline}
-                onVoided={() => { refetchInventory(); refetchLogs(); }}
-              />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="catalog" className="m-0">
-            <div className="max-w-4xl mx-auto">
-              <Catalog />
-            </div>
-          </TabsContent>
-
-          {isAdmin && (
-            <TabsContent value="users" className="m-0">
-              <div className="max-w-4xl mx-auto">
-                <UserManagement />
-              </div>
-            </TabsContent>
+              <TabsTrigger value="inflow" title={t.nav.inflow} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+                <PackagePlus className="h-4 w-4 shrink-0" />
+                <span className="hidden xs:inline truncate">{t.nav.inflow}</span>
+              </TabsTrigger>
+              <TabsTrigger value="outflow" title={t.nav.outflow} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+                <PackageMinus className="h-4 w-4 shrink-0" />
+                <span className="hidden xs:inline truncate">{t.nav.outflow}</span>
+              </TabsTrigger>
+              <TabsTrigger value="infos" title={t.nav.infos} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+                <BarChart2 className="h-4 w-4 shrink-0" />
+                <span className="hidden xs:inline truncate">{t.nav.infos}</span>
+              </TabsTrigger>
+              <TabsTrigger value="activity" title={t.nav.activity} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm relative">
+                <History className="h-4 w-4 shrink-0" />
+                <span className="hidden xs:inline truncate">{t.nav.activity}</span>
+                {pendingCount > 0 && (
+                  <Badge 
+                    variant="destructive" 
+                    className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 p-0 flex items-center justify-center text-[8px] sm:text-[10px]"
+                  >
+                    {pendingCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="catalog" title={t.nav.catalog} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+                <Library className="h-4 w-4 shrink-0" />
+                <span className="hidden xs:inline truncate">{t.nav.catalog}</span>
+              </TabsTrigger>
+              {isAdmin && (
+                <TabsTrigger value="users" title={t.admin?.users || 'Users'} className="gap-1.5 sm:gap-2 data-[state=active]:shadow-sm h-10 sm:h-auto text-xs sm:text-sm">
+                  <Users className="h-4 w-4 shrink-0" />
+                  <span className="hidden xs:inline truncate">{t.admin?.users || 'Users'}</span>
+                </TabsTrigger>
+              )}
+            </TabsList>
           )}
+
+          {tabContents}
         </Tabs>
       </main>
 
-      <footer className="border-t mt-auto py-4">
-        <div className="container text-center text-xs text-muted-foreground px-4">
-          <p>{t.footer.syncedToCloud}</p>
-        </div>
-      </footer>
+      {!isTablet && (
+        <footer className="border-t mt-auto py-4">
+          <div className="container text-center text-xs text-muted-foreground px-4">
+            <p>{t.footer.syncedToCloud}</p>
+          </div>
+        </footer>
+      )}
 
       <InventoryAssistant />
     </div>

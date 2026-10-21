@@ -47,7 +47,7 @@ import { usePackSKUs } from "@/hooks/usePackSKUs";
 
 // Unit label for a logged quantity in the product's native stock unit
 // (kg-native: weight-sold eggs log kg, count eggs log butir, others pcs).
-function useStockUnitLabel() {
+export function useStockUnitLabel() {
   const { conversionMap } = useItemTypes();
   return (product: string, category: string): string => {
     if (category !== "egg") return "pcs";
@@ -67,7 +67,7 @@ interface GroupedActivityLogProps {
   onVoided?: () => void;
 }
 
-interface BuyerOrder {
+export interface BuyerOrder {
   buyerName: string;
   orderLines: Array<{ skuCode?: string; packQty?: number; eggProduct?: string; looseQty?: number }>;
   materials: Array<{ product: string; quantity: number; type: string }>;
@@ -78,11 +78,12 @@ interface BuyerOrder {
   logs: ActivityLog[];
 }
 
-interface ManualEntry {
+export interface ManualEntry {
   log: ActivityLog;
 }
 
-interface DateGroup {
+export interface DateGroup {
+  key: string; // yyyy-MM-dd
   date: string;
   quickOutflows: Map<string, BuyerOrder>;
   manualOutflows: ManualEntry[];
@@ -91,13 +92,16 @@ interface DateGroup {
 }
 
 // The context each entry hands up so one set of dialogs can serve the whole feed.
-interface ReturnRequest {
+export interface ReturnRequest {
   buyerName?: string;
   eggLogs: ActivityLog[];
   orderLines?: BuyerOrder["orderLines"];
 }
 
-export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", loading = false, hasActiveFilters = false, onVoided }: GroupedActivityLogProps) {
+// Shared feed state: return lookups, date/type grouping, edit/void/return
+// handlers and the one set of dialogs they open. Used by the mobile feed and
+// the tablet split view so both behave identically.
+export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
   const { t } = useLanguage();
   const { canEdit, getEditWindowHours, voidOutflow, voidInflow, findRelatedEntryId } = useVoidEntry();
 
@@ -132,14 +136,6 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
   // AlertDialog before the reason step.
   const [confirmVoidOrderOpen, setConfirmVoidOrderOpen] = useState(false);
   const [pendingVoidOrderLogs, setPendingVoidOrderLogs] = useState<ActivityLog[]>([]);
-
-  // Entrance animation should play on the FIRST mount only — not on every
-  // refetch/void, which would re-shimmer the whole feed.
-  const hasAnimatedRef = useRef(false);
-  const animateEntrance = !hasAnimatedRef.current;
-  useEffect(() => {
-    hasAnimatedRef.current = true;
-  }, []);
 
   // At-a-glance summary of the currently displayed activity.
   const summary = useMemo(() => {
@@ -180,6 +176,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
 
       if (!groups.has(dateKey)) {
         groups.set(dateKey, {
+          key: dateKey,
           date: displayDate,
           quickOutflows: new Map(),
           manualOutflows: [],
@@ -357,6 +354,40 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
     </>
   );
 
+  return {
+    returnsMap,
+    summary,
+    groupedData,
+    isEditable,
+    getEditWindowHours,
+    handleEditClick,
+    handleReturnClick,
+    handleVoidOrderClick,
+    dialogs,
+  };
+}
+
+export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", loading = false, hasActiveFilters = false, onVoided }: GroupedActivityLogProps) {
+  const {
+    returnsMap,
+    summary,
+    groupedData,
+    isEditable,
+    getEditWindowHours,
+    handleEditClick,
+    handleReturnClick,
+    handleVoidOrderClick,
+    dialogs,
+  } = useActivityFeed(logs, onVoided);
+
+  // Entrance animation should play on the FIRST mount only — not on every
+  // refetch/void, which would re-shimmer the whole feed.
+  const hasAnimatedRef = useRef(false);
+  const animateEntrance = !hasAnimatedRef.current;
+  useEffect(() => {
+    hasAnimatedRef.current = true;
+  }, []);
+
   if (loading) {
     return <ActivityTimelineSkeleton />;
   }
@@ -485,7 +516,14 @@ function StatusStrip({ summary }: StatusStripProps) {
 // ── Empty state ──────────────────────────────────────────────────────────────
 // A designed empty state consistent with the timeline aesthetic (not a bare
 // one-liner). Different copy when the emptiness is a filter result vs no data.
-function ActivityEmptyState({ hasActiveFilters }: { hasActiveFilters?: boolean }) {
+export function ActivityEmptyState({
+  hasActiveFilters,
+  onClearFilters,
+}: {
+  hasActiveFilters?: boolean;
+  // Tablet: shows a "Clear filters" button under a filtered-empty result.
+  onClearFilters?: () => void;
+}) {
   const { t } = useLanguage();
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
@@ -500,6 +538,11 @@ function ActivityEmptyState({ hasActiveFilters }: { hasActiveFilters?: boolean }
           {hasActiveFilters ? t.activity.emptyFilteredHint : t.activity.emptyHint}
         </p>
       </div>
+      {hasActiveFilters && onClearFilters && (
+        <Button variant="outline" className="h-11 rounded-[11px] px-[18px] text-[15px] font-semibold" onClick={onClearFilters}>
+          {t.activity.clearFilters}
+        </Button>
+      )}
     </div>
   );
 }
@@ -507,7 +550,7 @@ function ActivityEmptyState({ hasActiveFilters }: { hasActiveFilters?: boolean }
 // ── Loading skeleton ─────────────────────────────────────────────────────────
 // A timeline skeleton (rail + shimmer node rows) so the feed never flashes blank
 // then pops. Mirrors the real layout: sticky-marker line, then rail with nodes.
-function ActivityTimelineSkeleton() {
+export function ActivityTimelineSkeleton() {
   return (
     <div className="space-y-6" aria-hidden>
       <div className="grid grid-cols-3 gap-2">
@@ -670,7 +713,7 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
           {hasManualOutflows && (
             <div className="space-y-2.5">
               <SectionLabel icon={<PackageMinus className="h-3.5 w-3.5" />} tone="outflow">
-                {t.activity.manualOutflows || "Manual Outflows"}
+                {t.activity.kastun}
               </SectionLabel>
               {group.manualOutflows.map((entry, idx) => (
                 <TimelineRow key={idx} index={rowIndex++} tone="outflow" animate={animate}>
@@ -768,19 +811,35 @@ function TimeSync({ time, isSynced }: { time?: string; isSynced?: boolean }) {
 // Renders a quantity as "delivered" when a return trimmed it: the net number,
 // the struck-through original, and an amber (N returned · code) badge. Falls
 // back to the plain number+unit when there are no returns.
-function DeliveredLine({
+export function DeliveredLine({
   sold,
   unit,
   returns,
   struck,
+  size = "sm",
+  className,
 }: {
   sold: number;
   unit: string;
   returns?: ReturnsSummary;
   struck?: boolean;
+  // "lg" is the tablet detail panel's larger type; "sm" is the mobile card.
+  size?: "sm" | "lg";
+  className?: string;
 }) {
   const { t } = useLanguage();
+  const lg = size === "lg";
   if (!returns || returns.total <= 0) {
+    if (lg) {
+      return (
+        <span className={cn("inline-flex items-baseline gap-1.5", className)}>
+          <span className={cn("font-bold tabular-nums", struck && "line-through")}>
+            {sold.toLocaleString()}
+          </span>
+          <span className="text-sm text-ek-mfg">{unit}</span>
+        </span>
+      );
+    }
     return (
       <>
         <span className={cn("font-bold tabular-nums", struck && "line-through")}>
@@ -792,15 +851,15 @@ function DeliveredLine({
   }
   const delivered = sold - returns.total;
   return (
-    <span className="inline-flex flex-col gap-0.5 min-w-0">
-      <span className="flex items-center gap-1.5">
+    <span className={cn("inline-flex flex-col gap-0.5 min-w-0", className)}>
+      <span className={cn("flex gap-1.5", lg ? "items-baseline" : "items-center")}>
         <span className="font-bold tabular-nums">{delivered.toLocaleString()}</span>
-        <span className="text-xs text-muted-foreground">{unit}</span>
-        <span className="text-[11px] text-muted-foreground line-through tabular-nums">
+        <span className={lg ? "text-sm text-ek-mfg" : "text-xs text-muted-foreground"}>{unit}</span>
+        <span className={cn("line-through tabular-nums", lg ? "text-[13px] text-ek-mfg" : "text-[11px] text-muted-foreground")}>
           {t.activity.wasQty.replace("{qty}", sold.toLocaleString())}
         </span>
       </span>
-      <span className="text-[11px] text-amber-700 dark:text-amber-400 tabular-nums">
+      <span className={cn("text-amber-700 dark:text-amber-400 tabular-nums", lg ? "text-[13.5px]" : "text-[11px]")}>
         ({t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · <ReturnCodeParts returns={returns} />) {unit}
       </span>
     </span>
@@ -815,7 +874,7 @@ const RETURN_CODE_COLOR: Record<string, string> = {
   R: "text-orange-600 dark:text-orange-400",
   H: "text-red-600 dark:text-red-400",
 };
-function ReturnCodeParts({ returns }: { returns: ReturnsSummary }) {
+export function ReturnCodeParts({ returns }: { returns: ReturnsSummary }) {
   const code = returnCode(returns);
   if (!code) return null;
   return (
@@ -835,7 +894,7 @@ function ReturnCodeParts({ returns }: { returns: ReturnsSummary }) {
 // for Negeri); on the order line we always show BUTIR/pieces (kg conversion is
 // reserved for the materials breakdown), so kg-native products are converted back
 // to pieces at the flat 15.5. Renders nothing when there's no return.
-function ReturnBubble({ returns, unit }: { returns?: ReturnsSummary; unit?: string }) {
+export function ReturnBubble({ returns, unit, className }: { returns?: ReturnsSummary; unit?: string; className?: string }) {
   const { t } = useLanguage();
   if (!returns || returns.total <= 0) return null;
   const toP = (n: number) => nativeToPieces(n, unit);
@@ -847,38 +906,18 @@ function ReturnBubble({ returns, unit }: { returns?: ReturnsSummary; unit?: stri
     restock, retakan, writeoff, total: restock + retakan + writeoff,
   };
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums">
+    <span className={cn("inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums", className)}>
       <Undo2 className="h-3 w-3" />
       {t.activity.returnedBadge.replace("{n}", pieces.total.toLocaleString())} · <ReturnCodeParts returns={pieces} />
     </span>
   );
 }
 
-interface BuyerOrderCardProps {
-  order: BuyerOrder;
-  onEditClick: (log: ActivityLog) => void;
-  isEditable: (log: ActivityLog) => boolean;
-  getEditWindowHours: (createdAt: string) => number;
-  onVoidOrderClick: (logs: ActivityLog[]) => void;
-  onReturnClick: (req: ReturnRequest) => void;
-  returnsMap: Record<string, OutflowReturns>;
-}
-
-function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: BuyerOrderCardProps) {
-  const { t } = useLanguage();
-  const unitLabel = useStockUnitLabel();
-  const [expanded, setExpanded] = useState(false);
-  const formattedTime = format(parseISO(order.timestamp), "HH:mm");
-
-  const firstLog = order.logs[0];
-  const canEditOrder = firstLog && isEditable(firstLog);
-  const hoursRemaining = firstLog ? getEditWindowHours(firstLog.created_at) : 0;
-  const isVoided = firstLog?.voided_at != null;
-
+// Per-order return lookups (egg lines, returns per egg product, pack SKU -> egg,
+// per-SKU return). Shared by the mobile order card and the tablet detail panel.
+export function useOrderReturns(order: BuyerOrder, returnsMap: Record<string, OutflowReturns>) {
   // EGG outflow rows are the returnable lines.
   const eggLogs = order.logs.filter((l) => l.category === "egg" && l.action_type === "outflow");
-  const canReturn = !isVoided && eggLogs.length > 0;
-
   // Sum returns per egg product across this order's egg outflow logs, so a line
   // or material row can be matched by product name.
   const returnsByProduct = useMemo(() => {
@@ -920,6 +959,33 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
     const outflow = log ? returnsMap[log.metadata?.relatedEntryId ?? ""] : undefined;
     return outflow?.bySku?.[skuCode];
   };
+
+  return { eggLogs, returnsByProduct, skuToEgg, skuReturns };
+}
+
+interface BuyerOrderCardProps {
+  order: BuyerOrder;
+  onEditClick: (log: ActivityLog) => void;
+  isEditable: (log: ActivityLog) => boolean;
+  getEditWindowHours: (createdAt: string) => number;
+  onVoidOrderClick: (logs: ActivityLog[]) => void;
+  onReturnClick: (req: ReturnRequest) => void;
+  returnsMap: Record<string, OutflowReturns>;
+}
+
+function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: BuyerOrderCardProps) {
+  const { t } = useLanguage();
+  const unitLabel = useStockUnitLabel();
+  const [expanded, setExpanded] = useState(false);
+  const formattedTime = format(parseISO(order.timestamp), "HH:mm");
+
+  const firstLog = order.logs[0];
+  const canEditOrder = firstLog && isEditable(firstLog);
+  const hoursRemaining = firstLog ? getEditWindowHours(firstLog.created_at) : 0;
+  const isVoided = firstLog?.voided_at != null;
+
+  const { eggLogs, returnsByProduct, skuToEgg, skuReturns } = useOrderReturns(order, returnsMap);
+  const canReturn = !isVoided && eggLogs.length > 0;
 
   const outflowDateFormatted = order.outflowDate
     ? format(parseISO(order.outflowDate), "MMM d, yyyy")

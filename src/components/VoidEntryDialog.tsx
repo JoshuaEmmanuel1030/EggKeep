@@ -14,6 +14,7 @@ import { AlertTriangle } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { ActivityLog } from "@/types/activityLog";
+import { entryKind } from "@/lib/activityGrouping";
 
 interface VoidEntryDialogProps {
   open: boolean;
@@ -52,8 +53,9 @@ export function VoidEntryDialog({
 
   if (!entry) return null;
 
-  const isInflow = entry.action_type === "inflow";
-  const entryType = isInflow ? t.activity.inflows : t.activity.manualOutflows;
+  const kind = entryKind(entry);
+  const isInflow = kind === "inflow";
+  const entryType = isInflow ? t.activity.inflows : kind === "quick" ? t.activity.quickOutflow : t.activity.kastun;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, Calendar, AlertTriangle, ArrowUp, ArrowDown, Plus, Check } from "lucide-react";
 import { Header } from "@/components/Header";
+import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -20,6 +21,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { useInventorySync } from "@/hooks/useInventorySync";
 import { useStockCounts } from "@/hooks/useStockCounts";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { useIsTabletLandscape } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateStockSummary, getStockUnit } from "@/lib/inventory";
 import {
@@ -45,6 +48,8 @@ export default function StockCount() {
   const { user } = useAuth();
   const { itemTypes, conversionMap } = useItemTypes();
   const { inflows } = useInventorySync();
+  const { pendingCount, isOnline } = useOfflineSync();
+  const isTablet = useIsTabletLandscape();
 
   const [countDate, setCountDate] = useState<string>(todayStr());
   const isToday = countDate === todayStr();
@@ -250,15 +255,16 @@ export default function StockCount() {
       : loc === "tst_warehouse" ? t.stockCount.locationTst
       : t.stockCount.locationLoaded;
 
-  return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="container py-6 px-4 sm:px-6 max-w-2xl">
+  const content = (
+    <>
         {/* Top bar */}
         <div className="flex items-center gap-2 mb-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="h-9 w-9 shrink-0">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+          {/* No back arrow on tablet: the sidebar is the navigation there. */}
+          {!isTablet && (
+            <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="h-9 w-9 shrink-0">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          )}
           <div className="min-w-0">
             <h1 className="font-display font-bold text-lg leading-tight">{t.stockCount.title}</h1>
             <p className="text-xs text-muted-foreground">{t.stockCount.subtitle}</p>
@@ -463,7 +469,24 @@ export default function StockCount() {
             <p className="text-[11px] text-muted-foreground text-center mt-3">{t.stockCount.footNote}</p>
           </>
         )}
-      </main>
+    </>
+  );
+
+  if (isTablet) {
+    return (
+      <div className="flex h-app overflow-hidden bg-background">
+        <AppSidebar active="stockCount" pendingCount={pendingCount} isOnline={isOnline} />
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-2xl px-6 py-6">{content}</div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container py-6 px-4 sm:px-6 max-w-2xl">{content}</main>
     </div>
   );
 }
