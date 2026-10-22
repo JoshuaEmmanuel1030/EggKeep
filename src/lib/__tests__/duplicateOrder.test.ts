@@ -54,3 +54,15 @@ describe("orderDuplicateKey", () => {
       .not.toBe(orderDuplicateKey("Osave", "2026-09-13", lines));
   });
 });
+
+describe("orderDuplicateKey with DCs", () => {
+  const lines: DupOrderLine[] = [{ skuCode: "OSVN10O", packQty: 5 }];
+  it("does not flag the same lines to another DC as a duplicate", () => {
+    expect(orderDuplicateKey("OSAVE", "2026-10-21", lines, "dc-bks")).not.toBe(
+      orderDuplicateKey("OSAVE", "2026-10-21", lines, "dc-tgr")
+    );
+  });
+  it("keeps the old key when there is no DC", () => {
+    expect(orderDuplicateKey("OSAVE", "2026-10-21", lines, null)).toBe(orderDuplicateKey("OSAVE", "2026-10-21", lines));
+  });
+});

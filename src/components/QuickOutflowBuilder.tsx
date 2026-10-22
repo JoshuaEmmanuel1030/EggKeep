@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,21 +11,24 @@ import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { OrderLineItem } from "./OrderLineItem";
 import { OrderSummaryPanel } from "./OrderSummaryPanel";
-import { Buyer, BoxModeType, OrderLine, QuickOutflowOrder, AggregatedMaterials } from "@/types/quickOutflow";
+import { Buyer, OrderLine, AggregatedMaterials } from "@/types/quickOutflow";
 import { StockSummary, InflowEntry, OutflowEntry } from "@/types/inventory";
 import { ActivityLogMetadata } from "@/types/activityLog";
+import { buildOrderEntries, buildOrderMetadata as buildPayloadMetadata, type OrderPayloadInput } from "@/lib/orderPayload";
 import { useBuyers } from "@/hooks/useBuyers";
+import { pinnedCodesFor } from "@/lib/buyerProfile";
+import { useBuyerDcs } from "@/hooks/useBuyerDcs";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import {
   PackSKU,
   aggregateOrderMaterials,
+  calculateLineMaterials,
   validateStockAgainstInventory,
-  ALL_BOX_MODES,
 } from "@/lib/outflowCalculator";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { PickListDialog } from "./PickListDialog";
-import { ShoppingCart, Plus, ChevronsUpDown, Check, Package, ChevronDown, Trash2, Users, Pencil, ClipboardList } from "lucide-react";
+import { ShoppingCart, Plus, ChevronsUpDown, Check, ChevronDown, Trash2, Users, Pencil, ClipboardList } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -44,8 +46,8 @@ interface QueuedOrder {
   buyer: Buyer;
   date: string;
   invoiceRef: string;
-  boxMode: BoxModeType;
-  boxesRequired: boolean;
+  dcId?: string;
+  dcName?: string;  // name snapshot, like buyerName
   lines: OrderLine[];
   aggregates: AggregatedMaterials;
 }
@@ -54,6 +56,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const { user } = useAuth();
   const { t } = useLanguage();
   const { buyers, isLoading: buyersLoading } = useBuyers();
+  const { dcsForBuyer, isLoading: dcsLoading, error: dcsError } = useBuyerDcs();
   const { skus, isLoading: skusLoading } = usePackSKUs();
   const { conversionMap, eggProductNames, boxCapacityMap, labelsPerPackMap, getTypesByCategory } = useItemTypes();
   const { check: checkDuplicates } = useDuplicateOrderCheck();
@@ -80,10 +83,15 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   
   const [buyerOpen, setBuyerOpen] = useState(false);
   const [selectedBuyer, setSelectedBuyer] = useState<Buyer | null>(null);
+  // Pins of the selected buyer, read from the live buyers list so an admin's
+  // edit shows without re-picking the buyer. Catalog skus carry ids; packSKUs don't.
+  const pinnedSkuCodes = useMemo(
+    () => pinnedCodesFor(skus, buyers.find((b) => b.id === selectedBuyer?.id)?.pinnedSkuIds),
+    [skus, buyers, selectedBuyer?.id]
+  );
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [invoiceRef, setInvoiceRef] = useState("");
-  const [boxMode, setBoxMode] = useState<BoxModeType>("box kecil");
-  const [boxesRequired, setBoxesRequired] = useState(true);
+  const [dcId, setDcId] = useState<string | null>(null);
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const isSubmittingRef = useRef(false); // Ref-based guard for immediate double-click prevention
@@ -97,17 +105,45 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const [dupMatches, setDupMatches] = useState<DuplicateMatch[]>([]);
   const [pickListOpen, setPickListOpen] = useState(false);
 
-  // Update box mode when buyer changes
+  // DCs of the selected buyer. A buyer with exactly one DC gets it preselected
+  // (derived, so it also works when the DC list loads after the buyer is picked),
+  // but only when nothing was chosen: a chosen DC that was since deleted must be
+  // re-picked, never silently swapped for the remaining one.
+  // When the buyer has DCs, one is required; a buyer with none orders without.
+  // While the list is still loading the DC can't be known yet, so hold the order.
+  // If it failed to load (e.g. table not migrated) orders go through without a DC.
+  const buyerDcs = dcsForBuyer(selectedBuyer?.id);
+  const selectedDc = dcId
+    ? buyerDcs.find((d) => d.id === dcId)
+    : buyerDcs.length === 1 ? buyerDcs[0] : undefined;
+  const dcMissing = !!selectedBuyer && (dcsLoading || (buyerDcs.length > 0 && !selectedDc));
+
+  // Changing the buyer clears the DC
   const handleBuyerSelect = (buyer: Buyer) => {
     setSelectedBuyer(buyer);
-    setBoxMode(buyer.defaultBoxMode);
+    setDcId(null);
     setBuyerOpen(false);
   };
 
-  // Box modes are free-pick now: the order defaults to the buyer's mode (set in
-  // handleBuyerSelect) but any mode can be chosen here, and per-line overrides
-  // can differ again within the order.
-  const availableBoxModes = ALL_BOX_MODES;
+  const dcRequiredToast = () =>
+    toast({
+      title: t.common.error,
+      description: t.outflow.dcRequired,
+      variant: "destructive",
+    });
+
+  // Snapshot of the order currently in the form. No order-level box mode:
+  // boxes come only from Box SKU lines (boxesRequired is always on for those).
+  const buildCurrentOrder = (buyer: Buyer): QueuedOrder => ({
+    id: crypto.randomUUID(),
+    buyer,
+    date,
+    invoiceRef,
+    dcId: selectedDc?.id,
+    dcName: selectedDc?.name,
+    lines: [...lines],
+    aggregates: aggregateOrderMaterials(lines, null, true, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap),
+  });
 
   // Create new order line
   const addLine = () => {
@@ -131,8 +167,8 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
 
   // Calculate aggregated materials
   const aggregates = useMemo(() => {
-    return aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap);
-  }, [lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap]);
+    return aggregateOrderMaterials(lines, null, true, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap);
+  }, [lines, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap]);
 
   // Calculate total aggregates including queue
   const totalAggregates = useMemo(() => {
@@ -141,7 +177,6 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       packagingByItem: new Map(),
       labelsByItem: new Map(),
       boxesByType: new Map(),
-      logistics: { keranjang: false, traysUsed: 0 },
     };
 
     // Add current order
@@ -157,8 +192,6 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     for (const [type, qty] of aggregates.boxesByType) {
       combined.boxesByType.set(type, (combined.boxesByType.get(type) || 0) + qty);
     }
-    combined.logistics.keranjang = combined.logistics.keranjang || aggregates.logistics.keranjang;
-    combined.logistics.traysUsed += aggregates.logistics.traysUsed;
 
     // Add queued orders
     for (const order of orderQueue) {
@@ -174,8 +207,6 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       for (const [type, qty] of order.aggregates.boxesByType) {
         combined.boxesByType.set(type, (combined.boxesByType.get(type) || 0) + qty);
       }
-      combined.logistics.keranjang = combined.logistics.keranjang || order.aggregates.logistics.keranjang;
-      combined.logistics.traysUsed += order.aggregates.logistics.traysUsed;
     }
 
     return combined;
@@ -199,6 +230,27 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     });
   }, [lines]);
 
+  // A filled pack line that resolves to no materials (a Box SKU whose box×pack
+  // capacity isn't configured, or a retired SKU) would be logged as sold while
+  // deducting nothing. Hold the order instead.
+  const hasUnresolvedLine = lines.some(
+    (l) => l.lineType === "pack" && l.skuCode && l.packQty > 0 &&
+      !calculateLineMaterials(l, null, true, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap)
+  );
+
+  const invalidLineToast = () =>
+    toast({
+      title: t.common.error,
+      description: t.outflow.pleaseAddValidLine,
+      variant: "destructive",
+    });
+  const boxSkuToast = () =>
+    toast({
+      title: t.common.error,
+      description: t.outflow.boxSkuNoCapacity,
+      variant: "destructive",
+    });
+
   // Add current order to queue
   const addToQueue = () => {
     if (!selectedBuyer) {
@@ -210,25 +262,21 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       return;
     }
 
-    if (!hasValidLines) {
-      toast({
-        title: t.common.error,
-        description: t.outflow.pleaseAddValidLine,
-        variant: "destructive",
-      });
+    if (dcMissing) {
+      dcRequiredToast();
       return;
     }
 
-    const queuedOrder: QueuedOrder = {
-      id: crypto.randomUUID(),
-      buyer: selectedBuyer,
-      date,
-      invoiceRef,
-      boxMode,
-      boxesRequired,
-      lines: [...lines],
-      aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap),
-    };
+    if (!hasValidLines) {
+      invalidLineToast();
+      return;
+    }
+    if (hasUnresolvedLine) {
+      boxSkuToast();
+      return;
+    }
+
+    const queuedOrder = buildCurrentOrder(selectedBuyer);
 
     setOrderQueue(prev => [...prev, queuedOrder]);
 
@@ -236,7 +284,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     setLines([]);
     setInvoiceRef("");
     setSelectedBuyer(null);
-    setBoxMode("box kecil");
+    setDcId(null);
 
     toast({
       title: t.outflow.addedToQueue || "Added to Queue",
@@ -256,54 +304,23 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     setSelectedBuyer(order.buyer);
     setDate(order.date);
     setInvoiceRef(order.invoiceRef);
-    setBoxMode(order.boxMode);
-    setBoxesRequired(order.boxesRequired);
+    setDcId(order.dcId ?? null);
     setLines([...order.lines]);
     removeFromQueue(orderId);
   };
 
-  // Build metadata for activity log
-  const buildOrderMetadata = (order: QueuedOrder): ActivityLogMetadata => {
-    const relatedProducts: Array<{ product: string; quantity: number; type: string }> = [];
-    
-    for (const [product, qty] of order.aggregates.eggsByProduct) {
-      relatedProducts.push({ product, quantity: qty, type: 'egg' });
-    }
-    for (const [item, qty] of order.aggregates.packagingByItem) {
-      relatedProducts.push({ product: item, quantity: qty, type: 'packaging' });
-    }
-    for (const [item, qty] of order.aggregates.labelsByItem) {
-      relatedProducts.push({ product: item, quantity: qty, type: 'label' });
-    }
-    for (const [type, qty] of order.aggregates.boxesByType) {
-      relatedProducts.push({ product: type, quantity: qty, type: 'box' });
-    }
-
-    // Get first SKU for reference
-    const packLine = order.lines.find(l => l.lineType === 'pack' && l.skuCode);
-
-    // Build order lines (what customer actually ordered)
-    const orderLines = order.lines
-      .filter(l => (l.lineType === 'pack' && l.skuCode) || (l.lineType === 'loose' && l.eggProduct))
-      .map(l => ({
-        skuCode: l.skuCode,
-        packQty: l.packQty,
-        eggProduct: l.eggProduct,
-        looseQty: l.looseQty,
-      }));
-    
-    return {
-      orderType: 'quick_outflow',
-      buyerName: order.buyer.name,
-      invoiceRef: order.invoiceRef || undefined,
-      skuCode: packLine?.skuCode,
-      packQty: packLine?.packQty,
-      boxMode: order.boxMode,
-      outflowDate: order.date,
-      orderLines,
-      relatedProducts,
-    };
-  };
+  // Order -> shared payload input (entries + metadata come from lib/orderPayload,
+  // which the "Edit order" correction uses too).
+  const toPayloadInput = (order: QueuedOrder): OrderPayloadInput => ({
+    buyerName: order.buyer.name,
+    invoiceRef: order.invoiceRef,
+    date: order.date,
+    dcId: order.dcId,
+    dcName: order.dcName,
+    lines: order.lines,
+    aggregates: order.aggregates,
+  });
+  const buildOrderMetadata = (order: QueuedOrder): ActivityLogMetadata => buildPayloadMetadata(toPayloadInput(order));
 
   const doSubmit = async (ordersToSubmit: QueuedOrder[]) => {
     setSubmitting(true);
@@ -325,55 +342,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       let totalEntries = 0;
 
       for (const order of ordersToSubmit) {
-        const entries: OutflowEntry[] = [];
-
-        for (const [product, quantity] of order.aggregates.eggsByProduct) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "egg",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
-
-        for (const [item, quantity] of order.aggregates.packagingByItem) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product: item,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "packaging",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
-
-        for (const [item, quantity] of order.aggregates.labelsByItem) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product: item,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "label",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
-
-        for (const [boxType, quantity] of order.aggregates.boxesByType) {
-          entries.push({
-            id: crypto.randomUUID(),
-            date: order.date,
-            product: boxType,
-            quantityInButir: quantity,
-            createdAt: timestamp,
-            category: "box",
-            invoiceSupplier: order.invoiceRef || `${order.buyer.name} - Order`,
-          });
-        }
+        const entries: OutflowEntry[] = buildOrderEntries(toPayloadInput(order), timestamp);
 
         const metadata = buildOrderMetadata(order);
         let success = false;
@@ -398,7 +367,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       setLines([]);
       setInvoiceRef("");
       setSelectedBuyer(null);
-      setBoxMode("box kecil");
+      setDcId(null);
 
       if (failedOrders.length === 0) {
         toast({
@@ -428,24 +397,21 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
 
     const allOrders = [...orderQueue];
     if (hasValidLines && selectedBuyer) {
-      allOrders.push({
-        id: crypto.randomUUID(),
-        buyer: selectedBuyer,
-        date,
-        invoiceRef,
-        boxMode,
-        boxesRequired,
-        lines: [...lines],
-        aggregates: aggregateOrderMaterials(lines, boxMode, boxesRequired, packSKUs, conversionMap, boxCapacityMap, labelsPerPackMap),
-      });
+      if (dcMissing) {
+        dcRequiredToast();
+        isSubmittingRef.current = false;
+        return;
+      }
+      if (hasUnresolvedLine) {
+        boxSkuToast();
+        isSubmittingRef.current = false;
+        return;
+      }
+      allOrders.push(buildCurrentOrder(selectedBuyer));
     }
 
     if (allOrders.length === 0) {
-      toast({
-        title: t.common.error,
-        description: t.outflow.pleaseAddValidLine,
-        variant: "destructive",
-      });
+      invalidLineToast();
       isSubmittingRef.current = false;
       return;
     }
@@ -457,6 +423,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
         buyerName: o.buyer.name,
         outflowDate: o.date,
         orderLines: buildOrderMetadata(o).orderLines ?? [],
+        dcId: o.dcId,
       }))
     );
     if (dups.length > 0) {
@@ -531,7 +498,9 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{order.buyer.name}</span>
-                          <Badge variant="outline" className="text-xs">{order.boxMode}</Badge>
+                          {order.dcName && (
+                            <Badge variant="outline" className="text-xs">{order.dcName}</Badge>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
                           {order.lines.length} line(s) • 
@@ -637,38 +606,31 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
             />
           </div>
 
-          {/* Boxing mode */}
+          {/* DC (distribution center) of the selected buyer */}
           <div className="space-y-2">
-            <Label>{t.outflow.boxingMode}</Label>
-            <Select value={boxMode} onValueChange={(v) => setBoxMode(v as BoxModeType)}>
-              <SelectTrigger className="h-12">
-                <SelectValue />
+            <Label htmlFor="order-dc">{t.outflow.dc}</Label>
+            <Select
+              value={selectedDc?.id ?? ""}
+              onValueChange={setDcId}
+              disabled={buyerDcs.length === 0}
+            >
+              <SelectTrigger id="order-dc" className="h-12">
+                <SelectValue placeholder={selectedBuyer ? t.outflow.selectDc : t.outflow.selectBuyerFirst} />
               </SelectTrigger>
               <SelectContent>
-                {availableBoxModes.map((mode) => (
-                  <SelectItem key={mode} value={mode}>
-                    {mode}
+                {buyerDcs.map((dc) => (
+                  <SelectItem key={dc.id} value={dc.id}>
+                    {dc.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {selectedBuyer && !dcsLoading && buyerDcs.length === 0 && (
+              <p className={cn("text-xs", dcsError ? "text-destructive" : "text-muted-foreground")}>
+                {dcsError ? t.outflow.dcsLoadFailed : t.outflow.noDcsForBuyer}
+              </p>
+            )}
           </div>
-        </div>
-
-        {/* Boxes required checkbox */}
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            id="boxes-required"
-            checked={boxesRequired}
-            onCheckedChange={(checked) => setBoxesRequired(checked as boolean)}
-          />
-          <label
-            htmlFor="boxes-required"
-            className="text-sm font-medium cursor-pointer flex items-center gap-2"
-          >
-            <Package className="h-4 w-4" />
-            {t.outflow.boxesRequired}
-          </label>
         </div>
 
         <Separator />
@@ -693,10 +655,9 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                     key={line.id}
                     line={line}
                     index={index}
-                    boxMode={boxMode}
-                    boxesRequired={boxesRequired}
                     selectedBuyer={selectedBuyer}
                     skus={packSKUs}
+                    pinnedSkuCodes={pinnedSkuCodes}
                     conversionMap={conversionMap}
                     boxCapacityMap={boxCapacityMap}
                     labelsPerPackMap={labelsPerPackMap}
@@ -725,7 +686,6 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
             <OrderSummaryPanel
               aggregates={orderQueue.length > 0 ? totalAggregates : aggregates}
               shortages={shortages}
-              boxMode={boxMode}
               conversionMap={conversionMap}
             />
           </div>

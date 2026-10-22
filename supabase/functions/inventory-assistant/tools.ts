@@ -202,6 +202,7 @@ async function countOrdersTool(
       orderLines: md.orderLines,
       outflowDate: md.outflowDate,
       recordedAt: r.recorded_at,
+      dcId: md.dcId,
       day,
     });
   }

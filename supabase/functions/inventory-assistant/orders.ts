@@ -13,13 +13,15 @@ export interface OrderRow {
   orderLines?: unknown;
   outflowDate?: string | null;
   recordedAt: string; // ISO timestamp (activity_logs.recorded_at)
+  dcId?: string | null; // orders to different DCs of one buyer are separate orders
 }
 
-// Rows from the same order share buyer + order content + outflow date + a
+// Rows from the same order share buyer + order content + outflow date + DC + a
 // 30-second time bucket. Mirrors src/lib/activityGrouping.ts:orderBucketKey.
 export function orderBucketKey(o: OrderRow): string {
   const bucket = Math.floor(new Date(o.recordedAt).getTime() / 30000);
-  return `${o.buyerName ?? ""}_${JSON.stringify(o.orderLines ?? [])}_${o.outflowDate ?? "null"}_${bucket}`;
+  const base = `${o.buyerName ?? ""}_${JSON.stringify(o.orderLines ?? [])}_${o.outflowDate ?? "null"}_${bucket}`;
+  return o.dcId ? `${base}_${o.dcId}` : base;
 }
 
 export interface OrderCount {

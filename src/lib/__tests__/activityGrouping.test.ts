@@ -147,3 +147,19 @@ describe("returnCode", () => {
     expect(returnCode({ restock: 0, retakan: 0, writeoff: 0, total: 0 })).toBe("");
   });
 });
+
+describe("orderBucketKey with DCs", () => {
+  const base = {
+    buyerName: "OSAVE",
+    orderLines: [{ skuCode: "OSVN10O", packQty: 5 }],
+    outflowDate: "2026-10-21",
+    recordedAt: "2026-10-21T09:15:05.000Z",
+  };
+  it("keeps same-lines orders to different DCs apart", () => {
+    expect(sameOrder({ ...base, dcId: "dc-bks" }, { ...base, dcId: "dc-tgr" })).toBe(false);
+    expect(sameOrder({ ...base, dcId: "dc-bks" }, { ...base, dcId: "dc-bks" })).toBe(true);
+  });
+  it("leaves the key of a DC-less (older) order unchanged", () => {
+    expect(orderBucketKey({ ...base, dcId: undefined })).toBe(orderBucketKey(base));
+  });
+});

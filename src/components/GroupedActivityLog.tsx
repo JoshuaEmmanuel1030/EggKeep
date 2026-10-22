@@ -18,8 +18,11 @@ import { format, parseISO } from "date-fns";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { useVoidEntry } from "@/hooks/useVoidEntry";
+import { useAuth } from "@/hooks/useAuth";
 import { VoidEntryDialog } from "./VoidEntryDialog";
 import { RecordReturnDialog } from "./RecordReturnDialog";
+import { EditOrderDialog, type EditTarget } from "./EditOrderDialog";
+import { canCorrect, editMinutesLeft } from "@/lib/orderCorrection";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ChevronDown,
@@ -35,9 +38,10 @@ import {
   CloudUpload,
   Truck,
   FileText,
-  Pencil,
   Undo2,
   Inbox,
+  MapPin,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { orderBucketKey, returnCode } from "@/lib/activityGrouping";
@@ -47,7 +51,7 @@ import { usePackSKUs } from "@/hooks/usePackSKUs";
 
 // Unit label for a logged quantity in the product's native stock unit
 // (kg-native: weight-sold eggs log kg, count eggs log butir, others pcs).
-function useStockUnitLabel() {
+export function useStockUnitLabel() {
   const { conversionMap } = useItemTypes();
   return (product: string, category: string): string => {
     if (category !== "egg") return "pcs";
@@ -67,22 +71,26 @@ interface GroupedActivityLogProps {
   onVoided?: () => void;
 }
 
-interface BuyerOrder {
+export interface BuyerOrder {
   buyerName: string;
   orderLines: Array<{ skuCode?: string; packQty?: number; eggProduct?: string; looseQty?: number }>;
   materials: Array<{ product: string; quantity: number; type: string }>;
   timestamp: string;
   outflowDate?: string;
   invoiceRef?: string;
+  dcName?: string;
   isSynced: boolean;
+  // Any row was created by an edit (original_log_id set) -> "Edited" badge.
+  edited?: boolean;
   logs: ActivityLog[];
 }
 
-interface ManualEntry {
+export interface ManualEntry {
   log: ActivityLog;
 }
 
-interface DateGroup {
+export interface DateGroup {
+  key: string; // yyyy-MM-dd
   date: string;
   quickOutflows: Map<string, BuyerOrder>;
   manualOutflows: ManualEntry[];
@@ -91,15 +99,19 @@ interface DateGroup {
 }
 
 // The context each entry hands up so one set of dialogs can serve the whole feed.
-interface ReturnRequest {
+export interface ReturnRequest {
   buyerName?: string;
   eggLogs: ActivityLog[];
   orderLines?: BuyerOrder["orderLines"];
 }
 
-export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", loading = false, hasActiveFilters = false, onVoided }: GroupedActivityLogProps) {
+// Shared feed state: return lookups, date/type grouping, edit/void/return
+// handlers and the one set of dialogs they open. Used by the mobile feed and
+// the tablet split view so both behave identically.
+export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
   const { t } = useLanguage();
-  const { canEdit, getEditWindowHours, voidOutflow, voidInflow, findRelatedEntryId } = useVoidEntry();
+  const { canEdit, getEditWindowHours, voidOutflow, voidInflow, findRelatedEntryId, isAdmin } = useVoidEntry();
+  const { user } = useAuth();
 
   // Bumped after a return is recorded so the bubbles refetch immediately (the
   // outflow-id set doesn't change, so usePriorReturns needs this nudge).
@@ -133,13 +145,24 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
   const [confirmVoidOrderOpen, setConfirmVoidOrderOpen] = useState(false);
   const [pendingVoidOrderLogs, setPendingVoidOrderLogs] = useState<ActivityLog[]>([]);
 
-  // Entrance animation should play on the FIRST mount only — not on every
-  // refetch/void, which would re-shimmer the whole feed.
-  const hasAnimatedRef = useRef(false);
-  const animateEntrance = !hasAnimatedRef.current;
+  // Edit-order dialog (1h correction window).
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+
+  // Re-render every 30s while any outflow is still inside the edit window, so
+  // Edit buttons disappear when their hour runs out. The tick only triggers a
+  // render; the window itself is always checked against the real clock.
+  const [tick, setTick] = useState(0);
+  const hasEditableAge = useMemo(
+    () => logs.some((l) => l.action_type === "outflow" && !l.voided_at && editMinutesLeft(l.created_at) > 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick re-checks the clock
+    [logs, tick]
+  );
   useEffect(() => {
-    hasAnimatedRef.current = true;
-  }, []);
+    if (!hasEditableAge) return;
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [hasEditableAge]);
 
   // At-a-glance summary of the currently displayed activity.
   const summary = useMemo(() => {
@@ -158,6 +181,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
           orderLines: log.metadata.orderLines || [],
           outflowDate: log.metadata.outflowDate,
           recordedAt: log.recorded_at,
+          dcId: log.metadata?.dcId,
         });
         if (!seenOrderKeys.has(key)) {
           seenOrderKeys.add(key);
@@ -180,6 +204,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
 
       if (!groups.has(dateKey)) {
         groups.set(dateKey, {
+          key: dateKey,
           date: displayDate,
           quickOutflows: new Map(),
           manualOutflows: [],
@@ -202,6 +227,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
           orderLines: log.metadata.orderLines || [],
           outflowDate: log.metadata.outflowDate,
           recordedAt: log.recorded_at,
+          dcId: log.metadata?.dcId,
         });
 
         if (!group.quickOutflows.has(orderKey)) {
@@ -212,7 +238,9 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
             timestamp: log.recorded_at,
             outflowDate: log.metadata.outflowDate,
             invoiceRef: log.metadata.invoiceRef,
+            dcName: log.metadata.dcName,
             isSynced: log.isSynced ?? true,
+            edited: !!log.original_log_id,
             logs: [log],
           });
         } else {
@@ -221,6 +249,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
           if (!log.isSynced) {
             existing.isSynced = false;
           }
+          if (log.original_log_id) existing.edited = true;
         }
       } else {
         // Manual outflow
@@ -270,7 +299,15 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
 
   // Destructive: first confirm intent, then collect a reason.
   const handleVoidOrderClick = (logs: ActivityLog[]) => {
-    setPendingVoidOrderLogs(logs);
+    // Rows already voided on their own (e.g. from the chronological view) are
+    // skipped, so the count is right and nothing tries to void them twice.
+    const live = logs.filter((l) => !l.voided_at);
+    if (live.length === 0) return;
+    if (live.length === 1) {
+      handleEditClick(live[0]); // one row: the single-entry void-with-reason flow
+      return;
+    }
+    setPendingVoidOrderLogs(live);
     setConfirmVoidOrderOpen(true);
   };
 
@@ -303,6 +340,53 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
     return canEdit(log.created_at, log.user_id) && !log.voided_at;
   };
 
+  // The rows an edit replaces, and the earliest of them: the server checks
+  // every row against the 1h window, so the oldest decides it.
+  const editRows = (target: EditTarget) => (target.kind === "quick" ? target.order.logs : [target.log]);
+  const oldestRow = (rows: ActivityLog[]) =>
+    rows.reduce((a, b) => (new Date(b.created_at) < new Date(a.created_at) ? b : a), rows[0]);
+
+  // Mirrors public.correct_order's checks: owner or admin, inside the window,
+  // every row live (any voided row -> ALREADY_CHANGED) and synced, no returns.
+  const canEditOrder = (target: EditTarget): boolean => {
+    const rows = editRows(target);
+    const first = oldestRow(rows);
+    if (!first) return false;
+    // The card must hold exactly one whole order (one row per material, each
+    // product once): a search hides some rows, and identical orders entered
+    // together merge into one card. Editing either would void the wrong set.
+    if (
+      target.kind === "quick" &&
+      (rows.length !== target.order.materials.length || new Set(rows.map((l) => l.product)).size !== rows.length)
+    ) {
+      return false;
+    }
+    return canCorrect({
+      createdAt: first.created_at,
+      entryUserId: first.user_id,
+      currentUserId: user?.id,
+      isAdmin: !!isAdmin,
+      voided: rows.some((l) => l.voided_at),
+      synced: rows.every((l) => l.isSynced !== false),
+      hasReturns: rows.some(
+        (l) =>
+          l.category === "egg" &&
+          l.action_type === "outflow" &&
+          (returnsMap[l.metadata?.relatedEntryId ?? ""]?.total ?? 0) > 0
+      ),
+    });
+  };
+
+  const editMinutes = (target: EditTarget): number => {
+    const first = oldestRow(editRows(target));
+    return first ? editMinutesLeft(first.created_at) : 0;
+  };
+
+  const handleEditOrderClick = (target: EditTarget) => {
+    setEditTarget(target);
+    setEditOpen(true);
+  };
+
   // Shared dialogs rendered once for the whole feed.
   const dialogs = (
     <>
@@ -320,6 +404,15 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
         onConfirm={handleVoidOrderConfirm}
         loading={voidLoading}
         orderLogsCount={voidOrderLogs.length}
+      />
+      <EditOrderDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        target={editTarget}
+        onSaved={() => {
+          setReturnsRefresh((n) => n + 1);
+          onVoided?.();
+        }}
       />
       <RecordReturnDialog
         open={returnDialogOpen}
@@ -356,6 +449,50 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
       </AlertDialog>
     </>
   );
+
+  return {
+    returnsMap,
+    summary,
+    groupedData,
+    isEditable,
+    getEditWindowHours,
+    handleEditClick,
+    handleReturnClick,
+    handleVoidOrderClick,
+    canEditOrder,
+    editMinutes,
+    handleEditOrderClick,
+    dialogs,
+  };
+}
+
+// The edit hooks the phone cards need, handed down as one prop.
+type OrderEdit = Pick<ReturnType<typeof useActivityFeed>, "canEditOrder" | "editMinutes" | "handleEditOrderClick">;
+
+export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", loading = false, hasActiveFilters = false, onVoided }: GroupedActivityLogProps) {
+  const {
+    returnsMap,
+    summary,
+    groupedData,
+    isEditable,
+    getEditWindowHours,
+    handleEditClick,
+    handleReturnClick,
+    handleVoidOrderClick,
+    canEditOrder,
+    editMinutes,
+    handleEditOrderClick,
+    dialogs,
+  } = useActivityFeed(logs, onVoided);
+  const edit: OrderEdit = { canEditOrder, editMinutes, handleEditOrderClick };
+
+  // Entrance animation should play on the FIRST mount only — not on every
+  // refetch/void, which would re-shimmer the whole feed.
+  const hasAnimatedRef = useRef(false);
+  const animateEntrance = !hasAnimatedRef.current;
+  useEffect(() => {
+    hasAnimatedRef.current = true;
+  }, []);
 
   if (loading) {
     return <ActivityTimelineSkeleton />;
@@ -413,6 +550,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
             onVoidOrderClick={handleVoidOrderClick}
             onReturnClick={handleReturnClick}
             returnsMap={returnsMap}
+            edit={edit}
           />
         ))}
       </div>
@@ -485,7 +623,14 @@ function StatusStrip({ summary }: StatusStripProps) {
 // ── Empty state ──────────────────────────────────────────────────────────────
 // A designed empty state consistent with the timeline aesthetic (not a bare
 // one-liner). Different copy when the emptiness is a filter result vs no data.
-function ActivityEmptyState({ hasActiveFilters }: { hasActiveFilters?: boolean }) {
+export function ActivityEmptyState({
+  hasActiveFilters,
+  onClearFilters,
+}: {
+  hasActiveFilters?: boolean;
+  // Tablet: shows a "Clear filters" button under a filtered-empty result.
+  onClearFilters?: () => void;
+}) {
   const { t } = useLanguage();
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
@@ -500,6 +645,11 @@ function ActivityEmptyState({ hasActiveFilters }: { hasActiveFilters?: boolean }
           {hasActiveFilters ? t.activity.emptyFilteredHint : t.activity.emptyHint}
         </p>
       </div>
+      {hasActiveFilters && onClearFilters && (
+        <Button variant="outline" className="h-11 rounded-[11px] px-[18px] text-[15px] font-semibold" onClick={onClearFilters}>
+          {t.activity.clearFilters}
+        </Button>
+      )}
     </div>
   );
 }
@@ -507,7 +657,7 @@ function ActivityEmptyState({ hasActiveFilters }: { hasActiveFilters?: boolean }
 // ── Loading skeleton ─────────────────────────────────────────────────────────
 // A timeline skeleton (rail + shimmer node rows) so the feed never flashes blank
 // then pops. Mirrors the real layout: sticky-marker line, then rail with nodes.
-function ActivityTimelineSkeleton() {
+export function ActivityTimelineSkeleton() {
   return (
     <div className="space-y-6" aria-hidden>
       <div className="grid grid-cols-3 gap-2">
@@ -614,9 +764,10 @@ interface DateSectionProps {
   onVoidOrderClick: (logs: ActivityLog[]) => void;
   onReturnClick: (req: ReturnRequest) => void;
   returnsMap: Record<string, OutflowReturns>;
+  edit: OrderEdit;
 }
 
-function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: DateSectionProps) {
+function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap, edit }: DateSectionProps) {
   const { t } = useLanguage();
   const hasQuickOutflows = group.quickOutflows.size > 0;
   const hasManualOutflows = group.manualOutflows.length > 0;
@@ -648,18 +799,18 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
           {hasQuickOutflows && (
             <div className="space-y-2.5">
               <SectionLabel icon={<ShoppingCart className="h-3.5 w-3.5" />} tone="quick">
-                {t.activity.quickOutflows || "Quick Outflows"}
+                {t.activity.quickOutflows}
               </SectionLabel>
               {Array.from(group.quickOutflows.values()).map((order, idx) => (
                 <TimelineRow key={idx} index={rowIndex++} tone="quick" animate={animate}>
                   <BuyerOrderCard
                     order={order}
-                    onEditClick={onEditClick}
                     isEditable={isEditable}
                     getEditWindowHours={getEditWindowHours}
                     onVoidOrderClick={onVoidOrderClick}
                     onReturnClick={onReturnClick}
                     returnsMap={returnsMap}
+                    edit={edit}
                   />
                 </TimelineRow>
               ))}
@@ -670,7 +821,7 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
           {hasManualOutflows && (
             <div className="space-y-2.5">
               <SectionLabel icon={<PackageMinus className="h-3.5 w-3.5" />} tone="outflow">
-                {t.activity.manualOutflows || "Manual Outflows"}
+                {t.activity.kastun}
               </SectionLabel>
               {group.manualOutflows.map((entry, idx) => (
                 <TimelineRow key={idx} index={rowIndex++} tone="outflow" animate={animate}>
@@ -681,6 +832,7 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
                     getEditWindowHours={getEditWindowHours}
                     onReturnClick={onReturnClick}
                     returnsMap={returnsMap}
+                    edit={edit}
                   />
                 </TimelineRow>
               ))}
@@ -768,19 +920,35 @@ function TimeSync({ time, isSynced }: { time?: string; isSynced?: boolean }) {
 // Renders a quantity as "delivered" when a return trimmed it: the net number,
 // the struck-through original, and an amber (N returned · code) badge. Falls
 // back to the plain number+unit when there are no returns.
-function DeliveredLine({
+export function DeliveredLine({
   sold,
   unit,
   returns,
   struck,
+  size = "sm",
+  className,
 }: {
   sold: number;
   unit: string;
   returns?: ReturnsSummary;
   struck?: boolean;
+  // "lg" is the tablet detail panel's larger type; "sm" is the mobile card.
+  size?: "sm" | "lg";
+  className?: string;
 }) {
   const { t } = useLanguage();
+  const lg = size === "lg";
   if (!returns || returns.total <= 0) {
+    if (lg) {
+      return (
+        <span className={cn("inline-flex items-baseline gap-1.5", className)}>
+          <span className={cn("font-bold tabular-nums", struck && "line-through")}>
+            {sold.toLocaleString()}
+          </span>
+          <span className="text-sm text-ek-mfg">{unit}</span>
+        </span>
+      );
+    }
     return (
       <>
         <span className={cn("font-bold tabular-nums", struck && "line-through")}>
@@ -792,15 +960,15 @@ function DeliveredLine({
   }
   const delivered = sold - returns.total;
   return (
-    <span className="inline-flex flex-col gap-0.5 min-w-0">
-      <span className="flex items-center gap-1.5">
+    <span className={cn("inline-flex flex-col gap-0.5 min-w-0", className)}>
+      <span className={cn("flex gap-1.5", lg ? "items-baseline" : "items-center")}>
         <span className="font-bold tabular-nums">{delivered.toLocaleString()}</span>
-        <span className="text-xs text-muted-foreground">{unit}</span>
-        <span className="text-[11px] text-muted-foreground line-through tabular-nums">
+        <span className={lg ? "text-sm text-ek-mfg" : "text-xs text-muted-foreground"}>{unit}</span>
+        <span className={cn("line-through tabular-nums", lg ? "text-[13px] text-ek-mfg" : "text-[11px] text-muted-foreground")}>
           {t.activity.wasQty.replace("{qty}", sold.toLocaleString())}
         </span>
       </span>
-      <span className="text-[11px] text-amber-700 dark:text-amber-400 tabular-nums">
+      <span className={cn("text-amber-700 dark:text-amber-400 tabular-nums", lg ? "text-[13.5px]" : "text-[11px]")}>
         ({t.activity.returnedBadge.replace("{n}", returns.total.toLocaleString())} · <ReturnCodeParts returns={returns} />) {unit}
       </span>
     </span>
@@ -815,7 +983,7 @@ const RETURN_CODE_COLOR: Record<string, string> = {
   R: "text-orange-600 dark:text-orange-400",
   H: "text-red-600 dark:text-red-400",
 };
-function ReturnCodeParts({ returns }: { returns: ReturnsSummary }) {
+export function ReturnCodeParts({ returns }: { returns: ReturnsSummary }) {
   const code = returnCode(returns);
   if (!code) return null;
   return (
@@ -835,7 +1003,7 @@ function ReturnCodeParts({ returns }: { returns: ReturnsSummary }) {
 // for Negeri); on the order line we always show BUTIR/pieces (kg conversion is
 // reserved for the materials breakdown), so kg-native products are converted back
 // to pieces at the flat 15.5. Renders nothing when there's no return.
-function ReturnBubble({ returns, unit }: { returns?: ReturnsSummary; unit?: string }) {
+export function ReturnBubble({ returns, unit, className }: { returns?: ReturnsSummary; unit?: string; className?: string }) {
   const { t } = useLanguage();
   if (!returns || returns.total <= 0) return null;
   const toP = (n: number) => nativeToPieces(n, unit);
@@ -847,38 +1015,18 @@ function ReturnBubble({ returns, unit }: { returns?: ReturnsSummary; unit?: stri
     restock, retakan, writeoff, total: restock + retakan + writeoff,
   };
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums">
+    <span className={cn("inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums", className)}>
       <Undo2 className="h-3 w-3" />
       {t.activity.returnedBadge.replace("{n}", pieces.total.toLocaleString())} · <ReturnCodeParts returns={pieces} />
     </span>
   );
 }
 
-interface BuyerOrderCardProps {
-  order: BuyerOrder;
-  onEditClick: (log: ActivityLog) => void;
-  isEditable: (log: ActivityLog) => boolean;
-  getEditWindowHours: (createdAt: string) => number;
-  onVoidOrderClick: (logs: ActivityLog[]) => void;
-  onReturnClick: (req: ReturnRequest) => void;
-  returnsMap: Record<string, OutflowReturns>;
-}
-
-function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap }: BuyerOrderCardProps) {
-  const { t } = useLanguage();
-  const unitLabel = useStockUnitLabel();
-  const [expanded, setExpanded] = useState(false);
-  const formattedTime = format(parseISO(order.timestamp), "HH:mm");
-
-  const firstLog = order.logs[0];
-  const canEditOrder = firstLog && isEditable(firstLog);
-  const hoursRemaining = firstLog ? getEditWindowHours(firstLog.created_at) : 0;
-  const isVoided = firstLog?.voided_at != null;
-
+// Per-order return lookups (egg lines, returns per egg product, pack SKU -> egg,
+// per-SKU return). Shared by the mobile order card and the tablet detail panel.
+export function useOrderReturns(order: BuyerOrder, returnsMap: Record<string, OutflowReturns>) {
   // EGG outflow rows are the returnable lines.
   const eggLogs = order.logs.filter((l) => l.category === "egg" && l.action_type === "outflow");
-  const canReturn = !isVoided && eggLogs.length > 0;
-
   // Sum returns per egg product across this order's egg outflow logs, so a line
   // or material row can be matched by product name.
   const returnsByProduct = useMemo(() => {
@@ -921,6 +1069,64 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
     return outflow?.bySku?.[skuCode];
   };
 
+  return { eggLogs, returnsByProduct, skuToEgg, skuReturns };
+}
+
+// Phone: outline "Edit order" / "Edit entry" button. Callers render it only
+// when canEditOrder (inside the 1h correction window).
+function EditOrderButton({ target, edit, label }: { target: EditTarget; edit: OrderEdit; label: string }) {
+  const { t } = useLanguage();
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="h-11 gap-1.5"
+      title={t.activity.editMinutesLeft.replace("{minutes}", String(edit.editMinutes(target)))}
+      onClick={() => edit.handleEditOrderClick(target)}
+    >
+      <Pencil className="h-4 w-4" />
+      {label}
+    </Button>
+  );
+}
+
+// Small "Edited" tag for rows an edit created (original_log_id set).
+function EditedBadge() {
+  const { t } = useLanguage();
+  return (
+    <Badge variant="outline" className="text-[11px] gap-1 font-normal shrink-0">
+      <Pencil className="h-3 w-3" />
+      {t.activity.edited}
+    </Badge>
+  );
+}
+
+interface BuyerOrderCardProps {
+  order: BuyerOrder;
+  isEditable: (log: ActivityLog) => boolean;
+  getEditWindowHours: (createdAt: string) => number;
+  onVoidOrderClick: (logs: ActivityLog[]) => void;
+  onReturnClick: (req: ReturnRequest) => void;
+  returnsMap: Record<string, OutflowReturns>;
+  edit: OrderEdit;
+}
+
+function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap, edit }: BuyerOrderCardProps) {
+  const { t } = useLanguage();
+  const unitLabel = useStockUnitLabel();
+  const [expanded, setExpanded] = useState(false);
+  const formattedTime = format(parseISO(order.timestamp), "HH:mm");
+
+  const firstLog = order.logs[0];
+  const canVoidOrder = firstLog && isEditable(firstLog);
+  const hoursRemaining = firstLog ? getEditWindowHours(firstLog.created_at) : 0;
+  const isVoided = firstLog?.voided_at != null;
+  const editTarget: EditTarget = { kind: "quick", order };
+  const canEditOrder = edit.canEditOrder(editTarget);
+
+  const { eggLogs, returnsByProduct, skuToEgg, skuReturns } = useOrderReturns(order, returnsMap);
+  const canReturn = !isVoided && eggLogs.length > 0;
+
   const outflowDateFormatted = order.outflowDate
     ? format(parseISO(order.outflowDate), "MMM d, yyyy")
     : null;
@@ -942,12 +1148,19 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
               {order.buyerName}
             </span>
           </div>
-          {(order.invoiceRef || outflowDateFormatted) && (
+          {(order.invoiceRef || order.dcName || outflowDateFormatted || order.edited) && (
             <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+              {order.edited && <EditedBadge />}
               {order.invoiceRef && (
                 <Badge variant="outline" className="text-[11px] gap-1 font-normal">
                   <FileText className="h-3 w-3" />
                   {order.invoiceRef}
+                </Badge>
+              )}
+              {order.dcName && (
+                <Badge variant="outline" className="text-[11px] gap-1 font-normal">
+                  <MapPin className="h-3 w-3" />
+                  {order.dcName}
                 </Badge>
               )}
               {outflowDateFormatted && (
@@ -1004,7 +1217,7 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
 
       {/* Action row: quiet, right-aligned. Return is a secondary outline button
           (not a full-width solid) so it doesn't compete with the feed's hierarchy. */}
-      {!isVoided && (canReturn || canEditOrder) && (
+      {!isVoided && (canReturn || canEditOrder || canVoidOrder) && (
         <div className="flex flex-wrap items-center justify-end gap-1 pt-1">
           {canReturn && (
             <Button
@@ -1017,29 +1230,19 @@ function BuyerOrderCard({ order, onEditClick, isEditable, getEditWindowHours, on
               {t.activity.recordReturn}
             </Button>
           )}
-          {canEditOrder && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11"
-                onClick={() => onEditClick(firstLog)}
-                title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
-                aria-label={t.activity.editEntry}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              {order.logs.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-11 text-xs text-destructive hover:text-destructive px-3"
-                  onClick={() => onVoidOrderClick(order.logs)}
-                >
-                  {t.activity.voidOrder}
-                </Button>
-              )}
-            </>
+          {canEditOrder && <EditOrderButton target={editTarget} edit={edit} label={t.activity.editOrder} />}
+          {/* One void action per order (any number of materials); the old pencil
+              opened the same void-with-reason flow for just one row. */}
+          {canVoidOrder && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-11 text-xs text-destructive hover:text-destructive px-3"
+              onClick={() => onVoidOrderClick(order.logs)}
+              title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
+            >
+              {t.activity.voidOrder}
+            </Button>
           )}
         </div>
       )}
@@ -1093,7 +1296,15 @@ interface ReturnableEntryProps extends EntryProps {
   returnsMap: Record<string, OutflowReturns>;
 }
 
-function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, onReturnClick, returnsMap }: ReturnableEntryProps) {
+function ManualOutflowEntry({
+  log,
+  onEditClick,
+  isEditable,
+  getEditWindowHours,
+  onReturnClick,
+  returnsMap,
+  edit,
+}: ReturnableEntryProps & { edit: OrderEdit }) {
   const { t } = useLanguage();
   const unitLabel = useStockUnitLabel();
   const formattedTime = format(parseISO(log.recorded_at), "HH:mm");
@@ -1101,6 +1312,8 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
   const hoursRemaining = getEditWindowHours(log.created_at);
   const isVoided = log.voided_at != null;
   const canReturn = !isVoided && log.category === "egg" && log.action_type === "outflow";
+  const editTarget: EditTarget = { kind: "manual", log };
+  const canCorrectEntry = edit.canEditOrder(editTarget);
 
   return (
     <EntryCard tone="outflow" isSynced={log.isSynced} isVoided={isVoided}>
@@ -1114,6 +1327,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           <Badge variant="outline" className="text-xs shrink-0">
             {CATEGORY_LABELS[log.category]}
           </Badge>
+          {log.original_log_id && <EditedBadge />}
           <span className={cn("font-semibold", isVoided && "line-through")}>{log.product}</span>
           <span className="text-muted-foreground">·</span>
           <DeliveredLine
@@ -1132,7 +1346,7 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
         </div>
       )}
 
-      {!isVoided && (canReturn || canEditEntry) && (
+      {!isVoided && (canReturn || canCorrectEntry || canEditEntry) && (
         <div className="flex flex-wrap items-center justify-end gap-1 pt-2.5">
           {canReturn && (
             <Button
@@ -1145,16 +1359,16 @@ function ManualOutflowEntry({ log, onEditClick, isEditable, getEditWindowHours, 
               {t.activity.recordReturn}
             </Button>
           )}
+          {canCorrectEntry && <EditOrderButton target={editTarget} edit={edit} label={t.activity.editCash} />}
           {canEditEntry && (
             <Button
               variant="ghost"
-              size="icon"
-              className="h-11 w-11"
+              size="sm"
+              className="h-11 text-xs text-destructive hover:text-destructive px-3"
               onClick={() => onEditClick(log)}
               title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
-              aria-label={t.activity.editEntry}
             >
-              <Pencil className="h-4 w-4" />
+              {t.activity.voidEntry}
             </Button>
           )}
         </div>
@@ -1216,13 +1430,12 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
         <div className="flex justify-end pt-2.5">
           <Button
             variant="ghost"
-            size="icon"
-            className="h-11 w-11"
+            size="sm"
+            className="h-11 text-xs text-destructive hover:text-destructive px-3"
             onClick={() => onEditClick(log)}
             title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
-            aria-label={t.activity.editEntry}
           >
-            <Pencil className="h-4 w-4" />
+            {t.activity.voidEntry}
           </Button>
         </div>
       )}
@@ -1265,11 +1478,11 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
             className={cn("text-xs shrink-0", isInflow && "border-emerald-600/60 text-emerald-700 dark:text-emerald-400")}
           >
             {isInflow ? (
-              <><PackagePlus className="h-3 w-3 mr-1" />Inflow</>
+              <><PackagePlus className="h-3 w-3 mr-1" /><span className="capitalize">{t.activity.statInflow}</span></>
             ) : isQuickOutflow ? (
-              <><ShoppingCart className="h-3 w-3 mr-1" />Quick</>
+              <><ShoppingCart className="h-3 w-3 mr-1" />{t.activity.quickOutflow}</>
             ) : (
-              <><PackageMinus className="h-3 w-3 mr-1" />Outflow</>
+              <><PackageMinus className="h-3 w-3 mr-1" />{t.activity.kastun}</>
             )}
           </Badge>
 
@@ -1298,11 +1511,18 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           )}
 
           {isQuickOutflow && log.metadata?.buyerName && (
-            <Badge variant="outline" className="text-xs gap-1 shrink-0">
-              <Store className="h-3 w-3" />
-              {log.metadata.buyerName}
+            <Badge variant="outline" className="text-xs gap-1 max-w-full">
+              <Store className="h-3 w-3 shrink-0" />
+              <span className="truncate">{log.metadata.buyerName}</span>
             </Badge>
           )}
+          {isQuickOutflow && log.metadata?.dcName && (
+            <Badge variant="outline" className="text-xs gap-1 max-w-full">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="truncate">{log.metadata.dcName}</span>
+            </Badge>
+          )}
+          {log.original_log_id && <EditedBadge />}
         </div>
 
         <TimeSync isSynced={log.isSynced} />
@@ -1339,13 +1559,12 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           {canEditEntry && (
             <Button
               variant="ghost"
-              size="icon"
-              className="h-11 w-11"
+              size="sm"
+              className="h-11 text-xs text-destructive hover:text-destructive px-3"
               onClick={() => onEditClick(log)}
               title={t.activity.withinEditWindow.replace('{hours}', String(hoursRemaining))}
-              aria-label={t.activity.editEntry}
             >
-              <Pencil className="h-4 w-4" />
+              {t.activity.voidEntry}
             </Button>
           )}
         </div>

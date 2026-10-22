@@ -65,6 +65,28 @@ describe("buildSkuBomRows", () => {
     expect(rows[0].eggUnit).toBe("butir");
   });
 
+  it("Purchase Order (no boxMode, has DC): Box SKU boxes kept, DC exported, no invented box mode", () => {
+    const poSkus: PackSKU[] = [
+      ...skus,
+      { code: "OSVN10O", displayName: "Osave box", eggsPerPack: 10, eggProduct: "NEGERI OMEGA", packagingItem: "NEGERI ISI 10", basePackCode: "N10O", boxMode: "box osave" },
+    ];
+    const logs = orderLogs().map((l) => ({
+      ...l,
+      metadata: { ...l.metadata, boxMode: undefined, dcId: "dc-bks", dcName: "BKS", orderLines: [{ skuCode: "OSVN10O", packQty: 10 }] },
+    }));
+    const rows = buildSkuBomRows(logs, poSkus, conversionMap, boxCapacityMap, labelsPerPackMap);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].dc).toBe("BKS");
+    expect(rows[0].boxMode).toBe("");
+    expect(rows[0].boxType).toBe("box osave");
+    expect(rows[0].boxes).toBe(10); // 10 boxes x 18 packs
+    expect(rows[0].packagingQty).toBe(180);
+    const csv = skuBomRowsToCSV(rows).split("\n");
+    expect(csv[0]).toContain('"DC"');
+    expect(csv[1]).toContain('"BKS"');
+    expect(csv[1]).not.toContain("plastic");
+  });
+
   it("serializes to CSV with a header row", () => {
     const csv = skuBomRowsToCSV(buildSkuBomRows(orderLogs(), skus, conversionMap, boxCapacityMap, labelsPerPackMap));
     const lines = csv.split("\n");

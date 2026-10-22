@@ -1,20 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { AggregatedMaterials, StockShortage, BoxModeType } from "@/types/quickOutflow";
+import { AggregatedMaterials, StockShortage } from "@/types/quickOutflow";
 import { ConversionMap } from "@/types/inventory";
-import { isLogisticsOnlyMode } from "@/lib/outflowCalculator";
-import { AlertCircle, CheckCircle2, Egg, Package, Box, Truck, Tag } from "lucide-react";
+import { AlertCircle, CheckCircle2, Egg, Package, Box, Tag } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface OrderSummaryPanelProps {
   aggregates: AggregatedMaterials;
   shortages: StockShortage[];
-  boxMode: BoxModeType;
   conversionMap?: ConversionMap;
 }
 
-export function OrderSummaryPanel({ aggregates, shortages, boxMode, conversionMap = {} }: OrderSummaryPanelProps) {
+export function OrderSummaryPanel({ aggregates, shortages, conversionMap = {} }: OrderSummaryPanelProps) {
   const { t } = useLanguage();
   const eggUnit = (product: string) =>
     conversionMap[product]?.unit === "kg" ? " kg" : "";
@@ -147,24 +145,6 @@ export function OrderSummaryPanel({ aggregates, shortages, boxMode, conversionMa
                       </div>
                     );
                   })}
-                </div>
-              </div>
-            )}
-
-            {/* Logistics section */}
-            {(aggregates.logistics.keranjang || aggregates.logistics.traysUsed > 0) && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Truck className="h-4 w-4 text-purple-500" />
-                  {t.outflow.logistics}
-                </div>
-                <div className="space-y-1 pl-6 text-sm text-muted-foreground">
-                  {aggregates.logistics.keranjang && (
-                    <div>{t.outflow.keranjangNoInventory}</div>
-                  )}
-                  {aggregates.logistics.traysUsed > 0 && (
-                    <div>~{aggregates.logistics.traysUsed} {t.outflow.traysNoInventory}</div>
-                  )}
                 </div>
               </div>
             )}

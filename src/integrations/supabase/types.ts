@@ -92,6 +92,35 @@ export type Database = {
           },
         ]
       }
+      buyer_dcs: {
+        Row: {
+          buyer_id: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          buyer_id: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          buyer_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "buyer_dcs_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "buyers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       buyers: {
         Row: {
           created_at: string
@@ -99,6 +128,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           name: string
+          pinned_sku_ids: string[]
         }
         Insert: {
           created_at?: string
@@ -106,6 +136,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           name: string
+          pinned_sku_ids?: string[]
         }
         Update: {
           created_at?: string
@@ -113,6 +144,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           name?: string
+          pinned_sku_ids?: string[]
         }
         Relationships: []
       }
@@ -665,9 +697,30 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      purchase_orders: {
+        Row: {
+          buyer_name: string | null
+          dc_id: string | null
+          dc_name: string | null
+          egg_totals: Json | null
+          invoice_ref: string | null
+          order_lines: Json | null
+          outflow_date: string | null
+          recorded_at: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      correct_order: {
+        Args: {
+          p_entries: Json
+          p_logs: Json
+          p_old_log_ids: string[]
+          p_reason: string
+        }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

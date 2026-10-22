@@ -11,6 +11,7 @@ export interface OrderToCheck {
   buyerName: string;
   outflowDate: string;
   orderLines: DupOrderLine[];
+  dcId?: string;
 }
 
 // A previously-recorded order that matches one being submitted.
@@ -21,7 +22,7 @@ export interface DuplicateMatch {
 }
 
 // Checks the orders being submitted against recently-recorded quick-outflow
-// orders (same buyer + delivery date + line signature, within the window).
+// orders (same buyer + DC + delivery date + line signature, within the window).
 // Best-effort: on any query error it returns [] so a lookup failure never
 // blocks a real submission (the check only warns, it isn't a gate).
 export function useDuplicateOrderCheck() {
@@ -47,16 +48,17 @@ export function useDuplicateOrderCheck() {
         buyerName?: string;
         outflowDate?: string;
         orderLines?: DupOrderLine[];
+        dcId?: string;
       };
       if (m.orderType !== "quick_outflow" || !m.buyerName || !m.outflowDate) continue;
-      const key = orderDuplicateKey(m.buyerName, m.outflowDate, m.orderLines);
+      const key = orderDuplicateKey(m.buyerName, m.outflowDate, m.orderLines, m.dcId);
       const existing = recentByKey.get(key);
       if (!existing || row.recorded_at > existing) recentByKey.set(key, row.recorded_at);
     }
 
     const matches: DuplicateMatch[] = [];
     for (const o of orders) {
-      const key = orderDuplicateKey(o.buyerName, o.outflowDate, o.orderLines);
+      const key = orderDuplicateKey(o.buyerName, o.outflowDate, o.orderLines, o.dcId);
       const recordedAt = recentByKey.get(key);
       if (recordedAt) {
         matches.push({

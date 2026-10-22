@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { OutflowEntry } from "@/types/inventory";
 import { classifyOutflowError, OutflowSubmitResult } from "@/lib/outflowOutbox";
+import { toRpcEntries } from "@/lib/orderPayload";
 
 /**
  * Call the atomic record_order_outflows RPC and classify any failure as
@@ -16,14 +17,7 @@ export async function callRecordOrderOutflows(
 ): Promise<OutflowSubmitResult> {
   try {
     const { error } = await supabase.rpc("record_order_outflows", {
-      p_entries: entries.map((entry) => ({
-        id: entry.id,
-        date: entry.date,
-        product: entry.product,
-        quantity_butir: entry.quantityInButir,
-        category: entry.category,
-        invoice_supplier: entry.invoiceSupplier || null,
-      })),
+      p_entries: toRpcEntries(entries),
     });
 
     if (error) throw error;

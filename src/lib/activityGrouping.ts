@@ -8,6 +8,8 @@ export interface OrderLike {
   orderLines?: unknown;
   outflowDate?: string | null;
   recordedAt: string; // ISO
+  // Purchase orders to different DCs of the same buyer are separate orders.
+  dcId?: string | null;
 }
 
 // Buyer-order grouping key. Rows from the same order share buyer + order
@@ -15,7 +17,8 @@ export interface OrderLike {
 // fall into different buckets and stay separate. Mirrors GroupedActivityLog.
 export function orderBucketKey(o: OrderLike): string {
   const bucket = Math.floor(new Date(o.recordedAt).getTime() / 30000);
-  return `${o.buyerName ?? ""}_${JSON.stringify(o.orderLines ?? [])}_${o.outflowDate ?? "null"}_${bucket}`;
+  const base = `${o.buyerName ?? ""}_${JSON.stringify(o.orderLines ?? [])}_${o.outflowDate ?? "null"}_${bucket}`;
+  return o.dcId ? `${base}_${o.dcId}` : base;
 }
 
 // True when two order-line rows collapse into one displayed buyer order.
@@ -57,4 +60,16 @@ export function returnCode(r: ReturnsSummary): string {
   if (r.retakan > 0) parts.push(`${r.retakan.toLocaleString()}R`);
   if (r.writeoff > 0) parts.push(`${r.writeoff.toLocaleString()}H`);
   return parts.join(" ");
+}
+
+// Which feed section / type tab an entry belongs to. Mirrors the grouping in
+// GroupedActivityLog: a quick outflow needs a buyer, every other outflow is
+// Kastun (manual).
+export type EntryKind = "quick" | "manual" | "inflow";
+export function entryKind(log: {
+  action_type: "inflow" | "outflow";
+  metadata?: { orderType?: string; buyerName?: string };
+}): EntryKind {
+  if (log.action_type === "inflow") return "inflow";
+  return log.metadata?.orderType === "quick_outflow" && log.metadata?.buyerName ? "quick" : "manual";
 }

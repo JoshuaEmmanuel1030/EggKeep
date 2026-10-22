@@ -84,27 +84,8 @@ export function buildBoxCapacityMap(boxItems: ItemType[]): BoxCapacityMap {
   return map;
 }
 
-// Buyer default box modes
-export const BUYER_BOX_MODES: Record<string, BoxModeType> = {
-  "Astro": "box kecil",
-  "Family Mart": "box kecil",
-  "K3Mart": "box kecil",
-  "Osave": "box osave",
-  "Segari": "keranjang",
-  "CircleK": "keranjang",
-  "Sayurbox": "tray",
-};
-
 // Logistics-only box modes (no inventory deduction)
 export const LOGISTICS_ONLY_MODES: BoxModeType[] = ["keranjang", "tray", "plastic"];
-
-// Every box mode, free-pickable per order line regardless of the buyer's default.
-// Inventory boxes first, then logistics-only modes. A buyer's default_box_mode is
-// only a starting point now — any line may override to any of these (e.g. trays
-// for a tray-only product mixed into an otherwise boxed order).
-export const ALL_BOX_MODES: BoxModeType[] = [
-  "box kecil", "box osave", "box osave polos", "keranjang", "tray", "plastic",
-];
 
 // Get SKU by code - now accepts dynamic SKU list
 export function getSKUByCode(code: string, skus: PackSKU[]): PackSKU | undefined {
@@ -161,10 +142,13 @@ export function calculateBoxes(
   return { boxes, remainder, capacity };
 }
 
-// Calculate materials for a single order line - now accepts dynamic SKU list
+// Calculate materials for a single order line - now accepts dynamic SKU list.
+// boxMode is the order-level mode; the Purchase Order builder passes null, so
+// boxes come only from Box SKUs (resolveBoxLine sets boxModeOverride). A line
+// with no effective mode gets no boxes, trays or logistics.
 export function calculateLineMaterials(
   line: OrderLine,
-  boxMode: BoxModeType,
+  boxMode: BoxModeType | null,
   boxesRequired: boolean,
   skus: PackSKU[] = [],
   conversionMap: ConversionMap = CONVERSION_DICT,
@@ -199,9 +183,9 @@ export function calculateLineMaterials(
     let boxesPcs = 0;
     let boxType: string | null = null;
     let lastBoxFill: string | undefined;
-    const isLogisticsOnly = isLogisticsOnlyMode(effectiveBoxMode);
+    const isLogisticsOnly = !!effectiveBoxMode && isLogisticsOnlyMode(effectiveBoxMode);
 
-    if (boxesRequired && !isLogisticsOnly) {
+    if (boxesRequired && effectiveBoxMode && !isLogisticsOnly) {
       const { boxes, remainder, capacity } = calculateBoxes(line.skuCode, line.packQty, effectiveBoxMode, boxCapacityMap);
       boxesPcs = boxes;
       boxType = effectiveBoxMode;
@@ -276,7 +260,7 @@ export function calculateLineMaterials(
 // Aggregate materials from multiple order lines - now accepts dynamic SKU list
 export function aggregateOrderMaterials(
   lines: OrderLine[],
-  boxMode: BoxModeType,
+  boxMode: BoxModeType | null,
   boxesRequired: boolean,
   skus: PackSKU[] = [],
   conversionMap: ConversionMap = CONVERSION_DICT,
@@ -287,8 +271,6 @@ export function aggregateOrderMaterials(
   const packagingByItem = new Map<string, number>();
   const labelsByItem = new Map<string, number>();
   const boxesByType = new Map<string, number>();
-  let hasKeranjang = false;
-  let totalTrays = 0;
 
   for (const line of lines) {
     const materials = calculateLineMaterials(line, boxMode, boxesRequired, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
@@ -318,24 +300,9 @@ export function aggregateOrderMaterials(
       const currentBoxes = boxesByType.get(materials.boxType) || 0;
       boxesByType.set(materials.boxType, currentBoxes + materials.boxesPcs);
     }
-
-    // Track logistics
-    const effectiveBoxMode = line.boxModeOverride || boxMode;
-    if (effectiveBoxMode === "keranjang") {
-      hasKeranjang = true;
-    }
-    if (materials.traysUsed) {
-      totalTrays += materials.traysUsed;
-    }
   }
 
-  return {
-    eggsByProduct,
-    packagingByItem,
-    labelsByItem,
-    boxesByType,
-    logistics: { keranjang: hasKeranjang, traysUsed: totalTrays },
-  };
+  return { eggsByProduct, packagingByItem, labelsByItem, boxesByType };
 }
 
 // Validate stock availability
@@ -406,27 +373,4 @@ export function validateStockAgainstInventory(
   }
 
   return shortages;
-}
-
-// Get available box modes for a buyer
-export function getAvailableBoxModes(buyerName: string): BoxModeType[] {
-  const defaultMode = BUYER_BOX_MODES[buyerName] || "box kecil";
-  
-  // Osave can switch between box osave and box osave polos
-  if (buyerName === "Osave") {
-    return ["box osave", "box osave polos"];
-  }
-  
-  // Return the default mode
-  return [defaultMode];
-}
-
-// Check if a SKU is supported for a box mode
-export function isSKUSupportedForBoxMode(
-  skuCode: string,
-  boxMode: BoxModeType,
-  boxCapacityMap: BoxCapacityMap = BOX_CAPACITIES
-): boolean {
-  if (isLogisticsOnlyMode(boxMode)) return true;
-  return !!boxCapacityMap[boxMode]?.[skuCode];
 }

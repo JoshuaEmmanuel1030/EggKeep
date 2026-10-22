@@ -1,7 +1,7 @@
 export interface Buyer {
   id: string;
   name: string;
-  defaultBoxMode: BoxModeType;
+  pinnedSkuIds?: string[]; // pack_skus ids pinned to the top of this buyer's PO SKU dropdown
 }
 
 export type BoxModeType = 'box kecil' | 'box osave' | 'box osave polos' | 'keranjang' | 'tray' | 'plastic';
@@ -16,7 +16,7 @@ export interface OrderLine {
   eggProduct?: string;     // For loose egg lines
   looseQty?: number;       // For loose egg lines
   looseUnit?: 'butir' | 'kg';
-  boxModeOverride?: BoxModeType;
+  boxModeOverride?: BoxModeType;  // Set by resolveBoxLine for Box SKU lines
   labelSelection?: string | null;  // Paused feature placeholder
 }
 
@@ -39,7 +39,6 @@ export interface AggregatedMaterials {
   packagingByItem: Map<string, number>;
   labelsByItem: Map<string, number>;
   boxesByType: Map<string, number>;
-  logistics: { keranjang: boolean; traysUsed: number };
 }
 
 export interface StockShortage {
@@ -55,7 +54,7 @@ export interface QuickOutflowOrder {
   buyerName: string;
   date: string;
   invoiceRef: string;
-  boxMode: BoxModeType;
-  boxesRequired: boolean;
+  dcId?: string;
+  dcName?: string;
   lines: OrderLine[];
 }

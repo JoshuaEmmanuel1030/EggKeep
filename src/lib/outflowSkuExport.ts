@@ -30,7 +30,8 @@ export interface SkuBomRow {
   date: string;
   buyer: string;
   invoice: string;
-  boxMode: string;
+  dc: string;
+  boxMode: string; // legacy order-level mode; "" for Purchase Orders (boxes come from Box SKUs)
   lineType: "pack" | "loose" | "legacy";
   sku: string;
   skuName: string;
@@ -54,7 +55,7 @@ const HEADERS = [
   "Packaging Item", "Packaging Qty",
   "Box Type", "Boxes",
   "Label Item", "Labels",
-  "Voided",
+  "Voided", "DC",
 ];
 
 /** Reconstruct per-SKU BOM rows from outflow activity logs. */
@@ -77,6 +78,7 @@ export function buildSkuBomRows(
       orderLines: log.metadata?.orderLines,
       outflowDate: log.metadata?.outflowDate ?? null,
       recordedAt: log.recorded_at,
+      dcId: log.metadata?.dcId,
     });
     const bucket = groups.get(key);
     if (bucket) bucket.push(log);
@@ -87,7 +89,9 @@ export function buildSkuBomRows(
   for (const group of groups.values()) {
     const rep = group[0];
     const md = rep.metadata ?? {};
-    const boxMode = (md.boxMode as BoxModeType) || "plastic";
+    // Older orders carry an order-level box mode; Purchase Orders don't (null =
+    // boxes only from Box SKU lines, exactly what the builder deducted).
+    const boxMode = (md.boxMode as BoxModeType) || null;
     // Boxes were physically deducted only when the order produced a box row
     // (logistics modes — keranjang/tray/plastic — never do). Mirror that.
     const boxesRequired = group.some((l) => l.category === "box");
@@ -95,7 +99,8 @@ export function buildSkuBomRows(
       date: (md.outflowDate || rep.recorded_at).slice(0, 10),
       buyer: md.buyerName || rep.invoice_supplier || "",
       invoice: md.invoiceRef || rep.invoice_supplier || "",
-      boxMode,
+      dc: md.dcName || "",
+      boxMode: boxMode ?? "",
       voided: group.every((l) => l.voided_at != null),
     };
     const blank = {
@@ -174,6 +179,7 @@ export function skuBomRowsToCSV(rows: SkuBomRow[]): string {
       r.boxType, r.boxes,
       r.labelItem, r.labels,
       r.voided ? "YES" : "NO",
+      r.dc,
     ].map(esc).join(","),
   );
   return [HEADERS.map(esc).join(","), ...body].join("\n");

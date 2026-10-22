@@ -8,6 +8,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { cn } from '@/lib/utils';
+import { useIsTabletLandscape } from '@/hooks/use-mobile';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -22,6 +24,8 @@ export function InventoryAssistant() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Tablet landscape: clear the Activities detail panel's 76px bottom action bar.
+  const lift = useIsTabletLandscape() && 'sm:bottom-[92px]';
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -75,7 +79,7 @@ export function InventoryAssistant() {
     return (
       <Button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 h-14 w-14 rounded-full shadow-lg z-50"
+        className={cn("fixed bottom-20 right-4 sm:bottom-6 sm:right-6 h-14 w-14 rounded-full shadow-lg z-50", lift)}
         size="icon"
         aria-label="Open inventory assistant"
       >
@@ -85,7 +89,7 @@ export function InventoryAssistant() {
   }
 
   return (
-    <Card className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-96 h-[60vh] sm:h-[500px] max-h-[500px] shadow-xl z-50 flex flex-col">
+    <Card className={cn("fixed bottom-20 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-96 h-[60vh] sm:h-[500px] max-h-[500px] shadow-xl z-50 flex flex-col", lift)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b">
         <CardTitle className="text-lg flex items-center gap-2">
           <Bot className="h-5 w-5 text-primary" />
