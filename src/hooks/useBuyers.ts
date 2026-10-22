@@ -16,7 +16,7 @@ export function useBuyers() {
 
       if (error) throw error;
 
-      return (data || []).map((row) => ({ id: row.id, name: row.name }));
+      return (data || []).map((row) => ({ id: row.id, name: row.name, pinnedSkuIds: row.pinned_sku_ids ?? [] }));
     },
   });
 
@@ -49,6 +49,17 @@ export function useBuyers() {
 
       if (error) throw error;
       return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["buyers"] });
+    },
+  });
+
+  // Admin-only in the UI. Replaces the buyer's pinned SKU list.
+  const setPinnedSkus = useMutation({
+    mutationFn: async ({ id, skuIds }: { id: string; skuIds: string[] }) => {
+      const { error } = await supabase.from("buyers").update({ pinned_sku_ids: skuIds }).eq("id", id);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["buyers"] });
@@ -92,6 +103,7 @@ export function useBuyers() {
     refetch,
     addBuyer,
     updateBuyer,
+    setPinnedSkus,
     deleteBuyer,
     restoreBuyer,
   };
