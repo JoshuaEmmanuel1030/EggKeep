@@ -1511,15 +1511,15 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           )}
 
           {isQuickOutflow && log.metadata?.buyerName && (
-            <Badge variant="outline" className="text-xs gap-1 shrink-0">
-              <Store className="h-3 w-3" />
-              {log.metadata.buyerName}
+            <Badge variant="outline" className="text-xs gap-1 max-w-full">
+              <Store className="h-3 w-3 shrink-0" />
+              <span className="truncate">{log.metadata.buyerName}</span>
             </Badge>
           )}
           {isQuickOutflow && log.metadata?.dcName && (
-            <Badge variant="outline" className="text-xs gap-1 shrink-0">
-              <MapPin className="h-3 w-3" />
-              {log.metadata.dcName}
+            <Badge variant="outline" className="text-xs gap-1 max-w-full">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="truncate">{log.metadata.dcName}</span>
             </Badge>
           )}
           {log.original_log_id && <EditedBadge />}
