@@ -154,7 +154,7 @@ New `src/components/catalog/BuyerProfile.tsx`:
 
 Input: the buyer's orders (`outflow_date`, `order_lines`, `egg_totals`), the catalog SKUs (code → is box SKU), `today` (local yyyy-MM-dd), and `conversionMap` (for `≈ butir`). Dates are handled as yyyy-MM-dd strings. Weekdays come from `new Date(y, m − 1, d)`, so there are no timezone shifts.
 
-- **Window W:** the 56 days ending today. **Order-day:** a delivery date with at least one order. Several orders on one date (different stores or DCs) are summed per day before any median is taken.
+- **Window W:** the 56 days ending on the **anchor**, which is the later of today and the latest delivery date. POs are sometimes entered before the delivery day. "Today" in the weekday rule below means the anchor. **Order-day:** a delivery date with at least one order. Several orders on one date (different stores or DCs) are summed per day before any median is taken.
 - **Weekday pattern:** for each weekday `d`:
   - `available` = dates in `[max(W start, first order date in data), today)` with weekday `d`, plus today if today is an order-day.
   - `weeksWithOrder` = the order-days among those dates.
