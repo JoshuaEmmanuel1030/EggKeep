@@ -30,6 +30,7 @@ export function BuyerSkuPins({ buyer, isAdmin, onSaved, onCancel }: BuyerSkuPins
   const [ticked, setTicked] = useState(() => new Set(saved));
 
   if (!isAdmin) {
+    if (isLoading) return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
     const pinned = active.filter((s) => saved.includes(s.id));
     if (pinned.length === 0) return <p className="text-sm text-muted-foreground">{t.buyerProfile.noPins}</p>;
     return (
