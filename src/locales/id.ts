@@ -551,6 +551,7 @@ export const id = {
     stats30d: '{n} order dalam 30 hari · terakhir {date}',
     noOrders30d: 'Tidak ada order dalam 30 hari',
     pinnedCount: '{n} SKU utama',
+    ordersCount: '{n} order',
     thinData: 'Berdasarkan riwayat {weeks} minggu. Pola makin akurat setelah ~8 minggu.',
     byWeekday: 'Minggu dengan order, per hari kirim',
     typicalDay: '{day} biasanya',

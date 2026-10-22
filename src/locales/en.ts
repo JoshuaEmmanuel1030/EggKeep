@@ -551,6 +551,7 @@ export const en = {
     stats30d: '{n} orders in 30 days · last {date}',
     noOrders30d: 'No orders in 30 days',
     pinnedCount: '{n} SKUs pinned',
+    ordersCount: '{n} orders',
     thinData: 'Based on {weeks} weeks of history. Patterns firm up after ~8 weeks.',
     byWeekday: 'Weeks with an order, by delivery day',
     typicalDay: 'Typical {day}',

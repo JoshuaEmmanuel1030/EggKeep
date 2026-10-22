@@ -30,7 +30,7 @@ export function BuyerPlanning({ buyerName }: { buyerName: string }) {
   const { t, language } = useLanguage();
   const locale = language === "id" ? "id-ID" : "en-US";
   const { data: orders = [], isLoading, error, refetch } = usePurchaseOrders(buyerName);
-  const { skus } = usePackSKUs();
+  const { skus, isLoading: skusLoading } = usePackSKUs();
   const { conversionMap } = useItemTypes();
   const today = localToday();
 
@@ -55,7 +55,7 @@ export function BuyerPlanning({ buyerName }: { buyerName: string }) {
     toLocalDate(`${m}-01`).toLocaleDateString(locale, { month: "short", year: "2-digit" }) +
     (m === today.slice(0, 7) ? ` (${t.buyerProfile.soFar})` : "");
 
-  if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  if (isLoading || skusLoading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if (error) {
     return (
       <div className="flex items-center gap-3 py-6 text-sm">
@@ -84,30 +84,30 @@ export function BuyerPlanning({ buyerName }: { buyerName: string }) {
                 key={wd}
                 type="button"
                 onClick={() => setPicked(wd)}
-                className={cn("grid w-full grid-cols-[3rem_1fr_5.5rem] items-center gap-2 rounded px-1 py-1 text-left text-sm", wd === weekday && "bg-accent")}
+                className={cn("grid w-full grid-cols-[3rem_1fr_7rem] items-center gap-2 rounded px-1 py-1 text-left text-sm", wd === weekday && "bg-accent")}
               >
                 <span className={cn(s.usual && "font-semibold")}>{dayName(wd)}</span>
                 <span className="h-2 rounded-full bg-muted">
                   <span className="block h-2 rounded-full bg-primary" style={{ width: `${pct}%` }} />
                 </span>
-                <span className="text-right text-xs tabular-nums text-muted-foreground">{s.withOrder}/{s.available} · {s.orders}</span>
+                <span className="text-right text-xs tabular-nums text-muted-foreground">{s.withOrder}/{s.available} · {t.buyerProfile.ordersCount.replace("{n}", String(s.orders))}</span>
               </button>
             );
           })}
         </div>
       </Section>
 
-      {typical && weekday !== null && (
+      {typical && weekday !== null && typical.orderDays > 0 && (
         <Section
           title={t.buyerProfile.typicalDay.replace("{day}", dayName(weekday, "long"))}
           hint={t.buyerProfile.medianOf.replace("{n}", String(typical.orderDays))}
         >
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <p className="mb-1 text-xs text-muted-foreground">{t.buyerProfile.prep}</p>
               {typical.skus.map((l) => (
-                <div key={l.key} className="flex justify-between gap-2 border-b py-1 text-sm">
-                  <span className="min-w-0 truncate font-mono text-xs">{l.key}</span>
+                <div key={l.key} className="flex flex-wrap justify-between gap-x-2 border-b py-1 text-sm">
+                  <span className="min-w-0 break-words font-mono text-xs">{l.key}</span>
                   <span className="shrink-0 tabular-nums">
                     {num(l.median)} {unitOf(l.key)}
                     {l.days < typical.orderDays && <span className="ml-1 text-muted-foreground">{l.days}/{typical.orderDays}</span>}
@@ -118,8 +118,8 @@ export function BuyerPlanning({ buyerName }: { buyerName: string }) {
             <div>
               <p className="mb-1 text-xs text-muted-foreground">{t.buyerProfile.buy}</p>
               {typical.eggs.map((l) => (
-                <div key={l.key} className="flex justify-between gap-2 border-b py-1 text-sm">
-                  <span className="min-w-0 truncate">{l.key}</span>
+                <div key={l.key} className="flex flex-wrap justify-between gap-x-2 border-b py-1 text-sm">
+                  <span className="min-w-0 break-words">{l.key}</span>
                   <span className="shrink-0 tabular-nums">{eggQty(l.key, l.median)}</span>
                 </div>
               ))}
@@ -128,15 +128,17 @@ export function BuyerPlanning({ buyerName }: { buyerName: string }) {
         </Section>
       )}
 
-      <Section title={t.buyerProfile.mostFrequent}>
-        <div className="flex flex-wrap gap-1.5">
-          {top.map((s) => (
-            <span key={s.code} className="rounded-md border px-2 py-0.5 text-xs">
-              <span className="font-mono">{s.code}</span> {Math.round(s.share * 100)}%
-            </span>
-          ))}
-        </div>
-      </Section>
+      {top.length > 0 && (
+        <Section title={t.buyerProfile.mostFrequent}>
+          <div className="flex flex-wrap gap-1.5">
+            {top.map((s) => (
+              <span key={s.code} className="rounded-md border px-2 py-0.5 text-xs">
+                <span className="font-mono">{s.code}</span> {Math.round(s.share * 100)}%
+              </span>
+            ))}
+          </div>
+        </Section>
+      )}
 
       <Section title={t.buyerProfile.perMonth}>
         <div className="max-w-full overflow-x-auto">

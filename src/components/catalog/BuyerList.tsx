@@ -278,7 +278,10 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
               <button
                 key={buyer.id}
                 type="button"
-                onClick={() => setSelectedId(buyer.id)}
+                onClick={() => {
+                  setSelectedId(buyer.id);
+                  if (!isTablet) window.scrollTo({ top: 0 });
+                }}
                 className={cn(
                   "w-full min-w-0 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50",
                   selectedId === buyer.id && isTablet && "border-primary bg-accent"
@@ -290,7 +293,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
                     <Badge variant="secondary" className="shrink-0">{t.buyerProfile.pinnedCount.replace("{n}", String(pins))}</Badge>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">{buyerStatsLine(t, orderStats?.get(buyer.name), locale)}</p>
+                {orderStats && <p className="text-xs text-muted-foreground">{buyerStatsLine(t, orderStats.get(buyer.name), locale)}</p>}
                 {dcsForBuyer(buyer.id).length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {dcsForBuyer(buyer.id).map((dc) => <Badge key={dc.id} variant="outline" className="max-w-full"><span className="truncate">{dc.name}</span></Badge>)}
@@ -320,7 +323,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
     <div className="space-y-4">
       {isTablet ? (
         <div className="flex gap-4">
-          <div className="w-[280px] shrink-0">{list}</div>
+          <div className="sticky top-0 w-[280px] shrink-0 self-start">{list}</div>
           <div className="min-w-0 flex-1 border-l pl-4">
             {profile ?? <p className="py-8 text-center text-muted-foreground">{t.buyerProfile.pickBuyer}</p>}
           </div>

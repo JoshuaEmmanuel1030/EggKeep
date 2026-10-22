@@ -48,7 +48,12 @@ export function BuyerProfile({ buyer, isAdmin, onBack, onEdit, onDelete, onHisto
         )}
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-lg font-semibold">{buyer.name}</h3>
-          <p className="text-sm text-muted-foreground">{buyerStatsLine(t, stats?.get(buyer.name), locale)}</p>
+          {stats && <p className="text-sm text-muted-foreground">{buyerStatsLine(t, stats.get(buyer.name), locale)}</p>}
+          {dcs.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {dcs.map((dc) => <Badge key={dc.id} variant="outline" className="max-w-full"><span className="truncate">{dc.name}</span></Badge>)}
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 gap-1">
           <Button variant="ghost" size="icon" aria-label="View buyer history" onClick={onHistory}><History className="h-4 w-4" /></Button>
