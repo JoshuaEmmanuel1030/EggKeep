@@ -21,7 +21,7 @@ interface BuyerSkuPinsProps {
 // save; "Suggest" adds SKUs ordered in the last 8 weeks (never removes ticks).
 export function BuyerSkuPins({ buyer, isAdmin, onSaved, onCancel }: BuyerSkuPinsProps) {
   const { t } = useLanguage();
-  const { skus } = usePackSKUs();
+  const { skus, isLoading, error } = usePackSKUs();
   const { setPinnedSkus } = useBuyers();
   const { data: orders = [] } = usePurchaseOrders(buyer.name);
   const active = useMemo(() => skus.filter((s) => s.isActive !== false), [skus]);
@@ -41,6 +41,10 @@ export function BuyerSkuPins({ buyer, isAdmin, onSaved, onCancel }: BuyerSkuPins
     );
   }
 
+  // Until the catalog has loaded, `active` is empty and a save would write [] over the real pins.
+  if (isLoading) return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
+  if (error) return <p className="text-sm text-destructive">{t.common.error}</p>;
+
   const toggle = (id: string, on: boolean) =>
     setTicked((prev) => {
       const next = new Set(prev);
@@ -55,6 +59,7 @@ export function BuyerSkuPins({ buyer, isAdmin, onSaved, onCancel }: BuyerSkuPins
     onCancel?.();
   };
   const save = async () => {
+    if (active.length === 0) return;
     try {
       // Only active ids are written, which also drops pins of retired SKUs.
       await setPinnedSkus.mutateAsync({ id: buyer.id, skuIds: active.filter((s) => ticked.has(s.id)).map((s) => s.id) });
@@ -86,7 +91,7 @@ export function BuyerSkuPins({ buyer, isAdmin, onSaved, onCancel }: BuyerSkuPins
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={cancel}>{t.common.cancel}</Button>
-        <Button onClick={save} disabled={setPinnedSkus.isPending}>
+        <Button onClick={save} disabled={setPinnedSkus.isPending || active.length === 0}>
           {setPinnedSkus.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {t.common.save}
         </Button>
