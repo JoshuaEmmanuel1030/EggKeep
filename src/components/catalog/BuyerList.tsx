@@ -367,7 +367,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
       <BuyerDcsDialog buyer={dcsBuyer} open={dcsOpen} onOpenChange={setDcsOpen} />
 
       <Dialog open={!!pinsBuyer} onOpenChange={(open) => { if (!open) setPinsBuyer(null); }}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="grid-cols-1 sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{pinsBuyer?.name} — {t.buyerProfile.pinSkus}</DialogTitle>
           </DialogHeader>

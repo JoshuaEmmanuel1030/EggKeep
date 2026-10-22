@@ -23,7 +23,7 @@ export function BuyerSkuPins({ buyer, isAdmin, onSaved, onCancel }: BuyerSkuPins
   const { t } = useLanguage();
   const { skus, isLoading, error } = usePackSKUs();
   const { setPinnedSkus } = useBuyers();
-  const { data: orders = [] } = usePurchaseOrders(buyer.name);
+  const { data: orders = [], isSuccess: ordersLoaded } = usePurchaseOrders(buyer.name);
   const active = useMemo(() => skus.filter((s) => s.isActive !== false), [skus]);
   const counts = useMemo(() => new Map(skuShares(orders, localToday()).map((s) => [s.code, s.orders])), [orders]);
   const saved = buyer.pinnedSkuIds ?? [];
@@ -33,7 +33,7 @@ export function BuyerSkuPins({ buyer, isAdmin, onSaved, onCancel }: BuyerSkuPins
     const pinned = active.filter((s) => saved.includes(s.id));
     if (pinned.length === 0) return <p className="text-sm text-muted-foreground">{t.buyerProfile.noPins}</p>;
     return (
-      <ul className="space-y-1 text-sm">
+      <ul className="min-w-0 space-y-1 text-sm">
         {pinned.map((s) => (
           <li key={s.id} className="truncate"><span className="font-mono text-xs mr-2">{s.code}</span>{s.displayName}</li>
         ))}
@@ -71,9 +71,9 @@ export function BuyerSkuPins({ buyer, isAdmin, onSaved, onCancel }: BuyerSkuPins
   };
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3">
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={suggest} className="gap-2">
+        <Button variant="outline" size="sm" onClick={suggest} disabled={!ordersLoaded} className="gap-2">
           <Sparkles className="h-4 w-4" />
           {t.buyerProfile.suggestFromHistory}
         </Button>

@@ -58,12 +58,12 @@ export function useBuyers() {
   // Admin-only in the UI. Replaces the buyer's pinned SKU list.
   const setPinnedSkus = useMutation({
     mutationFn: async ({ id, skuIds }: { id: string; skuIds: string[] }) => {
-      const { error } = await supabase.from("buyers").update({ pinned_sku_ids: skuIds }).eq("id", id);
+      // .select("id").single() makes an RLS-blocked (0-row) update error instead of silently succeeding.
+      const { error } = await supabase.from("buyers").update({ pinned_sku_ids: skuIds }).eq("id", id).select("id").single();
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["buyers"] });
-    },
+    // Returned so mutateAsync resolves only after ["buyers"] has refetched (no stale seed on reopen).
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["buyers"] }),
   });
 
   // Soft delete - sets deleted_at timestamp
