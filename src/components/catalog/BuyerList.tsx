@@ -20,12 +20,13 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Loader2, History, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Loader2, History, MapPin, Pin } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useBuyerDcs } from "@/hooks/useBuyerDcs";
 import { BuyerDialog } from "./BuyerDialog";
 import { BuyerDcsDialog } from "./BuyerDcsDialog";
+import { BuyerSkuPins } from "./BuyerSkuPins";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { RenameWarningDialog } from "./RenameWarningDialog";
 import { checkBuyerDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
@@ -129,6 +130,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
   const { dcsForBuyer } = useBuyerDcs();
   const [dcsBuyer, setDcsBuyer] = useState<Buyer | null>(null);
   const [dcsOpen, setDcsOpen] = useState(false);
+  const [pinsBuyer, setPinsBuyer] = useState<Buyer | null>(null);
   const [renameWarn, setRenameWarn] = useState<{
     data: { name: string };
     oldName: string;
@@ -305,6 +307,15 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
                             <Button
                               variant="ghost"
                               size="icon"
+                              aria-label={t.buyerProfile.pinSkus}
+                              title={t.buyerProfile.pinSkus}
+                              onClick={() => setPinsBuyer(buyer)}
+                            >
+                              <Pin className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               aria-label={t.catalog.manageDcs}
                               title={t.catalog.manageDcs}
                               onClick={() => { setDcsBuyer(buyer); setDcsOpen(true); }}
@@ -354,6 +365,17 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
       />
 
       <BuyerDcsDialog buyer={dcsBuyer} open={dcsOpen} onOpenChange={setDcsOpen} />
+
+      <Dialog open={!!pinsBuyer} onOpenChange={(open) => { if (!open) setPinsBuyer(null); }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{pinsBuyer?.name} — {t.buyerProfile.pinSkus}</DialogTitle>
+          </DialogHeader>
+          {pinsBuyer && (
+            <BuyerSkuPins buyer={pinsBuyer} isAdmin={isAdmin} onSaved={() => setPinsBuyer(null)} onCancel={() => setPinsBuyer(null)} />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}
