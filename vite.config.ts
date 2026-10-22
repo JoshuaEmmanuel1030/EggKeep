@@ -27,7 +27,9 @@ export default defineConfig(({ mode }) => ({
         theme_color: "#f59e0b",
         background_color: "#faf7f2",
         display: "standalone",
-        orientation: "portrait",
+        // "any", not "portrait": the installed app must rotate so landscape
+        // tablets get the sidebar layout (useIsTabletLandscape).
+        orientation: "any",
         start_url: "/",
         icons: [
           {
