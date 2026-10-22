@@ -110,3 +110,50 @@ describe("dayOfMonthPattern and spanDays", () => {
     expect(spanDays([], TODAY)).toBe(0);
   });
 });
+
+describe("future-dated orders move the anchor", () => {
+  // Fri 23 Oct is after TODAY (Thu 22 Oct), so it is the anchor: the window is 29 Aug … 23 Oct.
+  const future = [order("2026-10-21", [["N30B", 1]]), order("2026-10-23", [["KP6O", 2]])];
+  it("shifts the window, typical day and weekday availability to the anchor", () => {
+    expect(skuShares(future, TODAY).map((s) => s.code)).toEqual(["KP6O", "N30B"]); // both in window, 23 Oct included
+    expect(typicalDay(future, TODAY, 5)).toEqual({ orderDays: 1, skus: [{ key: "KP6O", median: 2, days: 1 }], eggs: [] });
+    const s = weekdayPattern(future, TODAY);
+    expect(s[4]).toMatchObject({ available: 1, withOrder: 0, usual: false }); // Thu 22 Oct counts with no order
+    expect(s[5]).toMatchObject({ available: 1, withOrder: 1, usual: true });  // Fri 23 Oct
+  });
+});
+
+describe("56-day window boundary", () => {
+  it("includes an order exactly 55 days back and excludes one 56 days back", () => {
+    // TODAY 22 Oct: 28 Aug is 55 days back (in), 27 Aug is 56 days back (out).
+    const s = skuShares([order("2026-08-27", [["OLD", 5]]), order("2026-08-28", [["BK4T", 3]])], TODAY);
+    expect(s.map((x) => x.code)).toEqual(["BK4T"]);
+  });
+});
+
+describe("weekdayPattern clips history to the window", () => {
+  it("counts availability from the window start, not from an earlier first order", () => {
+    // First order 1 Aug is before the window start (28 Aug). 28 Aug … 21 Oct is 55 dates;
+    // the anchor 22 Oct has no order, so it is skipped. Unclipped (1 Aug … 21 Oct) would be 82.
+    const h = [order("2026-08-01", [["N30B", 1]]), order("2026-10-21", [["N30B", 1]])];
+    expect(weekdayPattern(h, TODAY).reduce((n, s) => n + s.available, 0)).toBe(55);
+  });
+});
+
+describe("monthlyTotals caps at six months", () => {
+  it("keeps the newest six months and drops the oldest", () => {
+    const h = ["04", "05", "06", "07", "08", "09", "10"].map((mm) => order(`2026-${mm}-15`, [["N30B", 1]]));
+    const m = monthlyTotals(h);
+    expect(m.months).toEqual(["2026-10", "2026-09", "2026-08", "2026-07", "2026-06", "2026-05"]);
+    expect(m.skus[0].total).toBe(6);
+    expect(m.skus[0].byMonth["2026-04"]).toBeUndefined();
+  });
+});
+
+describe("nextLikelyWeekday counts today", () => {
+  it("returns today's weekday when it is usual, even if a later weekday is also usual", () => {
+    // Thu 15 and Thu 22 Oct have orders (Thu usual); Mon 19 Oct is also usual, so a search starting tomorrow would return Mon.
+    const h = [order("2026-10-15", [["N30B", 1]]), order("2026-10-19", [["KP6O", 1]]), order("2026-10-22", [["N30B", 1]])];
+    expect(nextLikelyWeekday(weekdayPattern(h, TODAY), TODAY)).toBe(4);
+  });
+});
