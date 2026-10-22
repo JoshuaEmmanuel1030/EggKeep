@@ -52,7 +52,7 @@ export function BuyerPlanning({ buyerName }: { buyerName: string }) {
       ? `${num(q)} kg (≈ ${butirEquivalent(product, q, conversionMap).toLocaleString()} butir)`
       : `${num(q)} butir`;
   const monthLabel = (m: string) =>
-    toLocalDate(`${m}-01`).toLocaleDateString(locale, { month: "short", year: "2-digit" }) +
+    toLocalDate(`${m}-01`).toLocaleDateString(locale, { month: "short", year: "numeric" }) +
     (m === today.slice(0, 7) ? ` (${t.buyerProfile.soFar})` : "");
 
   if (isLoading || skusLoading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;

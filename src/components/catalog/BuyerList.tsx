@@ -323,7 +323,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
     <div className="space-y-4">
       {isTablet ? (
         <div className="flex gap-4">
-          <div className="sticky top-0 w-[280px] shrink-0 self-start">{list}</div>
+          <div className="sticky top-0 w-[280px] shrink-0 self-start max-h-[calc(100vh-3rem)] overflow-y-auto pr-1">{list}</div>
           <div className="min-w-0 flex-1 border-l pl-4">
             {profile ?? <p className="py-8 text-center text-muted-foreground">{t.buyerProfile.pickBuyer}</p>}
           </div>
