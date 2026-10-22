@@ -128,6 +128,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           name: string
+          pinned_sku_ids: string[]
         }
         Insert: {
           created_at?: string
@@ -135,6 +136,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           name: string
+          pinned_sku_ids?: string[]
         }
         Update: {
           created_at?: string
@@ -142,6 +144,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           name?: string
+          pinned_sku_ids?: string[]
         }
         Relationships: []
       }
@@ -694,7 +697,19 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      purchase_orders: {
+        Row: {
+          buyer_name: string | null
+          dc_id: string | null
+          dc_name: string | null
+          egg_totals: Json | null
+          invoice_ref: string | null
+          order_lines: Json | null
+          outflow_date: string | null
+          recorded_at: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       correct_order: {

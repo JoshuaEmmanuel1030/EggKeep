@@ -30,7 +30,7 @@
 
 | File | Status | Responsibility |
 |---|---|---|
-| `supabase/migrations/20261022000000_buyer_profiles.sql` | create | `pinned_sku_ids` column + `purchase_orders` view |
+| `supabase/migrations/20261022010000_buyer_profiles.sql` | create | `pinned_sku_ids` column + `purchase_orders` view |
 | `src/integrations/supabase/types.ts` | modify | generated types for the column and view |
 | `src/lib/buyerProfile.ts` | create | pure: date helpers, pinned grouping, all insight rules |
 | `src/lib/__tests__/buyerProfile.test.ts` | create | unit tests for the above |
@@ -52,7 +52,7 @@
 ### Task 1: Migration — column + view
 
 **Files:**
-- Create: `supabase/migrations/20261022000000_buyer_profiles.sql`
+- Create: `supabase/migrations/20261022010000_buyer_profiles.sql`
 - Modify: `src/integrations/supabase/types.ts`
 
 **Interfaces:**
@@ -70,34 +70,42 @@ alter table public.buyers
   add column if not exists pinned_sku_ids uuid[] not null default '{}';
 
 -- One row per recorded Purchase Order. An order writes one activity_logs row per
--- egg/packaging/label/box entry, all with the same metadata except relatedEntryId,
--- so that is the order key (same grouping correct_order uses). recorded_at is NOT
--- usable: rows of one order can differ by 1 ms. Voided rows are excluded, so an
--- edited order appears once, as its replacement.
+-- egg/packaging/label/box entry, all with the same metadata except relatedEntryId.
+-- Metadata has no order id and recorded_at differs by ~1 ms between an order's
+-- rows, so each (category, product) row is numbered within its metadata group
+-- (k): an order writes each product once, so two identical orders become k=1 and
+-- k=2 instead of merging. Voided rows are excluded, so an edited order appears
+-- once, as its replacement. egg_totals come from the live rows (not the
+-- relatedProducts snapshot) so a single voided egg row drops out; order_lines
+-- stay the as-ordered snapshot.
 create view public.purchase_orders
 with (security_invoker = true) as
 select
-  o.recorded_at,
-  o.m->>'buyerName'  as buyer_name,
-  case when o.m->>'outflowDate' ~ '^\d{4}-\d{2}-\d{2}$'
-       then (o.m->>'outflowDate')::date
-       else (o.recorded_at at time zone 'Asia/Jakarta')::date
+  min(r.recorded_at) as recorded_at,
+  r.m->>'buyerName'  as buyer_name,
+  case when pg_input_is_valid(r.m->>'outflowDate', 'date')
+       then (r.m->>'outflowDate')::date
+       else (min(r.recorded_at) at time zone 'Asia/Jakarta')::date
   end                as outflow_date,
-  o.m->>'dcId'       as dc_id,
-  o.m->>'dcName'     as dc_name,
-  o.m->>'invoiceRef' as invoice_ref,
-  coalesce(o.m->'orderLines', '[]'::jsonb) as order_lines,
-  coalesce(jsonb_path_query_array(o.m->'relatedProducts', '$[*] ? (@.type == "egg")'), '[]'::jsonb) as egg_totals
+  r.m->>'dcId'       as dc_id,
+  r.m->>'dcName'     as dc_name,
+  r.m->>'invoiceRef' as invoice_ref,
+  coalesce(r.m->'orderLines', '[]'::jsonb) as order_lines,
+  coalesce(jsonb_agg(jsonb_build_object('product', r.product, 'quantity', r.quantity_butir))
+             filter (where r.category = 'egg'), '[]'::jsonb) as egg_totals
 from (
-  select metadata - 'relatedEntryId' as m, min(recorded_at) as recorded_at
+  select metadata - 'relatedEntryId' as m, category, product, quantity_butir, recorded_at,
+         row_number() over (partition by metadata - 'relatedEntryId', category, product
+                            order by recorded_at, id) as k
   from public.activity_logs
   where action_type = 'outflow'
     and voided_at is null
     and metadata->>'orderType' = 'quick_outflow'
-  group by metadata - 'relatedEntryId'
-) o;
+    and coalesce(metadata->>'buyerName', '') <> ''
+) r
+group by r.m, r.k;
 
-revoke all on public.purchase_orders from anon;
+revoke all on public.purchase_orders from anon, authenticated;
 grant select on public.purchase_orders to authenticated;
 ```
 
@@ -163,7 +171,7 @@ If it shows unrelated drift, revert the file and hand-add just these two pieces 
 Run: `npx tsc --noEmit -p tsconfig.app.json`. Expected: no errors.
 
 ```bash
-git add supabase/migrations/20261022000000_buyer_profiles.sql src/integrations/supabase/types.ts
+git add supabase/migrations/20261022010000_buyer_profiles.sql src/integrations/supabase/types.ts
 git commit -m "feat(db): buyers.pinned_sku_ids + purchase_orders view"
 ```
 
