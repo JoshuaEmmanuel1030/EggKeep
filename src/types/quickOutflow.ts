@@ -1,6 +1,7 @@
 export interface Buyer {
   id: string;
   name: string;
+  pinnedSkuIds?: string[]; // pack_skus ids pinned to the top of this buyer's PO SKU dropdown
 }
 
 export type BoxModeType = 'box kecil' | 'box osave' | 'box osave polos' | 'keranjang' | 'tray' | 'plastic';

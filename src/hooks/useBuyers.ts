@@ -16,7 +16,7 @@ export function useBuyers() {
 
       if (error) throw error;
 
-      return (data || []).map((row) => ({ id: row.id, name: row.name }));
+      return (data || []).map((row) => ({ id: row.id, name: row.name, pinnedSkuIds: row.pinned_sku_ids ?? [] }));
     },
   });
 
@@ -53,6 +53,17 @@ export function useBuyers() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["buyers"] });
     },
+  });
+
+  // Admin-only in the UI. Replaces the buyer's pinned SKU list.
+  const setPinnedSkus = useMutation({
+    mutationFn: async ({ id, skuIds }: { id: string; skuIds: string[] }) => {
+      // .select("id").single() makes an RLS-blocked (0-row) update error instead of silently succeeding.
+      const { error } = await supabase.from("buyers").update({ pinned_sku_ids: skuIds }).eq("id", id).select("id").single();
+      if (error) throw error;
+    },
+    // Returned so mutateAsync resolves only after ["buyers"] has refetched (no stale seed on reopen).
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["buyers"] }),
   });
 
   // Soft delete - sets deleted_at timestamp
@@ -92,6 +103,7 @@ export function useBuyers() {
     refetch,
     addBuyer,
     updateBuyer,
+    setPinnedSkus,
     deleteBuyer,
     restoreBuyer,
   };

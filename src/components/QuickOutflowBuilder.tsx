@@ -16,6 +16,7 @@ import { StockSummary, InflowEntry, OutflowEntry } from "@/types/inventory";
 import { ActivityLogMetadata } from "@/types/activityLog";
 import { buildOrderEntries, buildOrderMetadata as buildPayloadMetadata, type OrderPayloadInput } from "@/lib/orderPayload";
 import { useBuyers } from "@/hooks/useBuyers";
+import { pinnedCodesFor } from "@/lib/buyerProfile";
 import { useBuyerDcs } from "@/hooks/useBuyerDcs";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { useItemTypes } from "@/hooks/useItemTypes";
@@ -82,6 +83,12 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   
   const [buyerOpen, setBuyerOpen] = useState(false);
   const [selectedBuyer, setSelectedBuyer] = useState<Buyer | null>(null);
+  // Pins of the selected buyer, read from the live buyers list so an admin's
+  // edit shows without re-picking the buyer. Catalog skus carry ids; packSKUs don't.
+  const pinnedSkuCodes = useMemo(
+    () => pinnedCodesFor(skus, buyers.find((b) => b.id === selectedBuyer?.id)?.pinnedSkuIds),
+    [skus, buyers, selectedBuyer?.id]
+  );
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [invoiceRef, setInvoiceRef] = useState("");
   const [dcId, setDcId] = useState<string | null>(null);
@@ -650,6 +657,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                     index={index}
                     selectedBuyer={selectedBuyer}
                     skus={packSKUs}
+                    pinnedSkuCodes={pinnedSkuCodes}
                     conversionMap={conversionMap}
                     boxCapacityMap={boxCapacityMap}
                     labelsPerPackMap={labelsPerPackMap}

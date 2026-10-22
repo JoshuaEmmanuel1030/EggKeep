@@ -15,6 +15,7 @@ import {
   calculateLineMaterials,
 } from "@/lib/outflowCalculator";
 import { parseCountInput } from "@/lib/stockCount";
+import { groupSkusForBuyer } from "@/lib/buyerProfile";
 import { Trash2, ChevronsUpDown, Check, Tag, Egg, Package, Box, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -24,6 +25,7 @@ interface OrderLineItemProps {
   index: number;
   selectedBuyer: Buyer | null;
   skus: PackSKU[];
+  pinnedSkuCodes?: Set<string>;
   conversionMap: ConversionMap;
   boxCapacityMap: BoxCapacityMap;
   labelsPerPackMap: LabelsPerPackMap;
@@ -38,6 +40,7 @@ export function OrderLineItem({
   index,
   selectedBuyer,
   skus,
+  pinnedSkuCodes,
   conversionMap,
   boxCapacityMap,
   labelsPerPackMap,
@@ -130,8 +133,9 @@ export function OrderLineItem({
                   <CommandInput placeholder={t.outflow.searchSku} />
                   <CommandList>
                     <CommandEmpty>{t.outflow.noSkuFound}</CommandEmpty>
-                    <CommandGroup>
-                      {skus.filter(sku => sku.isActive !== false).map((sku) => (
+                    {(() => {
+                      const { pinned, others } = groupSkusForBuyer(skus, pinnedSkuCodes ?? new Set());
+                      const item = (sku: PackSKU) => (
                         <CommandItem
                           key={sku.code}
                           value={`${sku.code} ${sku.displayName}`}
@@ -140,17 +144,21 @@ export function OrderLineItem({
                             setSkuOpen(false);
                           }}
                         >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              line.skuCode === sku.code ? "opacity-100" : "opacity-0"
-                            )}
-                          />
+                          <Check className={cn("mr-2 h-4 w-4", line.skuCode === sku.code ? "opacity-100" : "opacity-0")} />
                           <span className="font-mono text-xs mr-2">{sku.code}</span>
                           {sku.displayName}
                         </CommandItem>
-                      ))}
-                    </CommandGroup>
+                      );
+                      // Buyer's pinned SKUs first; nothing hidden. No pins → one group, as before.
+                      return pinned.length > 0 ? (
+                        <>
+                          <CommandGroup heading={selectedBuyer?.name}>{pinned.map(item)}</CommandGroup>
+                          <CommandGroup heading={t.buyerProfile.otherSkus}>{others.map(item)}</CommandGroup>
+                        </>
+                      ) : (
+                        <CommandGroup>{others.map(item)}</CommandGroup>
+                      );
+                    })()}
                   </CommandList>
                 </Command>
               </PopoverContent>

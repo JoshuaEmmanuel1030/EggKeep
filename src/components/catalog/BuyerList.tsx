@@ -20,12 +20,17 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Loader2, History, MapPin } from "lucide-react";
+import { Plus, Search, Loader2, History } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useBuyerDcs } from "@/hooks/useBuyerDcs";
+import { useIsTabletLandscape } from "@/hooks/use-mobile";
+import { usePackSKUs } from "@/hooks/usePackSKUs";
+import { useBuyerOrderStats } from "@/hooks/usePurchaseOrders";
+import { pinnedCodesFor } from "@/lib/buyerProfile";
+import { cn } from "@/lib/utils";
 import { BuyerDialog } from "./BuyerDialog";
-import { BuyerDcsDialog } from "./BuyerDcsDialog";
+import { BuyerProfile, buyerStatsLine } from "./BuyerProfile";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { RenameWarningDialog } from "./RenameWarningDialog";
 import { checkBuyerDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
@@ -115,7 +120,10 @@ interface BuyerListProps {
 }
 
 export function BuyerList({ isAdmin = false }: BuyerListProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isTablet = useIsTabletLandscape();
+  const { data: orderStats } = useBuyerOrderStats();
+  const { skus } = usePackSKUs();
   const { buyers, isLoading, addBuyer, updateBuyer, deleteBuyer, restoreBuyer } = useBuyers();
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -127,8 +135,7 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
   const [historyBuyer, setHistoryBuyer] = useState<Buyer | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const { dcsForBuyer } = useBuyerDcs();
-  const [dcsBuyer, setDcsBuyer] = useState<Buyer | null>(null);
-  const [dcsOpen, setDcsOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [renameWarn, setRenameWarn] = useState<{
     data: { name: string };
     oldName: string;
@@ -138,6 +145,10 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
   const filteredBuyers = buyers.filter((buyer) =>
     buyer.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const activeSkus = skus.filter((s) => s.isActive !== false);
+  // A deleted buyer drops out of `buyers`, which returns the view to the list.
+  const selected = buyers.find((b) => b.id === selectedId) ?? null;
+  const locale = language === "id" ? "id-ID" : "en-US";
 
   const handleAdd = () => {
     setEditingBuyer(null);
@@ -237,8 +248,8 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
     );
   }
 
-  return (
-    <div className="space-y-4">
+  const list = (
+    <div className="min-w-0 space-y-3">
       <div className="flex flex-col sm:flex-row gap-3 justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -257,87 +268,69 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
         )}
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t.catalog.name}</TableHead>
-              <TableHead>{t.catalog.dcs}</TableHead>
-              <TableHead className="text-right">{t.catalog.actions}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredBuyers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                  {t.catalog.noData}
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredBuyers.map((buyer) => {
-                const buyerDcs = dcsForBuyer(buyer.id);
-                return (
-                  <TableRow key={buyer.id}>
-                    <TableCell className="font-medium">{buyer.name}</TableCell>
-                    <TableCell>
-                      {buyerDcs.length === 0 ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {buyerDcs.map((dc) => (
-                            <Badge key={dc.id} variant="outline">{dc.name}</Badge>
-                          ))}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="View buyer history"
-                          onClick={() => { setHistoryBuyer(buyer); setHistoryOpen(true); }}
-                        >
-                          <History className="h-4 w-4" />
-                        </Button>
-                        {isAdmin && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label={t.catalog.manageDcs}
-                              title={t.catalog.manageDcs}
-                              onClick={() => { setDcsBuyer(buyer); setDcsOpen(true); }}
-                            >
-                              <MapPin className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Edit buyer"
-                              onClick={() => handleEdit(buyer)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Delete buyer"
-                              onClick={() => handleDeleteClick(buyer)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {filteredBuyers.length === 0 ? (
+        <p className="py-8 text-center text-muted-foreground">{t.catalog.noData}</p>
+      ) : (
+        <div className="space-y-2">
+          {filteredBuyers.map((buyer) => {
+            const pins = pinnedCodesFor(activeSkus, buyer.pinnedSkuIds).size;
+            return (
+              <button
+                key={buyer.id}
+                type="button"
+                onClick={() => {
+                  setSelectedId(buyer.id);
+                  if (!isTablet) window.scrollTo({ top: 0 });
+                }}
+                className={cn(
+                  "w-full min-w-0 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50",
+                  selectedId === buyer.id && isTablet && "border-primary bg-accent"
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium">{buyer.name}</span>
+                  {pins > 0 && (
+                    <Badge variant="secondary" className="shrink-0">{t.buyerProfile.pinnedCount.replace("{n}", String(pins))}</Badge>
+                  )}
+                </div>
+                {orderStats && <p className="text-xs text-muted-foreground">{buyerStatsLine(t, orderStats.get(buyer.name), locale)}</p>}
+                {dcsForBuyer(buyer.id).length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {dcsForBuyer(buyer.id).map((dc) => <Badge key={dc.id} variant="outline" className="max-w-full"><span className="truncate">{dc.name}</span></Badge>)}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const profile = selected && (
+    <BuyerProfile
+      key={selected.id}
+      buyer={selected}
+      isAdmin={isAdmin}
+      onBack={isTablet ? undefined : () => setSelectedId(null)}
+      onEdit={() => handleEdit(selected)}
+      onDelete={() => handleDeleteClick(selected)}
+      onHistory={() => { setHistoryBuyer(selected); setHistoryOpen(true); }}
+    />
+  );
+
+  return (
+    <div className="space-y-4">
+      {isTablet ? (
+        <div className="flex gap-4">
+          <div className="sticky top-0 w-[280px] shrink-0 self-start max-h-[calc(100vh-3rem)] overflow-y-auto pr-1">{list}</div>
+          <div className="min-w-0 flex-1 border-l pl-4">
+            {profile ?? <p className="py-8 text-center text-muted-foreground">{t.buyerProfile.pickBuyer}</p>}
+          </div>
+        </div>
+      ) : (
+        profile ?? list
+      )}
 
       <BuyerDialog
         open={dialogOpen}
@@ -352,8 +345,6 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
         open={historyOpen}
         onOpenChange={setHistoryOpen}
       />
-
-      <BuyerDcsDialog buyer={dcsBuyer} open={dcsOpen} onOpenChange={setDcsOpen} />
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}
