@@ -5,10 +5,6 @@ import * as Sentry from "@sentry/react";
 // stay clean until the owner creates the Sentry project.
 const DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
 
-export function isMonitoringEnabled(): boolean {
-  return Boolean(DSN);
-}
-
 /** Initialize Sentry. Must be called before React renders. No-op without a DSN. */
 export function initMonitoring(): void {
   if (!DSN) return;

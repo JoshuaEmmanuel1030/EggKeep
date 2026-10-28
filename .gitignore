@@ -30,3 +30,7 @@ supabase/.temp/
 .claude/worktrees/
 
 .superpowers/
+
+# Local tool output
+__pycache__/
+.playwright-mcp/

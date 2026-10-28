@@ -1,6 +1,11 @@
 # Name → UUID Reference Migration Plan
 
-**Status: PREPARED, NOT APPLIED. No SQL in this folder has been run against any database.**
+**Status (2026-10-28): Stage A APPLIED to prod 2026-07-07
+(`supabase/migrations/20260707120000_uuid_stage_a.sql`). Stage B (client writes ids) NOT
+started. Stages C–D not started.** The code inventory below dates from 2026-07-06; since
+then the outflow RPC call moved to `src/lib/outflowRpc.ts`, void became the server RPC
+`void_outflow`, and newer name-keyed code (`record_return`, `(RETAKAN)` child items,
+`correct_order`, box SKUs, the `purchase_orders` view) is not yet inventoried here.
 
 ## Problem
 
@@ -319,7 +324,7 @@ Roughly **36 locations touched by the audit; ~20 need code changes** (9 in Stage
    with a realistic copy** of `item_types`, `pack_skus`, and a slice of
    `inflows`/`outflows` (including the ASIN MATENG history) before judging the backfill.
 2. **Frontend against the branch**: point a local `vite` dev build at the branch URL/keys
-   (`get_project_url`/`get_publishable_keys` for the branch) — never point Lovable/Vercel
+   (`get_project_url`/`get_publishable_keys` for the branch) — never point Vercel
    prod env at the branch. Walk the four flows: inflow entry, SKU order (QuickOutflowBuilder),
    direct outflow, void — then run `recalculate_inventory_fifo` and diff `remaining_butir`.
 3. **FIFO equivalence test** (the one non-negotiable): snapshot
@@ -333,9 +338,8 @@ Roughly **36 locations touched by the audit; ~20 need code changes** (9 in Stage
    `ADD COLUMN` — fast — and row-level locks during backfill) → verify → Stage B frontend
    deploy → soak → Stage C migration + frontend + Edge Function deploy (same day, DB first;
    v2 RPC is backward compatible so the ordering is safe) → soak → Stage D.
-   Remember EggKeep deploy topology: **Lovable auto-commits to main and frontend deploys to
-   Vercel while Edge Functions deploy separately** — coordinate so a Lovable auto-deploy
-   can't ship half of Stage C. Take `mcp__supabase__get_advisors` + a backup/PITR point
+   Remember EggKeep deploy topology: **a push to main deploys the frontend to Vercel while
+   Edge Functions deploy separately** — coordinate so a push can't ship half of Stage C. Take `mcp__supabase__get_advisors` + a backup/PITR point
    before each DB stage.
 
 ---

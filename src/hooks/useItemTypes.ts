@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ItemType, InventoryCategory, ConversionMap, buildConversionMap } from "@/types/inventory";
 import { BoxCapacityMap, buildBoxCapacityMap, LabelsPerPackMap, buildLabelsPerPackMap } from "@/lib/outflowCalculator";
@@ -7,7 +7,6 @@ import { BoxCapacityMap, buildBoxCapacityMap, LabelsPerPackMap, buildLabelsPerPa
 export function useItemTypes() {
   const [itemTypes, setItemTypes] = useState<ItemType[]>([]);
   const [loading, setLoading] = useState(true);
-  const queryClient = useQueryClient();
 
   const fetchItemTypes = useCallback(async () => {
     try {

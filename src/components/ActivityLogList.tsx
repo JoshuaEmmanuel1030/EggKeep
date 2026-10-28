@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Cloud, CloudOff, Filter, X, Search, Calendar, ChevronDown, Download } from "lucide-react";
+import { CloudOff, Filter, X, Search, Calendar, ChevronDown, Download } from "lucide-react";
 import { ActivityLog } from "@/types/activityLog";
 
 function exportLogsToCSV(logs: ActivityLog[]): string {

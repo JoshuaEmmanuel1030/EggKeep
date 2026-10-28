@@ -69,15 +69,17 @@ change, no effect on existing sessions.
 Order matters: **database first, frontend second** — old frontend code must
 keep working against the new schema, never the reverse.
 
+0. **Verify** — `npm run verify` (Supabase ref guard + typecheck + tests) must
+   pass before pushing.
 1. **DB migrations** — apply via Supabase SQL Editor or MCP `apply_migration`
    BEFORE pushing any frontend code that depends on them. Keep migrations
-   backward-compatible with the currently deployed frontend (phones may run a
-   stale PWA bundle for up to ~15 minutes after deploy).
+   backward-compatible with the currently deployed frontend (a phone keeps
+   running the old PWA bundle until someone taps the update toast — possibly
+   for days).
 2. **Edge Functions** — deployed separately from the frontend (`supabase
    functions deploy <name>` or MCP `deploy_edge_function`). A Vercel deploy
    does NOT update them.
-3. **Frontend** — `git push` to `main` → Vercel auto-deploys. Note Lovable
-   also auto-commits to `main`, so pull before pushing.
-4. **After deploy** — open the app on one phone, confirm the new bundle loads
-   (the SW checks for updates on focus and every 15 min), and watch Sentry →
-   Issues for the new release.
+3. **Frontend** — `git push` to `main` → Vercel auto-deploys.
+4. **After deploy** — open the app on one phone, tap the update toast (the SW
+   checks on focus and every 15 min), confirm the new bundle loads, and watch
+   Sentry → Issues for the new release.

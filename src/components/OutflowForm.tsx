@@ -16,7 +16,6 @@ import {
   ConversionMap,
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
-import { getTotalAvailableStock } from "@/lib/inventory";
 import { parseCountInput } from "@/lib/stockCount";
 import { PackageMinus, Plus, Trash2, ChevronsUpDown, Check, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";

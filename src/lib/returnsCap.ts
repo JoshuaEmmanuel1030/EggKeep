@@ -2,7 +2,7 @@
 // of ALL prior returns.quantity for the outflow across ALL dispositions
 // (restock + retakan + writeoff), so this UI cap matches the server's cumulative cap
 // in record_return (which counts every disposition). See
-// docs/superpowers/plans/2026-09-04-returns-backend.md (Task 4).
+// docs/superpowers/specs/2026-09-03-returns-design.md.
 export function remainingReturnable(outflowQty: number, priorReturned: number): number {
   return Math.max(0, outflowQty - priorReturned);
 }

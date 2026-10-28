@@ -3,7 +3,6 @@ import {
   OUTFLOW_OUTBOX_KEY,
   classifyOutflowError,
   loadOutbox,
-  saveOutbox,
   enqueueOutflowOrder,
   removeOutboxOrder,
   markOutboxOrderFailed,

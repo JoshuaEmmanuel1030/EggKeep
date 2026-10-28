@@ -702,7 +702,7 @@ function rowTone(log: ActivityLog): Tone {
 }
 
 // Graphical accents (dots) — need ≥3:1 vs the card/page. 600 in light, 400 in
-// dark clears that with margin (see docs/activity-redesign/contrast.md).
+// dark clears that with margin (measured in commit 9ea2ecf).
 function toneDot(tone: Tone): string {
   switch (tone) {
     case "inflow":

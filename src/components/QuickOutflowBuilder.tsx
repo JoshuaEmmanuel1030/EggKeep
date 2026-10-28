@@ -57,7 +57,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
   const { t } = useLanguage();
   const { buyers, isLoading: buyersLoading } = useBuyers();
   const { dcsForBuyer, isLoading: dcsLoading, error: dcsError } = useBuyerDcs();
-  const { skus, isLoading: skusLoading } = usePackSKUs();
+  const { skus } = usePackSKUs();
   const { conversionMap, eggProductNames, boxCapacityMap, labelsPerPackMap, getTypesByCategory } = useItemTypes();
   const { check: checkDuplicates } = useDuplicateOrderCheck();
 
