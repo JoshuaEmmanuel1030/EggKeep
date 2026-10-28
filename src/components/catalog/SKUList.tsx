@@ -79,7 +79,6 @@ export function SKUList({ isAdmin = false }: SKUListProps) {
     if (!skuToDelete) return;
     
     const deletedId = skuToDelete.id;
-    const deletedCode = skuToDelete.code;
     
     try {
       await deleteSKU.mutateAsync(deletedId);

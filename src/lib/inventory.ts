@@ -3,27 +3,6 @@ import { InflowEntry, OutflowEntry, StockSummary, CONVERSION_DICT, ConversionMap
 
 export const EGG_FRESHNESS_DAYS = 5;
 
-const INFLOW_KEY = "js_online_inflow";
-const OUTFLOW_KEY = "js_online_outflow";
-
-export function loadInflows(): InflowEntry[] {
-  const data = localStorage.getItem(INFLOW_KEY);
-  return data ? JSON.parse(data) : [];
-}
-
-export function saveInflows(entries: InflowEntry[]): void {
-  localStorage.setItem(INFLOW_KEY, JSON.stringify(entries));
-}
-
-export function loadOutflows(): OutflowEntry[] {
-  const data = localStorage.getItem(OUTFLOW_KEY);
-  return data ? JSON.parse(data) : [];
-}
-
-export function saveOutflows(entries: OutflowEntry[]): void {
-  localStorage.setItem(OUTFLOW_KEY, JSON.stringify(entries));
-}
-
 // ============================================================================
 // STOCK UNITS (kg-native design)
 // The quantity_butir / remaining_butir columns hold each product's NATIVE stock
@@ -92,47 +71,6 @@ export function getProductUnit(
 ): string {
   const config = conversionMap[product];
   return config?.unit === "kg" ? "kg" : "pcs";
-}
-
-export function isEggProduct(
-  product: string,
-  conversionMap: ConversionMap = CONVERSION_DICT
-): boolean {
-  return product in conversionMap;
-}
-
-
-export function processOutflowFIFO(
-  inflows: InflowEntry[],
-  product: string,
-  quantityToRemove: number
-): InflowEntry[] {
-  const updatedInflows = [...inflows];
-  let remaining = quantityToRemove;
-
-  // Sort by date (oldest first) for FIFO
-  const productInflows = updatedInflows
-    .filter((i) => i.product === product && i.remainingButir > 0)
-    .sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
-
-  for (const inflow of productInflows) {
-    if (remaining <= 0) break;
-
-    const index = updatedInflows.findIndex((i) => i.id === inflow.id);
-    if (index === -1) continue;
-
-    const available = updatedInflows[index].remainingButir;
-    const toDeduct = Math.min(available, remaining);
-
-    updatedInflows[index] = {
-      ...updatedInflows[index],
-      remainingButir: available - toDeduct,
-    };
-
-    remaining -= toDeduct;
-  }
-
-  return updatedInflows;
 }
 
 export function calculateStockSummary(
@@ -241,12 +179,6 @@ export function calculateStockSummary(
   });
 
   return summaries.sort((a, b) => b.totalStock - a.totalStock);
-}
-
-export function getTotalAvailableStock(inflows: InflowEntry[], product: string): number {
-  return inflows
-    .filter((i) => i.product === product && i.remainingButir > 0)
-    .reduce((sum, i) => sum + i.remainingButir, 0);
 }
 
 // ============================================================================
