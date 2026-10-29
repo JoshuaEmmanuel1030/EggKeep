@@ -20,6 +20,8 @@ import {
   useStockUnitLabel,
 } from "./GroupedActivityLog";
 import type { EditTarget } from "./EditOrderDialog";
+import { DeliveryStatusChip } from "./deliveries/DeliveryStatusChip";
+import { normalizeInvoiceRef } from "@/lib/deliveryFlags";
 
 export interface ActivitySplitViewProps {
   // Already-filtered logs to show.
@@ -350,6 +352,13 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
                   <FileText aria-hidden className="h-3.5 w-3.5" />
                   {order.invoiceRef}
                 </span>
+              )}
+              {order.invoiceRef && feed.deliveryMap.loaded && (
+                <DeliveryStatusChip
+                  status={feed.deliveryMap.statuses[normalizeInvoiceRef(order.invoiceRef)] ?? null}
+                  invoiceRef={order.invoiceRef}
+                  className="text-xs"
+                />
               )}
               {order.dcName && (
                 <span className="inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border border-ek-border px-[9px] py-[3px] font-medium text-ek-fg">
