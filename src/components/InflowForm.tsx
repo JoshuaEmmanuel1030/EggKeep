@@ -21,6 +21,7 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { format } from "date-fns";
 
 interface InflowFormProps {
   onSubmit: (entries: InflowEntry[], userEmail: string) => Promise<boolean>;
@@ -44,7 +45,7 @@ export function InflowForm({ onSubmit }: InflowFormProps) {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { getTypesByCategory, conversionMap, eggProductNames } = useItemTypes();
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [submitting, setSubmitting] = useState(false);
   
   const [categoryData, setCategoryData] = useState<Record<InventoryCategory, CategoryData>>({
