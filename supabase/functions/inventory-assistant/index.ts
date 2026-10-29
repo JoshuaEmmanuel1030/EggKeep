@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 import { CONVERSION_DICT, EGGS_PER_TRAY } from "./conversions.ts";
-import { toolDefinitions, runTool } from "./tools.ts";
+import { toolDefinitions, runTool, wibDay, ageInDays } from "./tools.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -93,7 +93,7 @@ serve(async (req) => {
       console.error('Error fetching activity logs:', logsError);
     }
 
-    const today = new Date();
+    const today = wibDay();
 
     // ------------------------------------------------------------------
     // Authoritative conversion map: catalog egg rows (item_types) layered
@@ -176,8 +176,7 @@ serve(async (req) => {
         };
       }
       
-      const inflowDate = new Date(inflow.date);
-      const daysOld = Math.floor((today.getTime() - inflowDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysOld = ageInDays(inflow.date, today);
       const isAtRisk = inflow.category === 'egg' && daysOld > EGG_FRESHNESS_DAYS;
       
       inventorySummary[inflow.product].total += inflow.quantity_butir;
@@ -277,7 +276,7 @@ serve(async (req) => {
     // Recent activity (quantities are stored in each product's native stock unit)
     let activityContext = "\nRECENT ACTIVITY (Last 20 transactions):\n";
     for (const log of activityLogs || []) {
-      const date = new Date(log.recorded_at).toLocaleDateString();
+      const date = wibDay(log.recorded_at);
       const action = log.action_type === 'inflow' ? '📥 IN' : '📤 OUT';
       const user = log.user_email ? ` by ${log.user_email}` : '';
       const invoice = log.invoice_supplier ? ` (${log.invoice_supplier})` : '';
@@ -310,7 +309,7 @@ ${monthlyContext}
 ${velocityContext}
 ${activityContext}
 
-TODAY'S DATE: ${today.toISOString().slice(0, 10)}. Resolve relative dates ("yesterday", "last week") against this.
+TODAY'S DATE: ${today} (WIB). Resolve relative dates ("yesterday", "last week") against this.
 
 DATA TOOLS (use these for anything not in the snapshot above — specific past dates, order counts, per-day/per-buyer breakdowns, movement totals, returns):
 - count_orders — number of distinct customer ORDERS in a date range (grouped like the Activities page). Two date meanings: "orders FOR/on Sep 5" = the business/delivery date (date_field 'labelled', the default); "orders ENTERED/typed on Sep 5" = the entry date (date_field 'entered'). Pick based on the user's wording; default to labelled.

@@ -27,6 +27,19 @@ function clampLimit(limit: unknown): number {
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+// The business runs on WIB (Asia/Jakarta, UTC+7, no DST) but the edge runtime
+// clock is UTC, so a bare toISOString() day is YESTERDAY from 00:00 to 06:59 WIB.
+export const WIB_OFFSET = "+07:00";
+
+export function wibDay(at: Date | string | number = Date.now()): string {
+  return new Date(new Date(at).getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+}
+
+// Whole days from a YYYY-MM-DD business date to `today` (a WIB day).
+export function ageInDays(date: string, today: string = wibDay()): number {
+  return Math.round((Date.parse(today) - Date.parse(date)) / 86_400_000);
+}
+
 // Resolve {date} | {date_from,date_to} into an inclusive [from,to] day range,
 // clamped to MAX_RANGE_DAYS. Returns an error string if the inputs are malformed.
 export function resolveRange(args: {
@@ -176,8 +189,8 @@ async function countOrdersTool(
 
   if (dateField === "entered") {
     query = query
-      .gte("recorded_at", `${range.from}T00:00:00`)
-      .lte("recorded_at", `${range.to}T23:59:59.999`);
+      .gte("recorded_at", `${range.from}T00:00:00${WIB_OFFSET}`)
+      .lte("recorded_at", `${range.to}T23:59:59.999${WIB_OFFSET}`);
   } else {
     // Filter on the business date stored in metadata.outflowDate (text YYYY-MM-DD).
     query = query
@@ -195,8 +208,8 @@ async function countOrdersTool(
     if (buyer && md.buyerName !== buyer) continue;
     // Day breakdown uses the SAME field the range filtered on, so byDay is coherent.
     const day = dateField === "entered"
-      ? String(r.recorded_at).slice(0, 10)
-      : (md.outflowDate ?? String(r.recorded_at).slice(0, 10));
+      ? wibDay(r.recorded_at)
+      : (md.outflowDate ?? wibDay(r.recorded_at));
     rows.push({
       buyerName: md.buyerName,
       orderLines: md.orderLines,
@@ -266,8 +279,8 @@ async function sumMovementsTool(
       .from("activity_logs")
       .select("product, quantity_butir, category, metadata, voided_at, action_type")
       .eq("action_type", args.action_type)
-      .gte("recorded_at", `${range.from}T00:00:00`)
-      .lte("recorded_at", `${range.to}T23:59:59.999`)
+      .gte("recorded_at", `${range.from}T00:00:00${WIB_OFFSET}`)
+      .lte("recorded_at", `${range.to}T23:59:59.999${WIB_OFFSET}`)
       .is("voided_at", null)
       .limit(5000);
     if (error) return { error: error.message };
@@ -365,13 +378,13 @@ async function getStockTool(
   const { data, error } = await q;
   if (error) return { error: error.message };
 
-  const today = Date.now();
+  const today = wibDay();
   const byProduct: Record<string, {
     product: string; category: string; unit: string;
     total: number; atRisk: number; batches: { date: string; qty: number; daysOld: number; atRisk: boolean; supplier: string | null }[];
   }> = {};
   for (const r of data ?? []) {
-    const daysOld = Math.floor((today - Date.parse(r.date)) / 86_400_000);
+    const daysOld = ageInDays(r.date, today);
     const atRisk = r.category === "egg" && daysOld > freshnessDays;
     if (!byProduct[r.product]) {
       byProduct[r.product] = {
