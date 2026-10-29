@@ -139,11 +139,11 @@ export async function writeReconXlsx(sheets: ReconSheet[], numberFormat: NumberF
   return new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
-/** Fetch → build → write → download. Resolves to the number of ledger rows exported. */
+/** Fetch → build → write → download. Resolves to the number of Transaksi rows in the file. */
 export async function exportRekonsiliasi(opts: ReconOptions, numberFormat: NumberFormat, now: Date = new Date()): Promise<number> {
   const data = await fetchReconData(opts);
   const sheets = buildReconSheets(data, opts, now);
   const blob = await writeReconXlsx(sheets, numberFormat);
   downloadBlob(blob, reconFileName(opts.from, opts.to));
-  return data.ledger.length;
+  return sheets.find((s) => s.name === "Transaksi")?.rows.length ?? 0;
 }
