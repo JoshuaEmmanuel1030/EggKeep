@@ -245,7 +245,7 @@ export function InventoryDashboard({
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      dayKeys.push(d.toISOString().split("T")[0]);
+      dayKeys.push(format(d, "yyyy-MM-dd"));
     }
     const result: Record<string, { level: number[]; inTotal: number; outTotal: number }> = {};
     for (const p of focusList) {
@@ -312,7 +312,7 @@ export function InventoryDashboard({
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      dayKeys.push(d.toISOString().split("T")[0]);
+      dayKeys.push(format(d, "yyyy-MM-dd"));
     }
     const equiv = (product: string, qty: number) => butirEquivalent(product, qty, conversionMap);
     const dailyNet = dayKeys.map((key) => {

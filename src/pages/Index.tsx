@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { useLocation } from "react-router-dom";
+import { format } from "date-fns";
 import { Header } from "@/components/Header";
 import { AppSidebar, SidebarKey } from "@/components/AppSidebar";
 import { useIsTabletLandscape } from "@/hooks/use-mobile";
@@ -136,7 +137,7 @@ const Index = () => {
       i.category === "egg" ? { ...i, unit: getProductUnit(i.product, conversionMap) } : i
     );
     const csv = exportInflowsToCSV(withUnits);
-    const filename = `js-online-inflows-${new Date().toISOString().split("T")[0]}.csv`;
+    const filename = `js-online-inflows-${format(new Date(), "yyyy-MM-dd")}.csv`;
     downloadCSV(csv, filename);
   }, [inflows, conversionMap]);
 

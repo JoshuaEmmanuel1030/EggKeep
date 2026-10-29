@@ -1,4 +1,5 @@
 import { useMemo, useRef } from "react";
+import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -136,7 +137,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
   };
 
   const handleWhatsApp = () => {
-    const date = orderQueue[0]?.date ?? new Date().toISOString().slice(0, 10);
+    const date = orderQueue[0]?.date ?? format(new Date(), "yyyy-MM-dd");
     const lines: string[] = [];
     lines.push(`*PICK LIST ${date}*`);
     lines.push(`${orderQueue.length} order(s)\n`);
@@ -183,7 +184,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
     window.open(`https://wa.me/?text=${text}`, "_blank");
   };
 
-  const date = orderQueue[0]?.date ?? new Date().toISOString().slice(0, 10);
+  const date = orderQueue[0]?.date ?? format(new Date(), "yyyy-MM-dd");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

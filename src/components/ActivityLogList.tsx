@@ -7,7 +7,7 @@ function exportLogsToCSV(logs: ActivityLog[]): string {
   const rows = logs.map(log => {
     const dt = new Date(log.recorded_at);
     return [
-      dt.toISOString().slice(0, 10),
+      format(dt, "yyyy-MM-dd"),
       dt.toTimeString().slice(0, 5),
       log.action_type,
       log.product,
@@ -219,12 +219,12 @@ export function ActivityLogList({
   const hasOutflows = filteredLogs.some((l) => l.action_type === "outflow");
   const exportActivityLog = () => {
     const csv = exportLogsToCSV(filteredLogs);
-    const date = new Date().toISOString().slice(0, 10);
+    const date = format(new Date(), "yyyy-MM-dd");
     downloadCSV(csv, `activity-logs-${date}.csv`);
   };
   const exportSkuBom = () => {
     const rows = buildSkuBomRows(filteredLogs, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
-    const date = new Date().toISOString().slice(0, 10);
+    const date = format(new Date(), "yyyy-MM-dd");
     downloadCSV(skuBomRowsToCSV(rows), `outflow-sku-bom-${date}.csv`);
   };
 
