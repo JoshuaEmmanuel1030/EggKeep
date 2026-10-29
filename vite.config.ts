@@ -54,6 +54,9 @@ export default defineConfig(() => ({
         // fresh build never activates mid-session behind the user's back.
         clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        // exceljs (~0.9 MB) only serves Export Rekonsiliasi, which needs the
+        // network anyway — don't push it to every warehouse phone's precache.
+        globIgnores: ["**/exceljs-*"],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -90,6 +93,12 @@ export default defineConfig(() => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  build: {
+    rollupOptions: {
+      // Stable chunk name so the precache globIgnores above can match it.
+      output: { manualChunks: { exceljs: ["exceljs"] } },
     },
   },
   test: {

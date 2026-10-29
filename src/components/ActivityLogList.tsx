@@ -631,29 +631,25 @@ export function ActivityLogList({
             </CardTitle>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Export Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={exportActivityLog}
-                disabled={filteredLogs.length === 0}
-              >
-                <Download className="h-4 w-4" />
-                Export
-              </Button>
-
-              {/* Per-SKU BOM export (outflows) */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={exportSkuBom}
-                disabled={!hasOutflows}
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Export</span> SKU BOM
-              </Button>
+              {/* Secondary exports: activity CSV + packaging BOM. The stock
+                  reconciliation export lives on the dashboard. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Download className="h-4 w-4" />
+                    {t.activity.export}
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem disabled={filteredLogs.length === 0} onSelect={exportActivityLog}>
+                    {t.activity.exportActivityLog}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={!hasOutflows} onSelect={exportSkuBom}>
+                    {t.activity.exportSkuBom}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* View Toggle */}
               <ToggleGroup

@@ -710,6 +710,71 @@ export type Database = {
         }
         Relationships: []
       }
+      v_recon_daily: {
+        Row: {
+          catatan: string | null
+          hitung_fisik: number | null
+          is_retakan: boolean | null
+          item: string | null
+          keluar_po: number | null
+          keluar_tunai: number | null
+          masuk: number | null
+          nama_katalog: string | null
+          retur: number | null
+          selisih_fisik: number | null
+          stok_akhir: number | null
+          stok_awal: number | null
+          tanggal: string | null
+          tanpa_label: boolean | null
+          unit: string | null
+          urutan: number | null
+        }
+        Relationships: []
+      }
+      v_recon_ledger: {
+        Row: {
+          butir_per_unit: number | null
+          dibuat_wib: string | null
+          disposisi: string | null
+          flags: string[] | null
+          id: string | null
+          is_retakan: boolean | null
+          item: string | null
+          jenis: string | null
+          keluar_po: number | null
+          keluar_tunai: number | null
+          masuk: number | null
+          nama_katalog: string | null
+          no_faktur: string | null
+          outflow_id: string | null
+          pembeli_pemasok: string | null
+          qty: number | null
+          retur: number | null
+          return_id: string | null
+          tanggal: string | null
+          tanggal_faktur_asal: string | null
+          tanpa_label: boolean | null
+          unit: string | null
+          urutan: number | null
+          voided: boolean | null
+        }
+        Relationships: []
+      }
+      v_recon_products: {
+        Row: {
+          butir_per_unit: number | null
+          deleted_at: string | null
+          id: string | null
+          induk: string | null
+          is_retakan: boolean | null
+          item: string | null
+          nama_katalog: string | null
+          tanpa_label: boolean | null
+          unit: string | null
+          urutan: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       correct_order: {

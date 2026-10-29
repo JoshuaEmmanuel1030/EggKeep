@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
 import { useLocation } from "react-router-dom";
-import { format } from "date-fns";
 import { Header } from "@/components/Header";
 import { AppSidebar, SidebarKey } from "@/components/AppSidebar";
 import { useIsTabletLandscape } from "@/hooks/use-mobile";
@@ -24,12 +23,7 @@ import { toast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { useLanguage } from "@/contexts/LanguageContext";
-import {
-  calculateStockSummary,
-  exportInflowsToCSV,
-  downloadCSV,
-  getProductUnit,
-} from "@/lib/inventory";
+import { calculateStockSummary } from "@/lib/inventory";
 import { PackagePlus, PackageMinus, LayoutDashboard, Library, History, BarChart2, Users } from "lucide-react";
 import { InfosPage } from "@/components/InfosPage";
 import { InventoryAssistant } from "@/components/InventoryAssistant";
@@ -129,17 +123,6 @@ const Index = () => {
     },
     [submitOrderOutflows, addActivityLog, enqueueOutflowOrder, t]
   );
-
-  const handleExport = useCallback(() => {
-    // Derive each egg row's unit from the catalog conversion map instead of the
-    // hardcoded product names baked into the DB row mapping.
-    const withUnits = inflows.map((i) =>
-      i.category === "egg" ? { ...i, unit: getProductUnit(i.product, conversionMap) } : i
-    );
-    const csv = exportInflowsToCSV(withUnits);
-    const filename = `js-online-inflows-${format(new Date(), "yyyy-MM-dd")}.csv`;
-    downloadCSV(csv, filename);
-  }, [inflows, conversionMap]);
 
   // Per-egg freshness windows from the catalog (falls back to the 5-day default).
   const freshnessDaysByProduct = useMemo(() => {
@@ -249,10 +232,9 @@ const Index = () => {
           onSelectTab={setActiveTab}
           pendingCount={pendingCount}
           isOnline={isOnline}
-          onExport={handleExport}
         />
       ) : (
-        <Header onExport={handleExport} />
+        <Header />
       )}
 
       <main className={isTablet ? "flex min-w-0 flex-1 flex-col" : "container py-6 px-4 sm:px-6"}>

@@ -220,28 +220,13 @@ export function daysOfCover(stock: number, avgDailyOutflow: number): number | nu
   return stock / avgDailyOutflow;
 }
 
-export function exportInflowsToCSV(inflows: InflowEntry[]): string {
-  const headers = ["ID", "Date", "Category", "Product", "Quantity", "Unit", "Stock Qty", "Remaining", "Invoice/Supplier", "Created At"];
-  const rows = inflows.map((i) => [
-    i.id,
-    i.date,
-    i.category,
-    i.product,
-    i.quantity.toString(),
-    i.unit,
-    i.quantityInButir.toString(),
-    i.remainingButir.toString(),
-    i.invoiceSupplier || "",
-    i.createdAt,
-  ]);
-
-  return [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-}
-
-export function downloadCSV(content: string, filename: string): void {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+export function downloadBlob(blob: Blob, filename: string): void {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = filename;
   link.click();
+}
+
+export function downloadCSV(content: string, filename: string): void {
+  downloadBlob(new Blob([content], { type: "text/csv;charset=utf-8;" }), filename);
 }
