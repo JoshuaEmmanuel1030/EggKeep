@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  StockSummary, InventoryCategory, InflowEntry, OutflowEntry, CATEGORY_LABELS,
+  StockSummary, InventoryCategory, InflowEntry, OutflowEntry,
 } from "@/types/inventory";
 import {
   averageDailyOutflow, daysOfCover, butirEquivalent, EGG_FRESHNESS_DAYS,
@@ -279,7 +279,7 @@ export function InventoryDashboard({
   const headline = useMemo(() => {
     if (!hasUrgent) return { tone: "clear" as const };
     const label = (p: string, c: InventoryCategory) =>
-      c === "egg" ? p : `${p} (${CATEGORY_LABELS[c]})`;
+      c === "egg" ? p : `${p} (${t.categories[c]})`;
     if (binding && binding.cover < CRITICAL_DAYS) {
       return {
         tone: "blocked" as const, icon: Truck,
@@ -425,7 +425,7 @@ export function InventoryDashboard({
       <div className={`w-1 self-stretch rounded-full shrink-0 ${sevStripe(a.severity)}`} />
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm truncate">
-          {a.category === "egg" ? a.product : `${a.product} · ${CATEGORY_LABELS[a.category]}`}
+          {a.category === "egg" ? a.product : `${a.product} · ${t.categories[a.category]}`}
         </div>
         <div className="text-[11px] text-muted-foreground truncate">
           {a.kind === "expiring"
@@ -740,7 +740,7 @@ export function InventoryDashboard({
                               </span>
                             </td>
                             <td className="py-2 sm:py-3 px-1 sm:px-2 hidden xs:table-cell">
-                              <Badge variant="outline" className="text-[10px] sm:text-xs">{CATEGORY_LABELS[item.category]}</Badge>
+                              <Badge variant="outline" className="text-[10px] sm:text-xs">{t.categories[item.category]}</Badge>
                             </td>
                             <td className="py-2 sm:py-3 px-1 sm:px-2 text-right tabular-nums">
                               {item.category === "egg" && isKgProduct(item.product) ? (

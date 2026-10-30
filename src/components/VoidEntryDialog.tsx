@@ -63,11 +63,11 @@ export function VoidEntryDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
-            {orderLogsCount && orderLogsCount > 1 ? `Void Entire Order (${orderLogsCount} items)` : t.activity.voidEntry}
+            {orderLogsCount && orderLogsCount > 1 ? t.activity.voidEntireOrder.replace("{count}", String(orderLogsCount)) : t.activity.voidEntry}
           </DialogTitle>
           <DialogDescription>
             {orderLogsCount && orderLogsCount > 1
-              ? `This will void all ${orderLogsCount} entries in this order and restore inventory.`
+              ? t.activity.voidEntireOrderWarning.replace("{count}", String(orderLogsCount))
               : t.activity.voidWarning}
           </DialogDescription>
         </DialogHeader>

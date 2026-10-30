@@ -2,7 +2,6 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { format, isThisYear, isToday, isYesterday, parseISO } from "date-fns";
 import { Cloud, CloudOff, Egg, FileText, MapPin, Package, Pencil, Square, Store, Undo2, type LucideIcon } from "lucide-react";
 import { ActivityLog } from "@/types/activityLog";
-import { CATEGORY_LABELS } from "@/types/inventory";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -372,7 +371,7 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
             </>
           ) : (
             <>
-              <span>{CATEGORY_LABELS[log.category]}</span>
+              <span>{t.categories[log.category]}</span>
               {log.invoice_supplier && <span>{t.activity.invoiceLabel.replace("{ref}", log.invoice_supplier)}</span>}
               {businessDate && <span>{format(parseISO(businessDate), "d MMM yyyy")}</span>}
             </>

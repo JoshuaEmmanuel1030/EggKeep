@@ -3,12 +3,14 @@ import { differenceInHours, parseISO } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useUserRole } from "./useUserRole";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "sonner";
 import { ActivityLog } from "@/types/activityLog";
 
 export function useVoidEntry() {
   const { user } = useAuth();
   const { isAdmin } = useUserRole();
+  const { t } = useLanguage();
 
   // Check if entry can be edited
   // Admins can always edit, owners can edit within 48 hours
@@ -76,14 +78,14 @@ export function useVoidEntry() {
         throw activityError;
       }
 
-      toast.success("Entry voided successfully");
+      toast.success(t.activity.voidSuccess);
       return true;
     } catch (error) {
       console.error("Error voiding outflow:", error);
-      toast.error("Failed to void entry");
+      toast.error(t.activity.voidFailed);
       return false;
     }
-  }, []);
+  }, [t]);
 
   // Void an inflow
   const voidInflow = useCallback(async (
@@ -105,7 +107,7 @@ export function useVoidEntry() {
       }
 
       if (inflow && inflow.remaining_butir < inflow.quantity_butir) {
-        toast.error("Cannot void: Some stock has already been used");
+        toast.error(t.activity.voidStockUsed);
         return false;
       }
 
@@ -137,14 +139,14 @@ export function useVoidEntry() {
         throw activityError;
       }
 
-      toast.success("Entry voided successfully");
+      toast.success(t.activity.voidSuccess);
       return true;
     } catch (error) {
       console.error("Error voiding inflow:", error);
-      toast.error("Failed to void entry");
+      toast.error(t.activity.voidFailed);
       return false;
     }
-  }, []);
+  }, [t]);
 
   // Find the corresponding outflow/inflow ID for an activity log.
   const findRelatedEntryId = useCallback(async (
