@@ -153,7 +153,8 @@ export function RecordReturnDialog({
     return m;
   }, [eggLogs]);
 
-  // One entry row per order line (pack SKU) when orderLines is given; otherwise
+  // One entry row per order line (pack SKU) when orderLines is given, plus one
+  // row per egg log no pack row covers (Telur Lepas on a mixed PO); otherwise
   // fall back to one row per egg log (loose/manual — unchanged behaviour).
   interface Row {
     key: string;
@@ -166,26 +167,30 @@ export function RecordReturnDialog({
     pieces: boolean;
   }
   const rows: Row[] = useMemo(() => {
-    const packLines = (orderLines ?? []).filter((l) => l.skuCode && l.packQty);
-    if (packLines.length > 0) {
-      return packLines.map((l) => {
-        const sku = skuMap[l.skuCode!];
-        return {
-          key: l.skuCode!,
-          label: l.skuCode!,
-          eggProduct: sku?.eggProduct ?? l.skuCode!,
-          skuCode: l.skuCode!,
-          soldPieces: sku ? l.packQty! * sku.eggsPerPack : undefined,
-          pieces: true,
-        };
-      });
-    }
-    return eggLogs.map((log) => ({
+    const nativeRow = (log: ActivityLog): Row => ({
       key: log.id,
       label: log.product,
       eggProduct: log.product,
       pieces: false,
-    }));
+    });
+    const packLines = (orderLines ?? []).filter((l) => l.skuCode && l.packQty);
+    if (packLines.length === 0) return eggLogs.map(nativeRow);
+    const packRows: Row[] = packLines.map((l) => {
+      const sku = skuMap[l.skuCode!];
+      return {
+        key: l.skuCode!,
+        label: l.skuCode!,
+        eggProduct: sku?.eggProduct ?? l.skuCode!,
+        skuCode: l.skuCode!,
+        soldPieces: sku ? l.packQty! * sku.eggsPerPack : undefined,
+        pieces: true,
+      };
+    });
+    // A loose egg a pack row already covers stays pooled under that row's cap.
+    // Only uncovered eggs get a native row, so one egg's rows never mix pieces
+    // and native entry (the shared-cap sums add raw entries).
+    const covered = new Set(packRows.map((r) => r.eggProduct));
+    return [...packRows, ...eggLogs.filter((log) => !covered.has(log.product)).map(nativeRow)];
   }, [orderLines, skuMap, eggLogs]);
 
   // Stable primitive identity for the row set, so the reset effect doesn't refire

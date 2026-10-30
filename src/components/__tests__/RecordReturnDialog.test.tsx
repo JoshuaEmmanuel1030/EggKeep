@@ -27,6 +27,7 @@ vi.mock("@/hooks/useItemTypes", () => ({
   useItemTypes: () => ({
     conversionMap: {
       "NEGERI BIASA": { unit: "kg" },
+      "NEGERI OMEGA": { unit: "kg" },
       "KAMPUNG BIASA": { unit: "btr" },
     },
     boxCapacityMap: { osave: { N10B: 18 } },
@@ -265,5 +266,36 @@ describe("RecordReturnDialog", () => {
     expect(lines[0]).toEqual(
       expect.objectContaining({ skuCode: "OSVN10B", product: "NEGERI BIASA", quantity: 2, disposition: "restock" })
     );
+  });
+
+  it("adds a native-unit row for a loose egg no pack line covers (mixed PO)", async () => {
+    // Regression: with any pack line present, rows came only from pack lines, so
+    // a Telur Lepas egg no pack SKU uses (NEGERI OMEGA here) had no row at all.
+    const mk = (id: string, product: string, qty: number): ActivityLog => ({
+      id, user_id: "u1", action_type: "outflow", category: "egg", product, quantity_butir: qty,
+      recorded_at: "2026-10-05T07:21:00.000Z", created_at: "2026-10-05T07:21:00.000Z", client_id: "c",
+    });
+    renderDialog({
+      eggLogs: [mk("1", "NEGERI BIASA", 100), mk("2", "NEGERI OMEGA", 40)],
+      orderLines: [
+        { skuCode: "N30B", packQty: 50 },
+        { eggProduct: "NEGERI OMEGA", looseQty: 40 },
+      ],
+    });
+    // N30B row + one NEGERI OMEGA row; NEGERI BIASA stays pooled under N30B.
+    const okBoxes = (await screen.findAllByLabelText(/ok/i)) as HTMLInputElement[];
+    expect(okBoxes).toHaveLength(2);
+    expect(screen.getByText("NEGERI OMEGA")).toBeInTheDocument();
+    // Entry is native kg, capped at the 40 kg sold.
+    fireEvent.change(okBoxes[1], { target: { value: "999" } });
+    expect(okBoxes[1].value).toBe("40");
+    fireEvent.change(okBoxes[1], { target: { value: "2,5" } });
+    fireEvent.click(screen.getByRole("button", { name: /record return/i }));
+    await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
+    const { lines } = recordReturnMock.mock.calls[0]![0];
+    // 2.5 kg as typed — not run through piecesToNative (which would give 0.16).
+    expect(lines).toEqual([
+      expect.objectContaining({ product: "NEGERI OMEGA", quantity: 2.5, outflowId: "outflow-2", skuCode: undefined }),
+    ]);
   });
 });
