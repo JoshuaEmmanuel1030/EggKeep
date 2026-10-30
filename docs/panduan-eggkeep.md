@@ -70,7 +70,7 @@ MALAM (siapkan kirim besok)
 **Cara input:**
 1. Buka menu **Masuk** (judul kartu: **Catat Instock**).
 2. Isi **Tanggal** barang masuk.
-3. Di **Pilih Kategori**, centang jenis barangnya (tulisan di aplikasi: **Eggs** = telur, **Boxes** = kotak, **Labels** = label, **Packaging** = kemasan). Boleh lebih dari satu.
+3. Di **Pilih Kategori**, centang jenis barangnya: **Telur**, **Kotak**, **Label**, atau **Kemasan**. Boleh lebih dari satu.
 4. Untuk tiap barang:
    - **Jenis** → pilih produk (NEGERI OMEGA, KAMPUNG BIASA, dll).
    - **Jumlah** → dalam satuan yang tertulis di label kolom: **kg** untuk NEGERI (boleh koma, contoh `15,5`), **butir** untuk telur lain, **pcs** untuk box/label/kemasan.
@@ -121,20 +121,20 @@ MALAM (siapkan kirim besok)
 | Peringatan | Artinya | Yang harus dilakukan |
 |------------|---------|----------------------|
 | **Kemungkinan pesanan ganda** | Pesanan yang **sama** (pembeli, DC, tanggal, dan isi sama) sudah dicatat dalam **15 menit** terakhir | Biasanya tekan **Batal**. Tekan **Tetap catat** hanya kalau ini **benar-benar pesanan terpisah** |
-| **Peringatan: Beberapa item stoknya tidak cukup** | Stok di aplikasi kurang dari yang dibutuhkan | Tekan **Batal**, cek dulu: ada barang **Masuk** yang belum dicatat? Kalau tetap dilanjutkan dan stok memang kurang, pesanan **ditolak** dan tetap di antrian |
+| **Peringatan: Beberapa item stoknya tidak cukup** | Stok di aplikasi kurang dari yang dibutuhkan | Tekan **Batal**, cek dulu: ada barang **Masuk** yang belum dicatat? Kalau ditekan **Tetap lanjutkan** dan stok memang kurang, pesanan **ditolak** dan tetap di antrian |
 
-### B. Pick List (daftar ambil untuk loading)
+### B. Daftar Ambil (untuk loading)
 
 Muncul kalau ada pesanan di **Pesanan dalam Antrian**.
 
 1. Masukkan pesanan-pesanan ke antrian (**Tambah ke Antrian**).
-2. Tekan **Pick List** di kotak antrian.
+2. Tekan **Daftar Ambil** di kotak antrian.
 3. Daftar menampilkan total telur per produk, dan **batch mana yang diambil duluan** (FIFO: supplier/faktur + tanggal masuk), plus kemasan, label, dan box.
    - ⚠ = batch **berisiko** (sudah lama) — ambil ini dulu.
-   - **Short** = stok tidak cukup untuk produk itu.
-4. Tekan **WhatsApp** untuk kirim daftar, atau **Print** untuk dicetak.
+   - **Kurang** = stok tidak cukup untuk produk itu.
+4. Tekan **WhatsApp** untuk kirim daftar, atau **Cetak** untuk dicetak.
 
-> Pick List hanya menghitung pesanan **di antrian**, bukan yang masih di form.
+> Daftar Ambil hanya menghitung pesanan **di antrian**, bukan yang masih di form.
 
 ### C. Kas Tunai (tanpa pembeli/PO)
 
