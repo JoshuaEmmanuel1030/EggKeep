@@ -13,7 +13,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CATEGORY_LABELS } from "@/types/inventory";
 import { format, parseISO } from "date-fns";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useItemTypes } from "@/hooks/useItemTypes";
@@ -1325,7 +1324,7 @@ function ManualOutflowEntry({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <Badge variant="outline" className="text-xs shrink-0">
-            {CATEGORY_LABELS[log.category]}
+            {t.categories[log.category]}
           </Badge>
           {log.original_log_id && <EditedBadge />}
           <span className={cn("font-semibold", isVoided && "line-through")}>{log.product}</span>
@@ -1399,7 +1398,7 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <Badge variant="outline" className="text-xs border-emerald-600/60 text-emerald-700 dark:text-emerald-400 shrink-0">
-            {CATEGORY_LABELS[log.category]}
+            {t.categories[log.category]}
           </Badge>
           <span className={cn("font-semibold", isVoided && "line-through")}>{log.product}</span>
           <span className="text-muted-foreground">·</span>
@@ -1487,7 +1486,7 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           </Badge>
 
           <Badge variant="outline" className="text-xs shrink-0">
-            {CATEGORY_LABELS[log.category]}
+            {t.categories[log.category]}
           </Badge>
 
           <span className={cn("font-semibold truncate", isVoided && "line-through")}>{log.product}</span>

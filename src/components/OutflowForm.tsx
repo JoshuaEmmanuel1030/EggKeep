@@ -12,7 +12,6 @@ import {
   OutflowEntry,
   InflowEntry,
   InventoryCategory,
-  CATEGORY_LABELS,
   ConversionMap,
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
@@ -277,7 +276,7 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
                     htmlFor={`out-cat-${category}`}
                     className="text-sm font-medium cursor-pointer"
                   >
-                    {CATEGORY_LABELS[category]}
+                    {t.categories[category]}
                   </label>
                 </div>
               ))}
@@ -355,7 +354,7 @@ function OutflowCategorySection({
     <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm flex items-center gap-2">
-          <Badge variant="outline">{CATEGORY_LABELS[category]}</Badge>
+          <Badge variant="outline">{t.categories[category]}</Badge>
         </h3>
         <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
           <Plus className="h-3 w-3 mr-1" /> {t.common.addItem}

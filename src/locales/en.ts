@@ -60,6 +60,17 @@ export const en = {
     searchDots: 'Search...',
     available: 'Available',
     undo: 'Undo',
+    order: 'order',
+    orders: 'orders',
+    loadInventoryFailed: 'Failed to load inventory data',
+  },
+
+  // Inventory categories (keyed by InventoryCategory)
+  categories: {
+    egg: 'Eggs',
+    box: 'Boxes',
+    label: 'Labels',
+    packaging: 'Packaging',
   },
 
   // Footer
@@ -257,6 +268,7 @@ export const en = {
     pleaseAddValidLine: 'Please add at least one valid order line',
     warningShortages: 'Warning: Some items have insufficient stock:',
     continueAnyway: 'Do you want to continue anyway?',
+    proceedAnyway: 'Continue anyway',
     duplicateTitle: 'Possible duplicate order',
     duplicateBody: 'A matching order was already recorded recently:',
     duplicateLine: 'recorded {minutes} min ago',
@@ -276,6 +288,12 @@ export const en = {
     addToQueue: 'Add to Queue',
     submitAll: 'Submit All',
     quantityBoxes: "Quantity (boxes)",
+    orderQueued: '{buyer} order queued',
+    ordersRecordedDesc: '{count} {orders} recorded ({items} items)',
+    partialSubmission: 'Partial submission ({done}/{total})',
+    partialSubmissionDesc: '{done} {orders} recorded. {failed} still queued — fix stock and re-submit.',
+    nothingDeducted: 'nothing was deducted.',
+    outflowSaveFailed: 'Failed to save outflow — nothing was deducted.',
   },
 
   // Activity
@@ -393,6 +411,11 @@ export const en = {
     voidOrder: 'Void order',
     voidOrderConfirmTitle: 'Void this entire order?',
     voidOrderConfirmBody: 'This voids all {count} entries in the order and restores their stock. You add a reason on the next step.',
+    voidEntireOrder: 'Void Entire Order ({count} items)',
+    voidEntireOrderWarning: 'This will void all {count} entries in this order and restore inventory.',
+    voidSuccess: 'Entry voided successfully',
+    voidFailed: 'Failed to void entry',
+    voidStockUsed: 'Cannot void: some stock has already been used',
     // Record return
     recordReturn: 'Record return',
     returnDescription: 'Log eggs the customer sent back on this order.',
@@ -675,5 +698,38 @@ export const en = {
     reconcileKind: 'Type',
     reconcileHint: 'Read-only check. To repair drift, use Recalculate Inventory.',
     reconcileFailed: 'Reconciliation failed',
+  },
+
+  // Dispatch pick list
+  pickList: {
+    button: 'Pick List',
+    title: 'Dispatch Pick List',
+    heading: 'PICK LIST',
+    whatsapp: 'WhatsApp',
+    print: 'Print',
+    shortfallBanner: 'Insufficient stock for some products — shortfall shown below.',
+    atRiskBanner: 'Some batches are at risk — dispatch these first.',
+    eggsToPick: 'Eggs to Pick',
+    noEggsRequired: 'No eggs required.',
+    noEggs: 'No eggs',
+    short: 'Short',
+    daysShort: '{days}d',
+    noSupplier: 'No supplier',
+  },
+
+  // Inventory assistant (chat)
+  assistant: {
+    title: 'Inventory Assistant',
+    open: 'Open inventory assistant',
+    close: 'Close chat',
+    send: 'Send message',
+    greeting: "Hi! I'm the inventory assistant. Ask me anything about stock. 👋",
+    placeholder: 'Ask about stock...',
+    sendFailed: 'Failed to send message',
+    errorReply: 'Sorry, something went wrong. Please try again.',
+    promptStockToday: "Today's egg stock?",
+    promptNearExpiry: 'Which eggs are close to expiring?',
+    promptSummary: 'Inventory summary',
+    promptAtRisk: 'At-risk eggs?',
   },
 } as const;
