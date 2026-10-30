@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, Loader2, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, ArrowLeft, Check, Info, Loader2, Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDelivery, isDuplicateInvoiceError, type DeliveryDetailData, type DeliveryPatch } from "@/hooks/useDelivery";
 import { useDrivers } from "@/hooks/useDrivers";
 import { localToday, toLocalDate } from "@/lib/buyerProfile";
-import { STATUS_NEEDS_NOTE, customerLabel, normalizeInvoiceRef } from "@/lib/deliveryFlags";
+import { STATUS_NEEDS_NOTE, customerLabel } from "@/lib/deliveryFlags";
 import { DELIVERY_STATUSES, type DeliveryStatus, type Driver } from "@/types/deliveries";
 import { DeliveryStatusChip, deliveryStatusLabel } from "./DeliveryStatusChip";
 import { DriverDialog } from "./DriverDialog";
@@ -30,51 +30,43 @@ interface DeliveryDetailProps {
 }
 
 // Phase 1 sections: Pengiriman (driver / status / PIC / notes over a read-only
-// PO header) and Faktur balik. Edits save as they are made; the delivery row
-// is created lazily the first time a PO is opened here.
+// PO header) and Faktur balik. Opening writes nothing: the first edit creates
+// the deliveries row, later edits update it. Selects save on change, text
+// fields on blur. While the PO is live its buyer, DC and date are shown and
+// copied into the row's snapshot on every save.
 export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInvoiceRefChanged }: DeliveryDetailProps) {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const email = user?.email ?? null;
-  const { data, isLoading, isError, refetch, ensure, update } = useDelivery(invoiceRef, placeholder);
+  const { data, isLoading, isError, refetch, save } = useDelivery(invoiceRef, placeholder);
   const { drivers, activeDrivers } = useDrivers();
   const locale = language === "id" ? "id-ID" : "en-US";
 
   const delivery = data?.delivery ?? null;
   const po = data?.po ?? null;
-  const buyerName = delivery?.buyerName ?? po?.buyerName ?? "";
-  const dcName = delivery?.dcName ?? po?.dcName ?? null;
-  const deliveryDate = delivery?.deliveryDate ?? po?.outflowDate ?? "";
+  const livePo = data?.poState === "ok" ? po : null;
+  // Live PO fields first; the snapshot only once the PO is gone.
+  const buyerName = po?.buyerName ?? delivery?.buyerName ?? "";
+  const dcName = po ? po.dcName : delivery?.dcName ?? null;
+  const deliveryDate = po?.outflowDate ?? delivery?.deliveryDate ?? "";
+  // A PO can be logged; an orphan delivery can still be edited.
+  const canEdit = !!delivery || !!livePo;
+  const status: DeliveryStatus = delivery?.status ?? "belum_terkirim";
 
-  // Lazy creation: a PO opened here for the first time gets its row (insert
-  // if missing, so a concurrent open elsewhere is harmless).
-  const ensuredFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (!data || data.delivery || !data.po || data.poState !== "ok") return;
-    const norm = normalizeInvoiceRef(invoiceRef);
-    if (ensuredFor.current === norm || ensure.isPending) return;
-    ensuredFor.current = norm;
-    ensure.mutate(
-      { po: data.po, pic: email },
-      { onError: (e) => toast.error((e as { message?: string } | null)?.message || t.deliveries.saveError) }
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, invoiceRef, email]);
-
-  // Text fields edit locally and save on blur.
+  // Text fields edit locally and save on blur. Defaults for a PO not yet logged.
   const [pic, setPic] = useState("");
   const [notes, setNotes] = useState("");
   const [checkedBy, setCheckedBy] = useState("");
   useEffect(() => {
-    setPic(delivery?.pic ?? "");
+    setPic(delivery ? delivery.pic ?? "" : email ?? "");
     setNotes(delivery?.notes ?? "");
     setCheckedBy(delivery?.invoiceCheckedBy ?? "");
-  }, [delivery?.id, delivery?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [delivery?.id, delivery?.updatedAt, email]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const save = async (patch: DeliveryPatch, successMessage?: string): Promise<boolean> => {
-    if (!delivery) return false;
+  const persist = async (patch: DeliveryPatch, successMessage?: string): Promise<boolean> => {
+    if (!canEdit) return false;
     try {
-      await update.mutateAsync({ id: delivery.id, patch });
+      await save.mutateAsync({ existing: delivery, po: livePo, patch, savedBy: email });
       if (successMessage) toast.success(successMessage);
       return true;
     } catch (e) {
@@ -85,16 +77,16 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
     }
   };
 
-  // Status: ditolak / batal ask for a note first.
+  // Status: ditolak / batal ask for a note first (it replaces the old note).
   const [noteDialog, setNoteDialog] = useState<{ status: DeliveryStatus; note: string } | null>(null);
   const handleStatus = (next: DeliveryStatus) => {
-    if (!delivery || next === delivery.status) return;
-    if (STATUS_NEEDS_NOTE.has(next)) setNoteDialog({ status: next, note: delivery.notes ?? "" });
-    else void save({ status: next });
+    if (next === status) return;
+    if (STATUS_NEEDS_NOTE.has(next)) setNoteDialog({ status: next, note: delivery?.notes ?? "" });
+    else void persist({ status: next });
   };
   const confirmNote = async () => {
     if (!noteDialog || !noteDialog.note.trim()) return;
-    const ok = await save({ status: noteDialog.status, notes: noteDialog.note.trim() });
+    const ok = await persist({ status: noteDialog.status, notes: noteDialog.note.trim() });
     if (ok) setNoteDialog(null);
   };
 
@@ -104,23 +96,23 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
   const current = delivery?.driverId ? drivers.find((d) => d.id === delivery.driverId) : undefined;
   if (current && !current.isActive) driverOptions.push(current);
   const handleDriver = (value: string) => {
-    if (value === NO_DRIVER) void save({ driverId: null, driverName: null });
+    if (value === NO_DRIVER) void persist({ driverId: null, driverName: null });
     else {
       const d = drivers.find((x) => x.id === value);
-      if (d) void save({ driverId: d.id, driverName: d.name });
+      if (d) void persist({ driverId: d.id, driverName: d.name });
     }
   };
 
   // Faktur balik.
-  const markInvoiceBack = () => save({ invoiceReturnedAt: localToday(), invoiceCheckedBy: email }, t.deliveries.saved);
-  const clearInvoiceBack = () => save({ invoiceReturnedAt: null, invoiceCheckedBy: null });
+  const markInvoiceBack = () => persist({ invoiceReturnedAt: localToday(), invoiceCheckedBy: email }, t.deliveries.saved);
+  const clearInvoiceBack = () => persist({ invoiceReturnedAt: null, invoiceCheckedBy: null });
 
   // Ubah No. Faktur (delivery no longer matches a PO).
   const [refDraft, setRefDraft] = useState<string | null>(null);
   const saveRef = async () => {
     const next = (refDraft ?? "").trim();
     if (!next) return;
-    const ok = await save({ invoiceRef: next }, t.deliveries.saved);
+    const ok = await persist({ invoiceRef: next }, t.deliveries.saved);
     if (ok) {
       setRefDraft(null);
       onInvoiceRefChanged?.(next);
@@ -130,6 +122,7 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
   const fmtDate = (s: string | null | undefined) =>
     s ? toLocalDate(s).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }) : "";
   const fieldLabel = "text-xs font-semibold text-muted-foreground";
+  const stockHint = status === "batal" ? t.deliveries.stockHintBatal : status === "ditolak" ? t.deliveries.stockHintDitolak : null;
 
   return (
     <div className="min-w-0 space-y-4">
@@ -217,132 +210,138 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
                 </div>
               )}
 
-              {!delivery ? (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t.deliveries.creating}
+              {!delivery && (
+                <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  {t.deliveries.firstSaveHint}
                 </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="min-w-0 space-y-1.5">
-                    <Label htmlFor="delivery-driver" className={fieldLabel}>{t.deliveries.driver}</Label>
-                    <div className="flex gap-1.5">
-                      <Select value={delivery.driverId ?? NO_DRIVER} onValueChange={handleDriver}>
-                        <SelectTrigger id="delivery-driver" className="h-11 min-w-0 flex-1">
-                          <SelectValue placeholder={t.deliveries.selectDriver} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NO_DRIVER}>{t.deliveries.noDriver}</SelectItem>
-                          {driverOptions.map((d) => (
-                            <SelectItem key={d.id} value={d.id}>
-                              {d.name}{d.isActive ? "" : ` (${t.deliveries.inactive})`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {isAdmin && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="h-11 w-11 shrink-0"
-                          aria-label={t.deliveries.addDriver}
-                          title={t.deliveries.addDriver}
-                          onClick={() => setDriverDialogOpen(true)}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+              )}
 
-                  <div className="min-w-0 space-y-1.5">
-                    <Label htmlFor="delivery-status" className={fieldLabel}>{t.deliveries.status}</Label>
-                    <Select value={delivery.status} onValueChange={(v) => handleStatus(v as DeliveryStatus)}>
-                      <SelectTrigger id="delivery-status" className="h-11">
-                        <SelectValue />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor="delivery-driver" className={fieldLabel}>{t.deliveries.driver}</Label>
+                  <div className="flex gap-1.5">
+                    <Select value={delivery?.driverId ?? NO_DRIVER} onValueChange={handleDriver} disabled={!canEdit}>
+                      <SelectTrigger id="delivery-driver" className="h-11 min-w-0 flex-1">
+                        <SelectValue placeholder={t.deliveries.selectDriver} />
                       </SelectTrigger>
                       <SelectContent>
-                        {DELIVERY_STATUSES.map((s) => (
-                          <SelectItem key={s} value={s}>{deliveryStatusLabel(t, s)}</SelectItem>
+                        <SelectItem value={NO_DRIVER}>{t.deliveries.noDriver}</SelectItem>
+                        {driverOptions.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}{d.isActive ? "" : ` (${t.deliveries.inactive})`}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-
-                  <div className="min-w-0 space-y-1.5">
-                    <Label htmlFor="delivery-pic" className={fieldLabel}>{t.deliveries.pic}</Label>
-                    <Input
-                      id="delivery-pic"
-                      className="h-11"
-                      value={pic}
-                      onChange={(e) => setPic(e.target.value)}
-                      onBlur={() => { if (pic.trim() !== (delivery.pic ?? "")) void save({ pic: pic.trim() || null }); }}
-                    />
-                  </div>
-
-                  <div className="min-w-0 space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="delivery-notes" className={fieldLabel}>{t.deliveries.notes}</Label>
-                    <Textarea
-                      id="delivery-notes"
-                      rows={2}
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      onBlur={() => { if (notes.trim() !== (delivery.notes ?? "")) void save({ notes: notes.trim() || null }); }}
-                    />
+                    {isAdmin && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-11 w-11 shrink-0"
+                        aria-label={t.deliveries.addDriver}
+                        title={t.deliveries.addDriver}
+                        onClick={() => setDriverDialogOpen(true)}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
-              )}
+
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor="delivery-status" className={fieldLabel}>{t.deliveries.status}</Label>
+                  <Select value={status} onValueChange={(v) => handleStatus(v as DeliveryStatus)} disabled={!canEdit}>
+                    <SelectTrigger id="delivery-status" className="h-11">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DELIVERY_STATUSES.map((s) => (
+                        <SelectItem key={s} value={s}>{deliveryStatusLabel(t, s)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {delivery && stockHint && (
+                    <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      {stockHint}
+                    </p>
+                  )}
+                </div>
+
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor="delivery-pic" className={fieldLabel}>{t.deliveries.pic}</Label>
+                  <Input
+                    id="delivery-pic"
+                    className="h-11"
+                    value={pic}
+                    disabled={!canEdit}
+                    onChange={(e) => setPic(e.target.value)}
+                    onBlur={() => { if (pic.trim() !== (delivery?.pic ?? (delivery ? "" : email ?? ""))) void persist({ pic: pic.trim() || null }); }}
+                  />
+                </div>
+
+                <div className="min-w-0 space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="delivery-notes" className={fieldLabel}>{t.deliveries.notes}</Label>
+                  <Textarea
+                    id="delivery-notes"
+                    rows={2}
+                    value={notes}
+                    disabled={!canEdit}
+                    onChange={(e) => setNotes(e.target.value)}
+                    onBlur={() => { if (notes.trim() !== (delivery?.notes ?? "")) void persist({ notes: notes.trim() || null }); }}
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
 
           {/* 2. Faktur balik */}
-          {delivery && (
-            <Card>
-              <CardContent className="space-y-3 p-4">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t.deliveries.sectionInvoiceBack}</h3>
-                {delivery.invoiceReturnedAt ? (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="min-w-0 space-y-1.5">
-                      <Label htmlFor="invoice-returned-at" className={fieldLabel}>{t.deliveries.invoiceReturnedAt}</Label>
-                      <Input
-                        id="invoice-returned-at"
-                        type="date"
-                        className="h-11"
-                        value={delivery.invoiceReturnedAt}
-                        max={localToday()}
-                        onChange={(e) => { if (e.target.value) void save({ invoiceReturnedAt: e.target.value }); }}
-                      />
-                    </div>
-                    <div className="min-w-0 space-y-1.5">
-                      <Label htmlFor="invoice-checked-by" className={fieldLabel}>{t.deliveries.checkedBy}</Label>
-                      <Input
-                        id="invoice-checked-by"
-                        className="h-11"
-                        value={checkedBy}
-                        onChange={(e) => setCheckedBy(e.target.value)}
-                        onBlur={() => { if (checkedBy.trim() !== (delivery.invoiceCheckedBy ?? "")) void save({ invoiceCheckedBy: checkedBy.trim() || null }); }}
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={clearInvoiceBack}>
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        {t.deliveries.clearInvoiceBack}
-                      </Button>
-                    </div>
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t.deliveries.sectionInvoiceBack}</h3>
+              {delivery?.invoiceReturnedAt ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="invoice-returned-at" className={fieldLabel}>{t.deliveries.invoiceReturnedAt}</Label>
+                    <Input
+                      id="invoice-returned-at"
+                      type="date"
+                      className="h-11"
+                      value={delivery.invoiceReturnedAt}
+                      max={localToday()}
+                      onChange={(e) => { if (e.target.value) void persist({ invoiceReturnedAt: e.target.value }); }}
+                    />
                   </div>
-                ) : (
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm text-muted-foreground">{t.deliveries.invoiceNotBackYet}</p>
-                    <Button type="button" className="h-11 gap-2" onClick={markInvoiceBack} disabled={update.isPending}>
-                      <Check className="h-4 w-4" />
-                      {t.deliveries.markInvoiceBack}
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="invoice-checked-by" className={fieldLabel}>{t.deliveries.checkedBy}</Label>
+                    <Input
+                      id="invoice-checked-by"
+                      className="h-11"
+                      value={checkedBy}
+                      onChange={(e) => setCheckedBy(e.target.value)}
+                      onBlur={() => { if (checkedBy.trim() !== (delivery.invoiceCheckedBy ?? "")) void persist({ invoiceCheckedBy: checkedBy.trim() || null }); }}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={clearInvoiceBack}>
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {t.deliveries.clearInvoiceBack}
                     </Button>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">{t.deliveries.invoiceNotBackYet}</p>
+                  <Button type="button" className="h-11 gap-2" onClick={markInvoiceBack} disabled={!canEdit || save.isPending}>
+                    <Check className="h-4 w-4" />
+                    {t.deliveries.markInvoiceBack}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
 
@@ -364,8 +363,8 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
           />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setNoteDialog(null)}>{t.common.cancel}</Button>
-            <Button type="button" onClick={confirmNote} disabled={!noteDialog?.note.trim() || update.isPending}>
-              {update.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button type="button" onClick={confirmNote} disabled={!noteDialog?.note.trim() || save.isPending}>
+              {save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t.common.save}
             </Button>
           </div>
@@ -386,8 +385,8 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setRefDraft(null)}>{t.common.cancel}</Button>
-              <Button type="submit" disabled={!(refDraft ?? "").trim() || update.isPending}>
-                {update.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button type="submit" disabled={!(refDraft ?? "").trim() || save.isPending}>
+                {save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {t.common.save}
               </Button>
             </div>
@@ -399,7 +398,7 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
         open={driverDialogOpen}
         onOpenChange={setDriverDialogOpen}
         driver={null}
-        onSaved={(d) => void save({ driverId: d.id, driverName: d.name })}
+        onSaved={(d) => void persist({ driverId: d.id, driverName: d.name })}
       />
     </div>
   );

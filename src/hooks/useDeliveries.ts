@@ -97,18 +97,31 @@ export function useDeliveries(range: DateRange) {
 }
 
 // Header / sidebar badge: distinct fakturs delivered but not back yet
-// (open_delivery_items.invoice_not_back). Undefined while loading or when the
-// view isn't there yet (migration not applied) — the badge simply stays hidden.
-export function useOpenDeliveryCount() {
+// (open_delivery_items.invoice_not_back), across all dates, plus the oldest
+// one's date so the badge can open a range that shows every counted faktur.
+// Undefined while loading or when the view isn't there yet (migration not
+// applied) — the badge simply stays hidden.
+export interface OpenDeliveries {
+  count: number;
+  oldestDate: string | null; // yyyy-MM-dd
+}
+
+export function useOpenDeliveries(): OpenDeliveries | undefined {
   const { data } = useQuery({
     queryKey: ["open_delivery_items", "count"],
-    queryFn: async () => {
+    queryFn: async (): Promise<OpenDeliveries> => {
       const { data, error } = await supabase
         .from("open_delivery_items")
-        .select("invoice_ref_norm")
+        .select("invoice_ref_norm, delivery_date")
         .eq("invoice_not_back", true);
       if (error) throw error;
-      return new Set((data ?? []).map((r) => r.invoice_ref_norm ?? "")).size;
+      const norms = new Set<string>();
+      let oldestDate: string | null = null;
+      for (const r of data ?? []) {
+        norms.add(r.invoice_ref_norm ?? "");
+        if (r.delivery_date && (oldestDate === null || r.delivery_date < oldestDate)) oldestDate = r.delivery_date;
+      }
+      return { count: norms.size, oldestDate };
     },
     staleTime: 30_000,
     retry: false,

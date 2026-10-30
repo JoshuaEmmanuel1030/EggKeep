@@ -1,10 +1,11 @@
 // Export v1 of the Delivery & Return Log: the delivery_log columns (Phase 2
 // view) in the sheet's order, Indonesian headers, dd/mm/yyyy dates and decimal
-// commas. Phase 1 emits one row per delivery with the per-line, warehouse and
-// claim columns blank. Download goes through the existing downloadCSV helper
-// (src/lib/inventory.ts).
+// commas. Phase 1 emits one row per list item (every PO with a ref in the
+// range, logged or not, plus deliveries with no live PO) with the per-line,
+// warehouse and claim columns blank. Download goes through the existing
+// downloadCSV helper (src/lib/inventory.ts).
 // Spec: docs/superpowers/specs/2026-10-29-delivery-return-log-design.md §4.7, §5.5
-import type { Delivery, DeliveryLogRow, DeliveryStatus } from "@/types/deliveries";
+import type { DeliveryListItem, DeliveryLogRow, DeliveryStatus } from "@/types/deliveries";
 import { customerLabel } from "@/lib/deliveryFlags";
 
 // Status Kirim as the sheet writes it. Fixed Indonesian, same in both locales.
@@ -64,16 +65,26 @@ export function formatNumberId(n: number | null | undefined): string {
   return String(n).replace(".", ",");
 }
 
-export function deliveryToLogRow(d: Delivery): DeliveryLogRow {
+// A user-typed text cell that a spreadsheet would run as a formula gets a
+// leading apostrophe. Numbers and dates are never prefixed.
+export function guardFormula(text: string): string {
+  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+}
+
+// One export row per list item. Live PO fields (buyer, DC, date) come from
+// the item, which prefers the PO over the snapshot; an un-logged PO has blank
+// PIC, driver and status.
+export function itemToLogRow(item: DeliveryListItem): DeliveryLogRow {
+  const d = item.delivery;
   return {
-    pic: d.pic ?? "",
-    deliveryDate: d.deliveryDate,
-    invoiceRef: d.invoiceRef,
-    customer: customerLabel(d.buyerName, d.dcName),
-    driverName: d.driverName ?? "",
-    status: d.status,
-    invoiceReturnedAt: d.invoiceReturnedAt,
-    invoiceCheckedBy: d.invoiceCheckedBy ?? "",
+    pic: d?.pic ?? "",
+    deliveryDate: item.deliveryDate,
+    invoiceRef: item.invoiceRef,
+    customer: customerLabel(item.buyerName, item.dcName),
+    driverName: d?.driverName ?? "",
+    status: d?.status ?? null,
+    invoiceReturnedAt: d?.invoiceReturnedAt ?? null,
+    invoiceCheckedBy: d?.invoiceCheckedBy ?? "",
     // Phase 2+ (delivery lines, warehouse receipt, claims): blank in v1.
     skuCode: "",
     qtyReceivedPack: null,
@@ -104,7 +115,7 @@ function formatCell(kind: ColumnKind, value: DeliveryLogRow[keyof DeliveryLogRow
     case "bool":
       return value ? "Ya" : "Tidak";
     default:
-      return String(value);
+      return guardFormula(String(value));
   }
 }
 
@@ -122,12 +133,10 @@ export function deliveryLogToCsv(rows: DeliveryLogRow[]): string {
   return "﻿" + lines.join("\n");
 }
 
-// Newest delivery first, then invoice_ref — the order the list shows.
-export function buildDeliveryLogCsv(deliveries: Delivery[]): string {
-  const rows = [...deliveries]
-    .sort((a, b) => b.deliveryDate.localeCompare(a.deliveryDate) || a.invoiceRef.localeCompare(b.invoiceRef))
-    .map(deliveryToLogRow);
-  return deliveryLogToCsv(rows);
+// The list's rows for the range, in list order (newest delivery first), no
+// matter which chips or search are set.
+export function buildDeliveryLogCsv(items: DeliveryListItem[]): string {
+  return deliveryLogToCsv(items.map(itemToLogRow));
 }
 
 export const deliveryLogFilename = (from: string, to: string) => `log-pengiriman-${from}_${to}.csv`;

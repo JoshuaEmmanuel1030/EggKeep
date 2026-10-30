@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Calendar, ChevronLeft, Download, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -12,7 +12,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useIsTabletLandscape } from "@/hooks/use-mobile";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useDeliveries, type DateRange } from "@/hooks/useDeliveries";
+import { useDeliveries, useOpenDeliveries, type DateRange } from "@/hooks/useDeliveries";
 import type { DeliveryDetailData } from "@/hooks/useDelivery";
 import { addDays, localToday, toLocalDate } from "@/lib/buyerProfile";
 import { customerLabel, filterDeliveryItems, normalizeInvoiceRef } from "@/lib/deliveryFlags";
@@ -45,6 +45,21 @@ export default function Deliveries() {
   const [chips, setChips] = useState<Chips>({ notLogged: false, notDelivered: false, invoiceNotBack: false });
   const { data, isLoading, isError, refetch } = useDeliveries(range);
 
+  // Badge deep link (?open=1): the "Faktur belum balik" chip on and the range
+  // widened to the oldest open faktur, so the list shows every faktur counted.
+  const openParam = searchParams.get("open") === "1";
+  const openItems = useOpenDeliveries();
+  const openApplied = useRef(false);
+  useEffect(() => {
+    if (!openParam || openApplied.current || openItems === undefined) return;
+    openApplied.current = true;
+    setChips((c) => ({ ...c, invoiceNotBack: true }));
+    if (openItems.oldestDate) {
+      const oldest = openItems.oldestDate;
+      setRange((r) => (oldest < r.from ? { ...r, from: oldest } : r));
+    }
+  }, [openParam, openItems]);
+
   const items = useMemo(() => data?.items ?? [], [data]);
   const visible = useMemo(() => filterDeliveryItems(items, { search, ...chips }), [items, search, chips]);
 
@@ -60,13 +75,13 @@ export default function Deliveries() {
     if (ref && !isTablet) window.scrollTo({ top: 0 });
   };
 
+  // Every list row for the range (logged or not), whatever chips/search are set.
   const handleExport = () => {
-    const deliveries = items.filter((i) => i.delivery).map((i) => i.delivery!);
-    if (deliveries.length === 0) {
+    if (items.length === 0) {
       toast.info(t.deliveries.exportEmpty);
       return;
     }
-    downloadCSV(buildDeliveryLogCsv(deliveries), deliveryLogFilename(range.from, range.to));
+    downloadCSV(buildDeliveryLogCsv(items), deliveryLogFilename(range.from, range.to));
   };
 
   const fmtShort = (s: string) => toLocalDate(s).toLocaleDateString(locale, { day: "numeric", month: "short" });

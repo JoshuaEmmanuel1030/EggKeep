@@ -44,7 +44,7 @@ The column names are legacy — do NOT "fix" them and do NOT convert kg↔butir 
 - Feed display (`GroupedActivityLog.tsx`): shows delivered = sold − returned, with code `returnCode` (`src/lib/activityGrouping.ts`) → **O/R/H** (OK/Retak/Hancur = restock/retakan/writeoff), zero buckets omitted. Letters are fixed, not translated.
 
 ## Delivery log (Log Pengiriman & Retur) — Phase 1
-- Spec: `docs/superpowers/specs/2026-10-29-delivery-return-log-design.md`. Routed page `/deliveries` (🚚 in Header / sidebar), one `deliveries` row per faktur keyed on the PO's `invoiceRef` (`invoice_ref_norm = upper(trim())`, unique). Rows are created lazily when a PO is first opened there; the list is `purchase_orders` LEFT JOIN `deliveries` (`src/lib/deliveryFlags.ts` mirrors the `open_delivery_items` view). Never touches stock, outflows, returns or any RPC.
+- Spec: `docs/superpowers/specs/2026-10-29-delivery-return-log-design.md`. Routed page `/deliveries` (🚚 in Header / sidebar), one `deliveries` row per faktur keyed on the PO's `invoiceRef` (`invoice_ref_norm = upper(trim())`, unique). Opening a PO writes nothing; the first saved edit creates the row. The list is `purchase_orders` LEFT JOIN `deliveries` (`src/lib/deliveryFlags.ts` mirrors the `open_delivery_items` view). Never touches stock, outflows, returns or any RPC.
 - Drivers (Supir) live in `drivers` (Catalog → Supir, admin-only edit UI gate). `expiry_rules` is table + seed only until Phase 2.
 - Export (`src/lib/deliveryExport.ts`) emits the sheet's column order with fixed Indonesian headers, `dd/mm/yyyy`, decimal comma, `;` separator; Phase 1 fills columns 1–8 only.
 

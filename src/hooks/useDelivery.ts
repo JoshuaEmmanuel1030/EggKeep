@@ -4,9 +4,10 @@ import { PO_COLUMNS, rowToDelivery, rowToPo } from "@/hooks/useDeliveries";
 import { normalizeInvoiceRef } from "@/lib/deliveryFlags";
 import type { Delivery, DeliveryPo, DeliveryStatus } from "@/types/deliveries";
 
-// "ok": the PO exists · "missing": no PO carries this invoice_ref any more
-// (re-keyed via correct_order) · "voided": the PO was voided after the
-// delivery was logged (history stays, flags are suppressed).
+// "ok": a live PO carries this invoice_ref · "missing": no live PO does (the
+// PO was re-keyed via correct_order, or the ref never matched) · "voided":
+// the PO was voided after the delivery was logged (history stays, flags are
+// suppressed).
 export type DeliveryPoState = "ok" | "missing" | "voided";
 
 export interface DeliveryDetailData {
@@ -20,6 +21,22 @@ export interface DeliveryDetailData {
 // case-insensitive equality).
 const likeExact = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+// No live PO: look at the voided rows that carried the ref. correct_order
+// links the rows it replaces (corrected_by_log_id), a plain void does not.
+async function voidedPoState(pattern: string): Promise<DeliveryPoState> {
+  const { data, error } = await supabase
+    .from("activity_logs")
+    .select("id, corrected_by_log_id")
+    .eq("action_type", "outflow")
+    .filter("metadata->>invoiceRef", "ilike", pattern)
+    .not("voided_at", "is", null)
+    .limit(50);
+  if (error) throw error;
+  const rows = data ?? [];
+  if (rows.length === 0) return "missing";
+  return rows.some((r) => r.corrected_by_log_id) ? "missing" : "voided";
+}
+
 async function fetchDeliveryDetail(invoiceRef: string): Promise<DeliveryDetailData> {
   const norm = normalizeInvoiceRef(invoiceRef);
   const pattern = likeExact(invoiceRef.trim());
@@ -30,18 +47,7 @@ async function fetchDeliveryDetail(invoiceRef: string): Promise<DeliveryDetailDa
   if (dRes.error) throw dRes.error;
   if (pRes.error) throw pRes.error;
   const pos = (pRes.data ?? []).map(rowToPo);
-  let poState: DeliveryPoState = pos.length > 0 ? "ok" : "missing";
-  if (pos.length === 0) {
-    // Only voided rows carry this invoice_ref -> the PO was cancelled.
-    const { data } = await supabase
-      .from("activity_logs")
-      .select("id")
-      .eq("action_type", "outflow")
-      .filter("metadata->>invoiceRef", "ilike", pattern)
-      .not("voided_at", "is", null)
-      .limit(1);
-    if ((data ?? []).length > 0) poState = "voided";
-  }
+  const poState: DeliveryPoState = pos.length > 0 ? "ok" : await voidedPoState(pattern);
   return {
     delivery: dRes.data?.[0] ? rowToDelivery(dRes.data[0]) : null,
     po: pos[0] ?? null,
@@ -62,8 +68,30 @@ export interface DeliveryPatch {
   notes?: string | null;
 }
 
-// One delivery (by invoice_ref) with its PO. `ensure` creates the row lazily
-// the first time the PO is opened here; `update` writes field edits.
+function patchToRow(patch: DeliveryPatch): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (patch.invoiceRef !== undefined) row.invoice_ref = patch.invoiceRef.trim();
+  if (patch.driverId !== undefined) row.driver_id = patch.driverId;
+  if (patch.driverName !== undefined) row.driver_name = patch.driverName;
+  if (patch.status !== undefined) row.status = patch.status;
+  if (patch.invoiceReturnedAt !== undefined) row.invoice_returned_at = patch.invoiceReturnedAt;
+  if (patch.invoiceCheckedBy !== undefined) row.invoice_checked_by = patch.invoiceCheckedBy;
+  if (patch.pic !== undefined) row.pic = patch.pic;
+  if (patch.notes !== undefined) row.notes = patch.notes;
+  return row;
+}
+
+export interface SaveDeliveryInput {
+  existing: Delivery | null; // the row to update, or null to create it
+  po: DeliveryPo | null; // live PO: its buyer/DC/date refresh the snapshot
+  patch: DeliveryPatch;
+  savedBy: string | null; // becomes `pic` when the row is created
+}
+
+// One delivery (by invoice_ref) with its PO. Opening writes nothing: the
+// first `save` creates the row (§4.2), later saves update it. While the PO is
+// live, every save copies its buyer, DC and date into the row's snapshot so
+// the snapshot only matters once the PO is gone.
 export function useDelivery(invoiceRef: string | null | undefined, placeholder?: DeliveryDetailData) {
   const queryClient = useQueryClient();
   const norm = normalizeInvoiceRef(invoiceRef);
@@ -81,44 +109,43 @@ export function useDelivery(invoiceRef: string | null | undefined, placeholder?:
     placeholderData: placeholder,
   });
 
-  // Insert-if-missing on invoice_ref_norm (ON CONFLICT DO NOTHING), so two
-  // admins opening the same PO at once never clobber each other.
-  const ensure = useMutation({
-    mutationFn: async ({ po, pic }: { po: DeliveryPo; pic: string | null }) => {
-      const { error } = await supabase.from("deliveries").upsert(
-        {
-          invoice_ref: po.invoiceRef.trim(),
-          buyer_name: po.buyerName,
-          dc_name: po.dcName,
-          delivery_date: po.outflowDate,
-          pic,
-        },
-        { onConflict: "invoice_ref_norm", ignoreDuplicates: true }
-      );
+  const save = useMutation({
+    mutationFn: async ({ existing, po, patch, savedBy }: SaveDeliveryInput) => {
+      const row = patchToRow(patch);
+      row.updated_at = new Date().toISOString();
+      if (po) {
+        row.buyer_name = po.buyerName;
+        row.dc_name = po.dcName;
+        row.delivery_date = po.outflowDate;
+      }
+      if (existing) {
+        // .select().single() makes an RLS-blocked (0-row) update error instead of silently succeeding.
+        const { error } = await supabase.from("deliveries").update(row).eq("id", existing.id).select("id").single();
+        if (error) throw error;
+        return;
+      }
+      if (!po) throw new Error("Cannot create a delivery without a live PO");
+      // Create on first save. ON CONFLICT DO UPDATE on invoice_ref_norm: if
+      // someone created the row a moment ago, this save still lands.
+      const { error } = await supabase
+        .from("deliveries")
+        .upsert(
+          {
+            invoice_ref: po.invoiceRef.trim(),
+            buyer_name: po.buyerName,
+            dc_name: po.dcName,
+            delivery_date: po.outflowDate,
+            pic: patch.pic !== undefined ? patch.pic : savedBy,
+            ...row,
+          },
+          { onConflict: "invoice_ref_norm" }
+        );
       if (error) throw error;
     },
     onSuccess: invalidate,
   });
 
-  const update = useMutation({
-    mutationFn: async ({ id, patch }: { id: string; patch: DeliveryPatch }) => {
-      const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      if (patch.invoiceRef !== undefined) row.invoice_ref = patch.invoiceRef.trim();
-      if (patch.driverId !== undefined) row.driver_id = patch.driverId;
-      if (patch.driverName !== undefined) row.driver_name = patch.driverName;
-      if (patch.status !== undefined) row.status = patch.status;
-      if (patch.invoiceReturnedAt !== undefined) row.invoice_returned_at = patch.invoiceReturnedAt;
-      if (patch.invoiceCheckedBy !== undefined) row.invoice_checked_by = patch.invoiceCheckedBy;
-      if (patch.pic !== undefined) row.pic = patch.pic;
-      if (patch.notes !== undefined) row.notes = patch.notes;
-      // .select().single() makes an RLS-blocked (0-row) update error instead of silently succeeding.
-      const { error } = await supabase.from("deliveries").update(row).eq("id", id).select("id").single();
-      if (error) throw error;
-    },
-    onSuccess: invalidate,
-  });
-
-  return { ...query, ensure, update, invalidate };
+  return { ...query, save, invalidate };
 }
 
 // Postgres unique_violation: another delivery already uses this invoice_ref.

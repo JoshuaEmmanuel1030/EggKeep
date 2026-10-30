@@ -6,7 +6,7 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { SettingsMenu } from "@/components/SettingsMenu";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useStockCountStatus } from "@/hooks/useStockCountStatus";
-import { useOpenDeliveryCount } from "@/hooks/useDeliveries";
+import { useOpenDeliveries } from "@/hooks/useDeliveries";
 
 interface HeaderProps {
   onExport?: () => void;
@@ -17,7 +17,7 @@ export function Header({ onExport }: HeaderProps) {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { countedToday } = useStockCountStatus();
-  const openDeliveries = useOpenDeliveryCount();
+  const openDeliveries = useOpenDeliveries()?.count;
 
   const handleLogout = async () => {
     await signOut();
@@ -56,7 +56,7 @@ export function Header({ onExport }: HeaderProps) {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => navigate("/deliveries")}
+            onClick={() => navigate(openDeliveries ? "/deliveries?open=1" : "/deliveries")}
             title={t.nav.deliveries}
             aria-label={t.nav.deliveries}
             className="relative h-8 w-8 sm:h-9 sm:w-9"

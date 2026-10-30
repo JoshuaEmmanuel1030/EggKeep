@@ -1,14 +1,14 @@
 # Delivery & Return Log (Log Pengiriman & Retur), Phase 1 — Design Spec
 
 **Date:** 2026-10-29
-**Status:** Phase 1 implemented except the changes listed below; open items in §9; Phases 2–3 pending, Phase 4 optional
+**Status:** Phase 1 implemented, including the review changes of 2026-10-30; open items in §9; Phases 2–3 pending, Phase 4 optional
 **Author:** Joshua
 **Builds on:** [buyer profiles](2026-10-22-buyer-profiles-design.md) (the `purchase_orders` view), [stock count](2026-08-20-physical-stock-count-design.md) (the routed-page-from-Header pattern); Phase 2+: [per-SKU returns](2026-10-08-per-sku-returns-design.md) (`returns` / `record_return`).
 **Replaces (after Phase 3):** the Google Sheet "Log Pengiriman & Retur" (tabs: Pengiriman & Retur, Klaim Retur OSV, Daftar, Aturan Expired, Panduan).
 
 > This file is the Phase 1 view of the [full spec](2026-10-29-delivery-return-log-full.md), which covers Phases 1–4. Section numbers follow the full spec: §4.3, §4.4, §4.6 and §11 are Phase 2+ and appear only there; §12.1 and §13 are new in this file. Unanswered questions are in §9.
 
-> **Not yet in code (review 2026-10-30):** row created on first save, not on open (§4.2); re-keyed vs voided told apart through `original_log_id` (§8); live PO fields in the detail and export (§5.2); the badge opens the full open range (§5); the export includes un-logged POs (§5.5); the `batal` / `ditolak` stock hint (§5.2); the CSV formula prefix (§5.5).
+> **Review changes (2026-10-30), now in code:** row created on first save, not on open (§4.2); re-keyed vs voided told apart through `corrected_by_log_id` on the voided rows (§8); live PO fields in the detail and export (§5.2); the badge opens the full open range (§5); the export includes un-logged POs (§5.5); the `batal` / `ditolak` stock hint (§5.2); the CSV formula prefix (§5.5).
 
 ## 1. Problem
 

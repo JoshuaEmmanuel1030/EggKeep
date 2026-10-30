@@ -20,7 +20,7 @@ import { SettingsMenu } from "@/components/SettingsMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useStockCountStatus } from "@/hooks/useStockCountStatus";
-import { useOpenDeliveryCount } from "@/hooks/useDeliveries";
+import { useOpenDeliveries } from "@/hooks/useDeliveries";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 
@@ -52,7 +52,7 @@ export function AppSidebar({ active, pendingCount, isOnline, onSelectTab, onExpo
   const { user, signOut } = useAuth();
   const { isAdmin } = useUserRole();
   const { countedToday } = useStockCountStatus();
-  const openDeliveries = useOpenDeliveryCount();
+  const openDeliveries = useOpenDeliveries()?.count;
 
   const items: [SidebarKey, string, LucideIcon][] = [
     ["dashboard", t.nav.home, House],
@@ -68,7 +68,7 @@ export function AppSidebar({ active, pendingCount, isOnline, onSelectTab, onExpo
 
   const go = (key: SidebarKey) => {
     if (key === "stockCount") navigate("/stock-count");
-    else if (key === "deliveries") navigate("/deliveries");
+    else if (key === "deliveries") navigate(openDeliveries ? "/deliveries?open=1" : "/deliveries");
     else if (onSelectTab) onSelectTab(key);
     else navigate("/", { state: { tab: key } });
   };

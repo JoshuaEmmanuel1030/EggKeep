@@ -6,13 +6,15 @@ import {
   CSV_SEPARATOR,
   formatDateId,
   formatNumberId,
-  deliveryToLogRow,
+  guardFormula,
+  itemToLogRow,
   deliveryLogRowToCells,
   deliveryLogToCsv,
   buildDeliveryLogCsv,
   deliveryLogFilename,
 } from "@/lib/deliveryExport";
-import type { Delivery } from "@/types/deliveries";
+import { buildDeliveryItems } from "@/lib/deliveryFlags";
+import type { Delivery, DeliveryPo } from "@/types/deliveries";
 
 const delivery = (over: Partial<Delivery> = {}): Delivery => ({
   id: "d1",
@@ -33,7 +35,19 @@ const delivery = (over: Partial<Delivery> = {}): Delivery => ({
   ...over,
 });
 
-// The sheet's header row, in its exact order (spec §4.7 column list).
+const po = (over: Partial<DeliveryPo> = {}): DeliveryPo => ({
+  invoiceRef: "2610383",
+  buyerName: "OSAVE",
+  dcName: "Depok",
+  outflowDate: "2026-10-26",
+  recordedAt: "2026-10-26T01:00:00.000Z",
+  orderLines: [{ skuCode: "N10O", packQty: 20 }],
+  ...over,
+});
+
+const itemsOf = (pos: DeliveryPo[], ds: Delivery[]) => buildDeliveryItems(pos, ds).items;
+
+// The sheet's header row, in its exact order (spec §4.7 column table).
 const SHEET_HEADERS = [
   "PIC",
   "Tgl Kirim",
@@ -91,28 +105,59 @@ describe("Indonesian formatting", () => {
       batal: "Batal",
     });
   });
+  it("text that a spreadsheet would run as a formula gets a leading apostrophe", () => {
+    expect(guardFormula("=SUM(A1)")).toBe("'=SUM(A1)");
+    expect(guardFormula("+62 812")).toBe("'+62 812");
+    expect(guardFormula("-1")).toBe("'-1");
+    expect(guardFormula("@user")).toBe("'@user");
+    expect(guardFormula("\tx")).toBe("'\tx");
+    expect(guardFormula("2610383")).toBe("2610383");
+    expect(guardFormula("OSAVE Depok")).toBe("OSAVE Depok");
+  });
 });
 
-describe("deliveryToLogRow / cells", () => {
+describe("itemToLogRow / cells", () => {
   it("fills columns 1-8 from the delivery and leaves 9-22 blank in Phase 1", () => {
-    const cells = deliveryLogRowToCells(deliveryToLogRow(delivery()));
+    const [item] = itemsOf([po()], [delivery()]);
+    const cells = deliveryLogRowToCells(itemToLogRow(item));
     expect(cells).toHaveLength(22);
     expect(cells.slice(0, 8)).toEqual([
       "dila@js.id", "26/10/2026", "2610383", "OSAVE Depok", "Hendi", "Terkirim", "28/10/2026", "yani@js.id",
     ]);
     expect(cells.slice(8)).toEqual(Array(14).fill(""));
   });
-  it("an un-returned faktur and a PO without a DC export as blanks / buyer only", () => {
-    const cells = deliveryLogRowToCells(
-      deliveryToLogRow(delivery({ dcName: null, status: "belum_terkirim", invoiceReturnedAt: null, invoiceCheckedBy: null, driverName: null, pic: null }))
+  it("an un-logged PO exports with blank PIC, driver, status and faktur balik", () => {
+    const [item] = itemsOf([po({ dcName: null })], []);
+    const cells = deliveryLogRowToCells(itemToLogRow(item));
+    expect(cells.slice(0, 8)).toEqual(["", "26/10/2026", "2610383", "OSAVE", "", "", "", ""]);
+  });
+  it("live PO fields win over the delivery's snapshot while the PO exists", () => {
+    const [item] = itemsOf(
+      [po({ buyerName: "OSAVE", dcName: "Bekasi", outflowDate: "2026-10-27" })],
+      [delivery({ buyerName: "OLD NAME", dcName: "Depok", deliveryDate: "2026-10-26" })]
     );
-    expect(cells.slice(0, 8)).toEqual(["", "26/10/2026", "2610383", "OSAVE", "", "Belum Terkirim", "", ""]);
+    const cells = deliveryLogRowToCells(itemToLogRow(item));
+    expect(cells[1]).toBe("27/10/2026");
+    expect(cells[3]).toBe("OSAVE Bekasi");
+  });
+  it("a delivery with no live PO falls back to its snapshot", () => {
+    const [item] = itemsOf([], [delivery({ buyerName: "OLD NAME", dcName: null })]);
+    const cells = deliveryLogRowToCells(itemToLogRow(item));
+    expect(cells[3]).toBe("OLD NAME");
+    expect(cells[5]).toBe("Terkirim");
+  });
+  it("user-typed text is formula-guarded, dates and numbers are not", () => {
+    const [item] = itemsOf([po()], [delivery({ pic: "=cmd", driverName: "-Hendi" })]);
+    const cells = deliveryLogRowToCells(itemToLogRow(item));
+    expect(cells[0]).toBe("'=cmd");
+    expect(cells[4]).toBe("'-Hendi");
+    expect(cells[1]).toBe("26/10/2026");
   });
 });
 
 describe("CSV", () => {
   it("uses ';' between columns (decimal commas), quotes every cell and starts with a BOM", () => {
-    const csv = deliveryLogToCsv([deliveryToLogRow(delivery({ notes: null, buyerName: 'Toko "A"' }))]);
+    const csv = deliveryLogToCsv([itemToLogRow(itemsOf([po({ buyerName: 'Toko "A"' })], [delivery()])[0])]);
     expect(CSV_SEPARATOR).toBe(";");
     expect(csv.charCodeAt(0)).toBe(0xfeff);
     const [header, row] = csv.slice(1).split("\n");
@@ -120,15 +165,16 @@ describe("CSV", () => {
     expect(row.startsWith('"dila@js.id";"26/10/2026";"2610383";"Toko ""A"" Depok";"Hendi";"Terkirim";"28/10/2026";"yani@js.id";')).toBe(true);
     expect(row.split(";")).toHaveLength(22);
   });
-  it("orders rows newest delivery first", () => {
-    const csv = buildDeliveryLogCsv([
-      delivery({ id: "a", invoiceRef: "A", deliveryDate: "2026-10-20" }),
-      delivery({ id: "b", invoiceRef: "B", deliveryDate: "2026-10-27" }),
-    ]);
-    const lines = csv.split("\n");
-    expect(lines).toHaveLength(3);
+  it("exports every list row in list order: newest first, un-logged and orphan rows included", () => {
+    const items = itemsOf(
+      [po({ invoiceRef: "A", outflowDate: "2026-10-20" }), po({ invoiceRef: "B", outflowDate: "2026-10-27" })],
+      [delivery({ id: "x", invoiceRef: "X", invoiceRefNorm: "X", deliveryDate: "2026-10-25" })] // no PO
+    );
+    const lines = buildDeliveryLogCsv(items).split("\n");
+    expect(lines).toHaveLength(4);
     expect(lines[1]).toContain('"B"');
-    expect(lines[2]).toContain('"A"');
+    expect(lines[2]).toContain('"X"');
+    expect(lines[3]).toContain('"A"');
   });
   it("names the file by the exported range", () => {
     expect(deliveryLogFilename("2026-10-15", "2026-10-29")).toBe("log-pengiriman-2026-10-15_2026-10-29.csv");
