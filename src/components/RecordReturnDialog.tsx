@@ -109,7 +109,7 @@ export function RecordReturnDialog({
 }: RecordReturnDialogProps) {
   const { t } = useLanguage();
   const { conversionMap, boxCapacityMap } = useItemTypes();
-  const { skus } = usePackSKUs();
+  const { skus, isLoading: skusLoading } = usePackSKUs();
   const { findRelatedEntryId } = useVoidEntry();
   const { recordReturn, saving } = useRecordReturn();
   // Held in a ref so the resolve effect keys only off open/eggLogs, never the
@@ -173,25 +173,32 @@ export function RecordReturnDialog({
       eggProduct: log.product,
       pieces: false,
     });
-    const packLines = (orderLines ?? []).filter((l) => l.skuCode && l.packQty);
-    if (packLines.length === 0) return eggLogs.map(nativeRow);
-    const packRows: Row[] = packLines.map((l) => {
-      const sku = skuMap[l.skuCode!];
+    // Same SKU on two lines (e.g. different labels) -> one summed row, so a
+    // single entry is never emitted twice.
+    const packQtyBySku = new Map<string, number>();
+    for (const l of orderLines ?? []) {
+      if (l.skuCode && l.packQty) packQtyBySku.set(l.skuCode, (packQtyBySku.get(l.skuCode) ?? 0) + l.packQty);
+    }
+    if (packQtyBySku.size === 0) return eggLogs.map(nativeRow);
+    const packRows: Row[] = [...packQtyBySku].map(([skuCode, packQty]) => {
+      const sku = skuMap[skuCode];
       return {
-        key: l.skuCode!,
-        label: l.skuCode!,
-        eggProduct: sku?.eggProduct ?? l.skuCode!,
-        skuCode: l.skuCode!,
-        soldPieces: sku ? l.packQty! * sku.eggsPerPack : undefined,
+        key: skuCode,
+        label: skuCode,
+        eggProduct: sku?.eggProduct ?? skuCode,
+        skuCode,
+        soldPieces: sku ? packQty * sku.eggsPerPack : undefined,
         pieces: true,
       };
     });
+    // Until SKUs load a pack row's egg is unknown, so "uncovered" can't be told yet.
+    if (skusLoading) return packRows;
     // A loose egg a pack row already covers stays pooled under that row's cap.
     // Only uncovered eggs get a native row, so one egg's rows never mix pieces
     // and native entry (the shared-cap sums add raw entries).
     const covered = new Set(packRows.map((r) => r.eggProduct));
     return [...packRows, ...eggLogs.filter((log) => !covered.has(log.product)).map(nativeRow)];
-  }, [orderLines, skuMap, eggLogs]);
+  }, [orderLines, skuMap, eggLogs, skusLoading]);
 
   // Stable primitive identity for the row set, so the reset effect doesn't refire
   // on every render just because a hook (e.g. usePackSKUs) hands back a fresh array
@@ -244,17 +251,19 @@ export function RecordReturnDialog({
       setLines(init);
       setReason("");
       setReturnDate(format(new Date(), "yyyy-MM-dd"));
-      setResolvedIds({});
     }
     // Depend on the stable primitive key, not the `rows` object identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rowsKey]);
 
   // Resolve each log's outflow row id once on open (async). Feeds the cap and is
-  // reused on confirm so we don't re-query.
+  // reused on confirm so we don't re-query. Cleared here, not in the reset effect:
+  // ids key by log id, so a row-set change must not drop them (that wiped the
+  // prior-returns cap when pack SKUs loaded after open).
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    setResolvedIds({});
     (async () => {
       const pairs = await Promise.all(
         eggLogs.map(async (log) => [log.id, await findRelatedEntryIdRef.current(log)] as const)
