@@ -288,7 +288,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
 
     toast({
       title: t.outflow.addedToQueue || "Added to Queue",
-      description: `${selectedBuyer.name} order queued`,
+      description: t.outflow.orderQueued.replace("{buyer}", selectedBuyer.name),
     });
   };
 
@@ -372,15 +372,23 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
       if (failedOrders.length === 0) {
         toast({
           title: t.outflow.orderRecorded,
-          description: `${completedCount} ${completedCount > 1 ? 'orders' : 'order'} recorded (${totalEntries} items)`,
+          description: t.outflow.ordersRecordedDesc
+            .replace("{count}", String(completedCount))
+            .replace("{orders}", completedCount > 1 ? t.common.orders : t.common.order)
+            .replace("{items}", String(totalEntries)),
         });
       } else {
         toast({
           title: completedCount > 0
-            ? `Partial submission (${completedCount}/${ordersToSubmit.length})`
+            ? t.outflow.partialSubmission
+                .replace("{done}", String(completedCount))
+                .replace("{total}", String(ordersToSubmit.length))
             : t.common.error,
           description: completedCount > 0
-            ? `${completedCount} order(s) recorded. ${failedOrders.length} still queued — fix stock and re-submit.`
+            ? t.outflow.partialSubmissionDesc
+                .replace("{done}", String(completedCount))
+                .replace("{orders}", completedCount > 1 ? t.common.orders : t.common.order)
+                .replace("{failed}", String(failedOrders.length))
             : t.outflow.failedToRecordOrder,
           variant: "destructive",
         });
@@ -485,10 +493,9 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                   size="sm"
                   className="h-12 px-3 gap-1.5 text-xs text-muted-foreground hover:text-foreground border-l rounded-none rounded-tr-lg"
                   onClick={() => setPickListOpen(true)}
-                  aria-label="View pick list"
                 >
                   <ClipboardList className="h-4 w-4" />
-                  Pick List
+                  {t.pickList.button}
                 </Button>
               </div>
               <CollapsibleContent>
@@ -749,7 +756,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
                 doSubmit(pendingOrders);
               }}
             >
-              {t.outflow.continueAnyway || "Continue Anyway"}
+              {t.outflow.proceedAnyway}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

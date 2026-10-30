@@ -3,12 +3,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { InflowEntry, OutflowEntry, InventoryCategory } from "@/types/inventory";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { captureError } from "@/lib/monitoring";
 import { OutflowSubmitResult } from "@/lib/outflowOutbox";
 import { callRecordOrderOutflows } from "@/lib/outflowRpc";
 
 export function useInventorySync() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [inflows, setInflows] = useState<InflowEntry[]>([]);
   const [outflows, setOutflows] = useState<OutflowEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,14 +56,14 @@ export function useInventorySync() {
     } catch (error) {
       console.error("Error fetching inventory:", error);
       toast({
-        title: "Error",
-        description: "Failed to load inventory data",
+        title: t.common.error,
+        description: t.common.loadInventoryFailed,
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (user) {
@@ -113,14 +115,14 @@ export function useInventorySync() {
         console.error("Error adding inflow:", error);
         captureError(error, { operation: "inflow_insert", product: entry.product });
         toast({
-          title: "Error",
-          description: "Failed to save inflow",
+          title: t.common.error,
+          description: t.inflow.inflowNotSaved,
           variant: "destructive",
         });
         return false;
       }
     },
-    [user]
+    [user, t]
   );
 
   // Add multiple inflows at once
@@ -151,14 +153,14 @@ export function useInventorySync() {
         console.error("Error adding multiple inflows:", error);
         captureError(error, { operation: "inflow_insert_batch", count: entries.length });
         toast({
-          title: "Error",
-          description: "Failed to save inflows",
+          title: t.common.error,
+          description: t.inflow.inflowNotSaved,
           variant: "destructive",
         });
         return false;
       }
     },
-    [user]
+    [user, t]
   );
 
   // Record ALL entries of one order (eggs + packaging + labels + boxes) atomically
@@ -192,16 +194,16 @@ export function useInventorySync() {
           insufficientStock: shortStock,
         });
         toast({
-          title: shortStock ? "Insufficient Stock" : "Error",
+          title: shortStock ? t.outflow.insufficientStock : t.common.error,
           description: shortStock
-            ? `${message.replace(/^.*INSUFFICIENT_STOCK:\s*/, "")} — nothing was deducted.`
-            : "Failed to save outflow — nothing was deducted.",
+            ? `${message.replace(/^.*INSUFFICIENT_STOCK:\s*/, "")} — ${t.outflow.nothingDeducted}`
+            : t.outflow.outflowSaveFailed,
           variant: "destructive",
         });
       }
       return result;
     },
-    [user, fetchData]
+    [user, fetchData, t]
   );
 
   return {

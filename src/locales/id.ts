@@ -60,6 +60,17 @@ export const id = {
     searchDots: 'Cari...',
     available: 'Tersedia',
     undo: 'Urungkan',
+    order: 'pesanan',
+    orders: 'pesanan',
+    loadInventoryFailed: 'Gagal memuat data inventaris',
+  },
+
+  // Inventory categories (keyed by InventoryCategory)
+  categories: {
+    egg: 'Telur',
+    box: 'Kotak',
+    label: 'Label',
+    packaging: 'Kemasan',
   },
 
   // Footer
@@ -211,7 +222,7 @@ export const id = {
     selectBuyerFirst: 'Pilih pembeli dulu',
     noDcsForBuyer: 'Belum ada DC untuk pembeli ini. Tambahkan di Katalog → Pembeli.',
     dcRequired: 'Pilih DC untuk pembeli ini.',
-    boxSkuNoCapacity: 'SKU box ini belum punya isi pack per box untuk pack-nya. Atur di Katalog → Box.',
+    boxSkuNoCapacity: 'SKU box ini belum punya isi pack per box untuk pack-nya. Atur di Katalog → Kotak.',
     dcsLoadFailed: 'Gagal memuat DC. Pesanan akan disimpan tanpa DC.',
     buyer: 'Pembeli',
     selectBuyer: 'Pilih pembeli...',
@@ -257,6 +268,7 @@ export const id = {
     pleaseAddValidLine: 'Tambahkan minimal satu baris pesanan yang valid',
     warningShortages: 'Peringatan: Beberapa item stoknya tidak cukup:',
     continueAnyway: 'Apakah Anda ingin melanjutkan?',
+    proceedAnyway: 'Tetap lanjutkan',
     duplicateTitle: 'Kemungkinan pesanan ganda',
     duplicateBody: 'Pesanan yang sama baru saja dicatat:',
     duplicateLine: 'dicatat {minutes} menit lalu',
@@ -276,6 +288,12 @@ export const id = {
     addToQueue: 'Tambah ke Antrian',
     submitAll: 'Kirim Semua',
     quantityBoxes: "Jumlah (box)",
+    orderQueued: 'Pesanan {buyer} masuk antrian',
+    ordersRecordedDesc: '{count} {orders} tercatat ({items} item)',
+    partialSubmission: 'Terkirim sebagian ({done}/{total})',
+    partialSubmissionDesc: '{done} {orders} tercatat. {failed} masih di antrian — perbaiki stok lalu kirim ulang.',
+    nothingDeducted: 'tidak ada stok yang dipotong.',
+    outflowSaveFailed: 'Gagal menyimpan pesanan — tidak ada stok yang dipotong.',
   },
 
   // Activity
@@ -393,6 +411,11 @@ export const id = {
     voidOrder: 'Batalkan pesanan',
     voidOrderConfirmTitle: 'Batalkan seluruh pesanan ini?',
     voidOrderConfirmBody: 'Ini membatalkan semua {count} entri pada pesanan dan mengembalikan stoknya. Alasan diisi pada langkah berikutnya.',
+    voidEntireOrder: 'Batalkan Seluruh Pesanan ({count} item)',
+    voidEntireOrderWarning: 'Ini akan membatalkan semua {count} entri pada pesanan ini dan mengembalikan inventaris.',
+    voidSuccess: 'Entri berhasil dibatalkan',
+    voidFailed: 'Gagal membatalkan entri',
+    voidStockUsed: 'Tidak bisa dibatalkan: sebagian stok sudah terpakai',
     // Record return (retur)
     recordReturn: 'Catat retur',
     returnDescription: 'Catat telur yang dikembalikan pelanggan pada pesanan ini.',
@@ -675,5 +698,38 @@ export const id = {
     reconcileKind: 'Jenis',
     reconcileHint: 'Pemeriksaan hanya-baca. Untuk memperbaiki selisih, gunakan Hitung Ulang Inventaris.',
     reconcileFailed: 'Rekonsiliasi gagal',
+  },
+
+  // Dispatch pick list
+  pickList: {
+    button: 'Daftar Ambil',
+    title: 'Daftar Ambil Pengiriman',
+    heading: 'DAFTAR AMBIL',
+    whatsapp: 'WhatsApp',
+    print: 'Cetak',
+    shortfallBanner: 'Stok tidak cukup untuk beberapa produk — kekurangan ditampilkan di bawah.',
+    atRiskBanner: 'Beberapa batch berisiko — kirim lebih dulu.',
+    eggsToPick: 'Telur yang Diambil',
+    noEggsRequired: 'Tidak ada telur yang dibutuhkan.',
+    noEggs: 'Tanpa telur',
+    short: 'Kurang',
+    daysShort: '{days}h',
+    noSupplier: 'Tanpa pemasok',
+  },
+
+  // Inventory assistant (chat)
+  assistant: {
+    title: 'Asisten Inventori',
+    open: 'Buka asisten inventori',
+    close: 'Tutup obrolan',
+    send: 'Kirim pesan',
+    greeting: 'Halo! Saya asisten inventori. Tanya saja tentang stok barang. 👋',
+    placeholder: 'Tanya tentang stok...',
+    sendFailed: 'Gagal mengirim pesan',
+    errorReply: 'Maaf, terjadi kesalahan. Silakan coba lagi.',
+    promptStockToday: 'Stok telur hari ini?',
+    promptNearExpiry: 'Telur mana yang hampir kadaluarsa?',
+    promptSummary: 'Ringkasan inventori',
+    promptAtRisk: 'Telur berisiko?',
   },
 } as const;
