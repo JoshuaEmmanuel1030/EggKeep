@@ -13,6 +13,7 @@ import { Printer, Share2, AlertTriangle, Package, CheckCircle2 } from "lucide-re
 import { StockSummary, ConversionMap } from "@/types/inventory";
 import { AggregatedMaterials } from "@/types/quickOutflow";
 import { useItemTypes } from "@/hooks/useItemTypes";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface QueuedOrder {
   id: string;
@@ -83,6 +84,7 @@ interface PickListDialogProps {
 export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }: PickListDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { conversionMap } = useItemTypes();
+  const { t } = useLanguage();
 
   const butirToDisplay = (product: string, butir: number): string =>
     formatButir(product, butir, conversionMap);
@@ -131,6 +133,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
 
   const hasAtRisk = pickData.eggRows.some(r => r.allocations.some(a => a.isAtRisk));
   const hasShortfall = pickData.eggRows.some(r => r.shortfall > 0);
+  const orderCountLabel = `${orderQueue.length} ${orderQueue.length === 1 ? t.common.order : t.common.orders}`;
 
   const handlePrint = () => {
     window.print();
@@ -139,40 +142,40 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
   const handleWhatsApp = () => {
     const date = orderQueue[0]?.date ?? format(new Date(), "yyyy-MM-dd");
     const lines: string[] = [];
-    lines.push(`*PICK LIST ${date}*`);
-    lines.push(`${orderQueue.length} order(s)\n`);
+    lines.push(`*${t.pickList.heading} ${date}*`);
+    lines.push(`${orderCountLabel}\n`);
 
-    lines.push(`*TELUR:*`);
+    lines.push(`*${t.categories.egg.toUpperCase()}:*`);
     for (const row of pickData.eggRows) {
       lines.push(`• ${row.product}: ${butirToDisplay(row.product, row.totalButir)}`);
       for (const a of row.allocations) {
         const risk = a.isAtRisk ? " ⚠" : "";
-        lines.push(`  - ${a.invoiceSupplier || "No supplier"} (${a.date})${risk}: ${butirToDisplay(row.product, a.allocatedButir)}`);
+        lines.push(`  - ${a.invoiceSupplier || t.pickList.noSupplier} (${a.date})${risk}: ${butirToDisplay(row.product, a.allocatedButir)}`);
       }
     }
 
     if (pickData.packagingNeeds.size > 0) {
-      lines.push(`\n*PACKAGING:*`);
+      lines.push(`\n*${t.categories.packaging.toUpperCase()}:*`);
       for (const [item, qty] of pickData.packagingNeeds) {
-        lines.push(`• ${item}: ${qty} pcs`);
+        lines.push(`• ${item}: ${qty} ${t.common.pcs}`);
       }
     }
 
     if (pickData.labelNeeds.size > 0) {
-      lines.push(`\n*LABEL:*`);
+      lines.push(`\n*${t.categories.label.toUpperCase()}:*`);
       for (const [item, qty] of pickData.labelNeeds) {
-        lines.push(`• ${item}: ${qty} pcs`);
+        lines.push(`• ${item}: ${qty} ${t.common.pcs}`);
       }
     }
 
     if (pickData.boxNeeds.size > 0) {
-      lines.push(`\n*BOXES:*`);
+      lines.push(`\n*${t.categories.box.toUpperCase()}:*`);
       for (const [type, qty] of pickData.boxNeeds) {
-        lines.push(`• ${type}: ${qty} pcs`);
+        lines.push(`• ${type}: ${qty} ${t.common.pcs}`);
       }
     }
 
-    lines.push(`\n*ORDERS:*`);
+    lines.push(`\n*${t.common.orders.toUpperCase()}:*`);
     for (const order of orderQueue) {
       const eggs = Array.from(order.aggregates.eggsByProduct.entries())
         .map(([p, q]) => butirToDisplay(p, q))
@@ -192,7 +195,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
         <DialogHeader className="print:hidden">
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Dispatch Pick List
+            {t.pickList.title}
           </DialogTitle>
         </DialogHeader>
 
@@ -200,20 +203,20 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
         <div className="flex gap-2 justify-end print:hidden">
           <Button variant="outline" size="sm" onClick={handleWhatsApp} className="gap-1.5">
             <Share2 className="h-4 w-4" />
-            WhatsApp
+            {t.pickList.whatsapp}
           </Button>
           <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5">
             <Printer className="h-4 w-4" />
-            Print
+            {t.pickList.print}
           </Button>
         </div>
 
         <div ref={printRef} className="space-y-4 print:text-black">
           {/* Header */}
           <div className="print:border-b print:pb-2">
-            <p className="font-semibold text-lg print:text-xl">PICK LIST — {date}</p>
+            <p className="font-semibold text-lg print:text-xl">{t.pickList.heading} — {date}</p>
             <p className="text-sm text-muted-foreground print:text-black">
-              {orderQueue.length} order{orderQueue.length !== 1 ? "s" : ""} •{" "}
+              {orderCountLabel} •{" "}
               {[...new Set(orderQueue.map(o => o.buyer.name))].join(", ")}
             </p>
           </div>
@@ -223,13 +226,13 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
               {hasShortfall && (
                 <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive text-sm">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  Insufficient stock for some products — shortfall shown below.
+                  {t.pickList.shortfallBanner}
                 </div>
               )}
               {hasAtRisk && (
                 <div className="flex items-center gap-2 rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-amber-700 dark:text-amber-400 text-sm">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  Some batches are at risk — dispatch these first.
+                  {t.pickList.atRiskBanner}
                 </div>
               )}
             </div>
@@ -238,10 +241,10 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
           {/* Eggs section */}
           <div className="space-y-3">
             <p className="font-semibold text-sm uppercase tracking-wide text-muted-foreground print:text-black">
-              Eggs to Pick
+              {t.pickList.eggsToPick}
             </p>
             {pickData.eggRows.length === 0 && (
-              <p className="text-sm text-muted-foreground">No eggs required.</p>
+              <p className="text-sm text-muted-foreground">{t.pickList.noEggsRequired}</p>
             )}
             {pickData.eggRows.map(row => (
               <div key={row.product} className="border rounded-lg overflow-hidden">
@@ -253,7 +256,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
                     </span>
                     {row.shortfall > 0 && (
                       <Badge variant="destructive" className="text-xs">
-                        Short {butirToDisplay(row.product, row.shortfall)}
+                        {t.pickList.short} {butirToDisplay(row.product, row.shortfall)}
                       </Badge>
                     )}
                   </div>
@@ -270,7 +273,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
                           {a.invoiceSupplier || "—"}
                         </span>
                         <span className="text-xs text-muted-foreground shrink-0">{a.date}</span>
-                        <span className="text-xs text-muted-foreground shrink-0">({a.daysInWarehouse}d)</span>
+                        <span className="text-xs text-muted-foreground shrink-0">({t.pickList.daysShort.replace("{days}", String(a.daysInWarehouse))})</span>
                       </div>
                       <span className={`tabular-nums font-medium shrink-0 ml-4 ${a.isAtRisk ? "text-amber-600 dark:text-amber-400" : ""}`}>
                         {butirToDisplay(row.product, a.allocatedButir)}
@@ -279,7 +282,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
                   ))}
                   {row.shortfall > 0 && (
                     <div className="flex items-center justify-between px-4 py-2 text-sm bg-destructive/5 text-destructive">
-                      <span>⚠ Insufficient stock</span>
+                      <span>⚠ {t.outflow.insufficientStock}</span>
                       <span className="tabular-nums font-medium">
                         –{butirToDisplay(row.product, row.shortfall)}
                       </span>
@@ -298,13 +301,13 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
                 {pickData.packagingNeeds.size > 0 && (
                   <div className="space-y-2">
                     <p className="font-semibold text-sm uppercase tracking-wide text-muted-foreground print:text-black">
-                      Packaging
+                      {t.categories.packaging}
                     </p>
                     <div className="border rounded-lg divide-y">
                       {Array.from(pickData.packagingNeeds.entries()).map(([item, qty]) => (
                         <div key={item} className="flex items-center justify-between px-4 py-2 text-sm">
                           <span>{item}</span>
-                          <span className="font-medium tabular-nums">{qty.toLocaleString()} pcs</span>
+                          <span className="font-medium tabular-nums">{qty.toLocaleString()} {t.common.pcs}</span>
                         </div>
                       ))}
                     </div>
@@ -313,13 +316,13 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
                 {pickData.labelNeeds.size > 0 && (
                   <div className="space-y-2">
                     <p className="font-semibold text-sm uppercase tracking-wide text-muted-foreground print:text-black">
-                      Labels
+                      {t.categories.label}
                     </p>
                     <div className="border rounded-lg divide-y">
                       {Array.from(pickData.labelNeeds.entries()).map(([item, qty]) => (
                         <div key={item} className="flex items-center justify-between px-4 py-2 text-sm">
                           <span>{item}</span>
-                          <span className="font-medium tabular-nums">{qty.toLocaleString()} pcs</span>
+                          <span className="font-medium tabular-nums">{qty.toLocaleString()} {t.common.pcs}</span>
                         </div>
                       ))}
                     </div>
@@ -328,13 +331,13 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
                 {pickData.boxNeeds.size > 0 && (
                   <div className="space-y-2">
                     <p className="font-semibold text-sm uppercase tracking-wide text-muted-foreground print:text-black">
-                      Boxes
+                      {t.categories.box}
                     </p>
                     <div className="border rounded-lg divide-y">
                       {Array.from(pickData.boxNeeds.entries()).map(([type, qty]) => (
                         <div key={type} className="flex items-center justify-between px-4 py-2 text-sm">
                           <span>{type}</span>
-                          <span className="font-medium tabular-nums">{qty.toLocaleString()} pcs</span>
+                          <span className="font-medium tabular-nums">{qty.toLocaleString()} {t.common.pcs}</span>
                         </div>
                       ))}
                     </div>
@@ -348,7 +351,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
           <Separator />
           <div className="space-y-2">
             <p className="font-semibold text-sm uppercase tracking-wide text-muted-foreground print:text-black">
-              Order Summary
+              {t.outflow.orderSummary}
             </p>
             <div className="border rounded-lg divide-y">
               {orderQueue.map(order => {
@@ -364,7 +367,7 @@ export function PickListDialog({ open, onOpenChange, orderQueue, stockSummary }:
                       )}
                     </div>
                     <p className="text-muted-foreground print:text-black text-xs mt-0.5">
-                      {eggLine || "No eggs"}{order.dcName && ` • ${order.dcName}`}
+                      {eggLine || t.pickList.noEggs}{order.dcName && ` • ${order.dcName}`}
                     </p>
                   </div>
                 );

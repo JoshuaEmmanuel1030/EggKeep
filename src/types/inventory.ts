@@ -137,9 +137,3 @@ export function buildConversionMap(eggTypes: ItemType[]): ConversionMap {
   return map;
 }
 
-export const CATEGORY_LABELS: Record<InventoryCategory, string> = {
-  egg: "Eggs",
-  box: "Boxes",
-  label: "Labels",
-  packaging: "Packaging",
-};

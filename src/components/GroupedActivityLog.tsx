@@ -13,7 +13,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CATEGORY_LABELS } from "@/types/inventory";
 import { format, parseISO } from "date-fns";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useItemTypes } from "@/hooks/useItemTypes";
@@ -48,6 +47,9 @@ import { orderBucketKey, returnCode } from "@/lib/activityGrouping";
 import { nativeToPieces } from "@/lib/returnsCap";
 import { usePriorReturns, ReturnsSummary, OutflowReturns } from "@/hooks/usePriorReturns";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
+import { useDeliveryStatuses } from "@/hooks/useDeliveries";
+import { normalizeInvoiceRef } from "@/lib/deliveryFlags";
+import { DeliveryStatusChip } from "./deliveries/DeliveryStatusChip";
 
 // Unit label for a logged quantity in the product's native stock unit
 // (kg-native: weight-sold eggs log kg, count eggs log butir, others pcs).
@@ -129,6 +131,9 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
     ),
     returnsRefresh
   );
+
+  // Delivery status per faktur for the order cards' chip (deep-links to /deliveries).
+  const deliveryMap = useDeliveryStatuses(useMemo(() => logs.map((l) => l.metadata?.invoiceRef), [logs]));
 
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ActivityLog | null>(null);
@@ -452,6 +457,7 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
 
   return {
     returnsMap,
+    deliveryMap,
     summary,
     groupedData,
     isEditable,
@@ -468,10 +474,12 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
 
 // The edit hooks the phone cards need, handed down as one prop.
 type OrderEdit = Pick<ReturnType<typeof useActivityFeed>, "canEditOrder" | "editMinutes" | "handleEditOrderClick">;
+type DeliveryMap = ReturnType<typeof useDeliveryStatuses>;
 
 export function GroupedActivityLog({ logs, showVoided = false, viewMode = "grouped", loading = false, hasActiveFilters = false, onVoided }: GroupedActivityLogProps) {
   const {
     returnsMap,
+    deliveryMap,
     summary,
     groupedData,
     isEditable,
@@ -550,6 +558,7 @@ export function GroupedActivityLog({ logs, showVoided = false, viewMode = "group
             onVoidOrderClick={handleVoidOrderClick}
             onReturnClick={handleReturnClick}
             returnsMap={returnsMap}
+            deliveryMap={deliveryMap}
             edit={edit}
           />
         ))}
@@ -764,10 +773,11 @@ interface DateSectionProps {
   onVoidOrderClick: (logs: ActivityLog[]) => void;
   onReturnClick: (req: ReturnRequest) => void;
   returnsMap: Record<string, OutflowReturns>;
+  deliveryMap: DeliveryMap;
   edit: OrderEdit;
 }
 
-function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap, edit }: DateSectionProps) {
+function DateSection({ group, animate = false, onEditClick, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap, deliveryMap, edit }: DateSectionProps) {
   const { t } = useLanguage();
   const hasQuickOutflows = group.quickOutflows.size > 0;
   const hasManualOutflows = group.manualOutflows.length > 0;
@@ -810,6 +820,7 @@ function DateSection({ group, animate = false, onEditClick, isEditable, getEditW
                     onVoidOrderClick={onVoidOrderClick}
                     onReturnClick={onReturnClick}
                     returnsMap={returnsMap}
+                    deliveryMap={deliveryMap}
                     edit={edit}
                   />
                 </TimelineRow>
@@ -1108,10 +1119,11 @@ interface BuyerOrderCardProps {
   onVoidOrderClick: (logs: ActivityLog[]) => void;
   onReturnClick: (req: ReturnRequest) => void;
   returnsMap: Record<string, OutflowReturns>;
+  deliveryMap: DeliveryMap;
   edit: OrderEdit;
 }
 
-function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap, edit }: BuyerOrderCardProps) {
+function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClick, onReturnClick, returnsMap, deliveryMap, edit }: BuyerOrderCardProps) {
   const { t } = useLanguage();
   const unitLabel = useStockUnitLabel();
   const [expanded, setExpanded] = useState(false);
@@ -1156,6 +1168,13 @@ function BuyerOrderCard({ order, isEditable, getEditWindowHours, onVoidOrderClic
                   <FileText className="h-3 w-3" />
                   {order.invoiceRef}
                 </Badge>
+              )}
+              {/* Delivery log status (read-only here; tap to open the faktur on /deliveries). */}
+              {order.invoiceRef && deliveryMap.loaded && (
+                <DeliveryStatusChip
+                  status={deliveryMap.statuses[normalizeInvoiceRef(order.invoiceRef)] ?? null}
+                  invoiceRef={order.invoiceRef}
+                />
               )}
               {order.dcName && (
                 <Badge variant="outline" className="text-[11px] gap-1 font-normal">
@@ -1325,7 +1344,7 @@ function ManualOutflowEntry({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <Badge variant="outline" className="text-xs shrink-0">
-            {CATEGORY_LABELS[log.category]}
+            {t.categories[log.category]}
           </Badge>
           {log.original_log_id && <EditedBadge />}
           <span className={cn("font-semibold", isVoided && "line-through")}>{log.product}</span>
@@ -1399,7 +1418,7 @@ function InflowEntry({ log, onEditClick, isEditable, getEditWindowHours }: Entry
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <Badge variant="outline" className="text-xs border-emerald-600/60 text-emerald-700 dark:text-emerald-400 shrink-0">
-            {CATEGORY_LABELS[log.category]}
+            {t.categories[log.category]}
           </Badge>
           <span className={cn("font-semibold", isVoided && "line-through")}>{log.product}</span>
           <span className="text-muted-foreground">·</span>
@@ -1487,7 +1506,7 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
           </Badge>
 
           <Badge variant="outline" className="text-xs shrink-0">
-            {CATEGORY_LABELS[log.category]}
+            {t.categories[log.category]}
           </Badge>
 
           <span className={cn("font-semibold truncate", isVoided && "line-through")}>{log.product}</span>

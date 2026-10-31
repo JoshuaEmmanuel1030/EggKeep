@@ -148,6 +148,116 @@ export type Database = {
         }
         Relationships: []
       }
+      deliveries: {
+        Row: {
+          buyer_name: string
+          created_at: string
+          dc_name: string | null
+          delivery_date: string
+          driver_id: string | null
+          driver_name: string | null
+          id: string
+          invoice_checked_by: string | null
+          invoice_ref: string
+          invoice_ref_norm: string
+          invoice_returned_at: string | null
+          notes: string | null
+          pic: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          buyer_name: string
+          created_at?: string
+          dc_name?: string | null
+          delivery_date: string
+          driver_id?: string | null
+          driver_name?: string | null
+          id?: string
+          invoice_checked_by?: string | null
+          invoice_ref: string
+          invoice_ref_norm?: never
+          invoice_returned_at?: string | null
+          notes?: string | null
+          pic?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          buyer_name?: string
+          created_at?: string
+          dc_name?: string | null
+          delivery_date?: string
+          driver_id?: string | null
+          driver_name?: string | null
+          id?: string
+          invoice_checked_by?: string | null
+          invoice_ref?: string
+          invoice_ref_norm?: never
+          invoice_returned_at?: string | null
+          notes?: string | null
+          pic?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deliveries_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      drivers: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
+      expiry_rules: {
+        Row: {
+          buyer_keyword: string | null
+          created_at: string
+          id: string
+          note: string | null
+          shelf_days: number
+          sku_code: string | null
+        }
+        Insert: {
+          buyer_keyword?: string | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          shelf_days: number
+          sku_code?: string | null
+        }
+        Update: {
+          buyer_keyword?: string | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          shelf_days?: number
+          sku_code?: string | null
+        }
+        Relationships: []
+      }
       fifo_deductions: {
         Row: {
           created_at: string | null
@@ -697,6 +807,21 @@ export type Database = {
       }
     }
     Views: {
+      open_delivery_items: {
+        Row: {
+          buyer_name: string | null
+          dc_name: string | null
+          delivery_date: string | null
+          delivery_id: string | null
+          invoice_not_back: boolean | null
+          invoice_ref: string | null
+          invoice_ref_norm: string | null
+          invoice_returned_at: string | null
+          not_logged: boolean | null
+          status: string | null
+        }
+        Relationships: []
+      }
       purchase_orders: {
         Row: {
           buyer_name: string | null

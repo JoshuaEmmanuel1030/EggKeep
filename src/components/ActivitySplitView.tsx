@@ -2,7 +2,6 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { format, isThisYear, isToday, isYesterday, parseISO } from "date-fns";
 import { Cloud, CloudOff, Egg, FileText, MapPin, Package, Pencil, Square, Store, Undo2, type LucideIcon } from "lucide-react";
 import { ActivityLog } from "@/types/activityLog";
-import { CATEGORY_LABELS } from "@/types/inventory";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,6 +19,8 @@ import {
   useStockUnitLabel,
 } from "./GroupedActivityLog";
 import type { EditTarget } from "./EditOrderDialog";
+import { DeliveryStatusChip } from "./deliveries/DeliveryStatusChip";
+import { normalizeInvoiceRef } from "@/lib/deliveryFlags";
 
 export interface ActivitySplitViewProps {
   // Already-filtered logs to show.
@@ -351,6 +352,13 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
                   {order.invoiceRef}
                 </span>
               )}
+              {order.invoiceRef && feed.deliveryMap.loaded && (
+                <DeliveryStatusChip
+                  status={feed.deliveryMap.statuses[normalizeInvoiceRef(order.invoiceRef)] ?? null}
+                  invoiceRef={order.invoiceRef}
+                  className="text-xs"
+                />
+              )}
               {order.dcName && (
                 <span className="inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border border-ek-border px-[9px] py-[3px] font-medium text-ek-fg">
                   <MapPin aria-hidden className="h-3.5 w-3.5" />
@@ -363,7 +371,7 @@ function EntryDetail({ entry, feed, unitLabel }: { entry: Entry; feed: Feed; uni
             </>
           ) : (
             <>
-              <span>{CATEGORY_LABELS[log.category]}</span>
+              <span>{t.categories[log.category]}</span>
               {log.invoice_supplier && <span>{t.activity.invoiceLabel.replace("{ref}", log.invoice_supplier)}</span>}
               {businessDate && <span>{format(parseISO(businessDate), "d MMM yyyy")}</span>}
             </>

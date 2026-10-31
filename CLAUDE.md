@@ -48,6 +48,11 @@ The column names are legacy — do NOT "fix" them and do NOT convert kg↔butir 
 - The §7 sheet-label map lives in `v_recon_products` only; `reconViewsSync.test.ts` fails if `CONVERSION_DICT` and that map drift. PO vs Kas Tunai is read from `activity_logs.metadata.orderType` via `relatedEntryId` (same rule as `entryKind`); there is no `outflows.source` column.
 - `tgl-utc` flags only the old form bug's exact shape (entered before 07:00 WIB with yesterday's date): most live rows were back-entered days later and must not be flagged.
 
+## Delivery log (Log Pengiriman & Retur) — Phase 1
+- Spec: `docs/superpowers/specs/2026-10-29-delivery-return-log-design.md`. Routed page `/deliveries` (🚚 in Header / sidebar), one `deliveries` row per faktur keyed on the PO's `invoiceRef` (`invoice_ref_norm = upper(trim())`, unique). Opening a PO writes nothing; the first saved edit creates the row. The list is `purchase_orders` LEFT JOIN `deliveries` (`src/lib/deliveryFlags.ts` mirrors the `open_delivery_items` view). Never touches stock, outflows, returns or any RPC.
+- Drivers (Supir) live in `drivers` (Catalog → Supir, admin-only edit UI gate). `expiry_rules` is table + seed only until Phase 2.
+- Export (`src/lib/deliveryExport.ts`) emits the sheet's column order with fixed Indonesian headers, `dd/mm/yyyy`, decimal comma, `;` separator; Phase 1 fills columns 1–8 only.
+
 ## UUID migration (in progress — see docs/uuid-migration/PLAN.md)
 - Stage A APPLIED (2026-07-07): `item_type_id` on inflows/outflows, `egg/packaging_item_type_id` on pack_skus, FK-validated, resolver triggers auto-fill ids on name-only inserts.
 - Names are STILL the operational key until Stage C. Until then: renaming catalog items does NOT cascade to `pack_skus` name pointers (SQL pass required) and box names must equal the `BoxModeType` union — do not rename boxes.

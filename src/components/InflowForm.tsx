@@ -10,7 +10,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   InflowEntry,
   InventoryCategory,
-  CATEGORY_LABELS,
   ConversionMap,
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
@@ -234,7 +233,7 @@ export function InflowForm({ onSubmit }: InflowFormProps) {
                     htmlFor={`cat-${category}`}
                     className="text-sm font-medium cursor-pointer"
                   >
-                    {CATEGORY_LABELS[category]}
+                    {t.categories[category]}
                   </label>
                 </div>
               ))}
@@ -309,7 +308,7 @@ function CategorySection({
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm flex items-center gap-2">
           <Badge variant="outline">
-            {CATEGORY_LABELS[category]}
+            {t.categories[category]}
           </Badge>
         </h3>
       </div>

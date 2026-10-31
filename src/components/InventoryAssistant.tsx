@@ -10,6 +10,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { useIsTabletLandscape } from '@/hooks/use-mobile';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -18,9 +19,9 @@ interface Message {
 
 export function InventoryAssistant() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Halo! Saya asisten inventori. Tanya saja tentang stok barang. 👋' }
-  ]);
+  const { t } = useLanguage();
+  // The greeting is rendered from t (not stored) so it follows a language switch.
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -48,7 +49,7 @@ export function InventoryAssistant() {
 
       if (error) {
         console.error('Function error:', error);
-        throw new Error(error.message || 'Failed to get response');
+        throw new Error(error.message || t.assistant.sendFailed);
       }
 
       if (data?.error) {
@@ -58,10 +59,10 @@ export function InventoryAssistant() {
       setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
     } catch (error) {
       console.error('Error sending message:', error);
-      toast.error(error instanceof Error ? error.message : 'Gagal mengirim pesan');
+      toast.error(error instanceof Error ? error.message : t.assistant.sendFailed);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: 'Maaf, terjadi kesalahan. Silakan coba lagi.' 
+        content: t.assistant.errorReply 
       }]);
     } finally {
       setIsLoading(false);
@@ -81,7 +82,7 @@ export function InventoryAssistant() {
         onClick={() => setIsOpen(true)}
         className={cn("fixed bottom-20 right-4 sm:bottom-6 sm:right-6 h-14 w-14 rounded-full shadow-lg z-50", lift)}
         size="icon"
-        aria-label="Open inventory assistant"
+        aria-label={t.assistant.open}
       >
         <MessageCircle className="h-6 w-6" />
       </Button>
@@ -93,9 +94,9 @@ export function InventoryAssistant() {
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b">
         <CardTitle className="text-lg flex items-center gap-2">
           <Bot className="h-5 w-5 text-primary" />
-          Asisten Inventori
+          {t.assistant.title}
         </CardTitle>
-        <Button variant="ghost" size="icon" aria-label="Close chat" onClick={() => setIsOpen(false)}>
+        <Button variant="ghost" size="icon" aria-label={t.assistant.close} onClick={() => setIsOpen(false)}>
           <X className="h-4 w-4" />
         </Button>
       </CardHeader>
@@ -103,7 +104,7 @@ export function InventoryAssistant() {
       <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
         <ScrollArea className="flex-1 p-4" ref={scrollRef}>
           <div className="space-y-4">
-            {messages.map((message, index) => (
+            {[{ role: 'assistant' as const, content: t.assistant.greeting }, ...messages].map((message, index) => (
               <div
                 key={index}
                 className={`flex gap-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -170,13 +171,13 @@ export function InventoryAssistant() {
         </ScrollArea>
         
         <div className="p-4 border-t space-y-2">
-          {messages.length <= 1 && (
+          {messages.length === 0 && (
             <div className="flex flex-wrap gap-1.5">
               {[
-                "Stok telur hari ini?",
-                "Telur mana yang hampir kadaluarsa?",
-                "Ringkasan inventori",
-                "Telur berisiko?",
+                t.assistant.promptStockToday,
+                t.assistant.promptNearExpiry,
+                t.assistant.promptSummary,
+                t.assistant.promptAtRisk,
               ].map((prompt) => (
                 <button
                   key={prompt}
@@ -193,11 +194,11 @@ export function InventoryAssistant() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Tanya tentang stok..."
+              placeholder={t.assistant.placeholder}
               disabled={isLoading}
               className="flex-1"
             />
-            <Button onClick={sendMessage} disabled={isLoading || !input.trim()} size="icon" aria-label="Send message">
+            <Button onClick={sendMessage} disabled={isLoading || !input.trim()} size="icon" aria-label={t.assistant.send}>
               <Send className="h-4 w-4" />
             </Button>
           </div>

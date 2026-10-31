@@ -1,4 +1,4 @@
-import { Egg, LogOut, ClipboardList } from "lucide-react";
+import { Egg, LogOut, ClipboardList, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
@@ -6,12 +6,14 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { SettingsMenu } from "@/components/SettingsMenu";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useStockCountStatus } from "@/hooks/useStockCountStatus";
+import { useOpenDeliveries } from "@/hooks/useDeliveries";
 
 export function Header() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { countedToday } = useStockCountStatus();
+  const openDeliveries = useOpenDeliveries()?.count;
 
   const handleLogout = async () => {
     await signOut();
@@ -45,6 +47,24 @@ export function Header() {
             <ClipboardList className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             {!countedToday && (
               <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary" />
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigate(openDeliveries ? "/deliveries?open=1" : "/deliveries")}
+            title={t.nav.deliveries}
+            aria-label={t.nav.deliveries}
+            className="relative h-8 w-8 sm:h-9 sm:w-9"
+          >
+            <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            {openDeliveries != null && openDeliveries > 0 && (
+              <span
+                className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold tabular-nums text-primary-foreground"
+                title={t.deliveries.openCount.replace("{n}", String(openDeliveries))}
+              >
+                {openDeliveries}
+              </span>
             )}
           </Button>
           <SettingsMenu />
