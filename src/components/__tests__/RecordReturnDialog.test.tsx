@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { RecordReturnDialog } from "@/components/RecordReturnDialog";
 import type { ActivityLog } from "@/types/activityLog";
@@ -27,29 +27,30 @@ vi.mock("@/hooks/useItemTypes", () => ({
   useItemTypes: () => ({
     conversionMap: {
       "NEGERI BIASA": { unit: "kg" },
+      "NEGERI OMEGA": { unit: "kg" },
       "KAMPUNG BIASA": { unit: "btr" },
     },
     boxCapacityMap: { osave: { N10B: 18 } },
   }),
 }));
+const PACK_SKUS = [
+  { code: "KP10B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 10 },
+  { code: "KP6B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 6 },
+  { code: "N30B", eggProduct: "NEGERI BIASA", eggsPerPack: 30 },
+  // Base pack for the box below: 10 NEGERI BIASA eggs per pack.
+  { code: "N10B", eggProduct: "NEGERI BIASA", eggsPerPack: 10 },
+  // Box SKU: no eggProduct/eggsPerPack of its own — resolved via base × capacity.
+  { code: "OSVN10B", eggProduct: "", eggsPerPack: 0, basePackCode: "N10B", boxMode: "osave" },
+];
+const packSkusMock = vi.fn(() => ({ skus: PACK_SKUS, isLoading: false }));
 vi.mock("@/hooks/usePackSKUs", () => ({
-  usePackSKUs: () => ({
-    skus: [
-      { code: "KP10B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 10 },
-      { code: "KP6B", eggProduct: "KAMPUNG BIASA", eggsPerPack: 6 },
-      { code: "N30B", eggProduct: "NEGERI BIASA", eggsPerPack: 30 },
-      // Base pack for the box below: 10 NEGERI BIASA eggs per pack.
-      { code: "N10B", eggProduct: "NEGERI BIASA", eggsPerPack: 10 },
-      // Box SKU: no eggProduct/eggsPerPack of its own — resolved via base × capacity.
-      { code: "OSVN10B", eggProduct: "", eggsPerPack: 0, basePackCode: "N10B", boxMode: "osave" },
-    ],
-  }),
+  usePackSKUs: () => packSkusMock(),
 }));
 // No prior returns by default -> the cap equals the full sold quantity.
 import type { OutflowReturns } from "@/hooks/usePriorReturns";
-const priorReturnsMock = vi.fn<() => Record<string, OutflowReturns>>(() => ({}));
+const priorReturnsMock = vi.fn<(ids: (string | null)[]) => Record<string, OutflowReturns>>(() => ({}));
 vi.mock("@/hooks/usePriorReturns", () => ({
-  usePriorReturns: () => priorReturnsMock(),
+  usePriorReturns: (ids: (string | null)[]) => priorReturnsMock(ids),
 }));
 // sonner toast is a no-op in tests.
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -66,19 +67,19 @@ const eggLog: ActivityLog = {
   client_id: "c1",
 };
 
-function renderDialog(over: Partial<React.ComponentProps<typeof RecordReturnDialog>> = {}) {
-  return render(
-    <LanguageProvider>
-      <RecordReturnDialog
-        open
-        onOpenChange={() => {}}
-        buyerName="OSAVE BKS"
-        eggLogs={[eggLog]}
-        {...over}
-      />
-    </LanguageProvider>
-  );
-}
+const dialog = (over: Partial<React.ComponentProps<typeof RecordReturnDialog>> = {}) => (
+  <LanguageProvider>
+    <RecordReturnDialog
+      open
+      onOpenChange={() => {}}
+      buyerName="OSAVE BKS"
+      eggLogs={[eggLog]}
+      {...over}
+    />
+  </LanguageProvider>
+);
+const renderDialog = (over: Partial<React.ComponentProps<typeof RecordReturnDialog>> = {}) =>
+  render(dialog(over));
 
 const restockInput = () => screen.getByLabelText(/ok/i) as HTMLInputElement;
 const retakanInput = () => screen.getByLabelText(/retak/i) as HTMLInputElement;
@@ -90,6 +91,8 @@ describe("RecordReturnDialog", () => {
     recordReturnMock.mockResolvedValue({ ok: true });
     priorReturnsMock.mockReset();
     priorReturnsMock.mockReturnValue({});
+    packSkusMock.mockReset();
+    packSkusMock.mockReturnValue({ skus: PACK_SKUS, isLoading: false });
   });
   afterEach(() => cleanup());
 
@@ -265,5 +268,79 @@ describe("RecordReturnDialog", () => {
     expect(lines[0]).toEqual(
       expect.objectContaining({ skuCode: "OSVN10B", product: "NEGERI BIASA", quantity: 2, disposition: "restock" })
     );
+  });
+
+  it("adds a native-unit row for a loose egg no pack line covers (mixed PO)", async () => {
+    // Regression: with any pack line present, rows came only from pack lines, so
+    // a Telur Lepas egg no pack SKU uses (NEGERI OMEGA here) had no row at all.
+    const mk = (id: string, product: string, qty: number): ActivityLog => ({
+      id, user_id: "u1", action_type: "outflow", category: "egg", product, quantity_butir: qty,
+      recorded_at: "2026-10-05T07:21:00.000Z", created_at: "2026-10-05T07:21:00.000Z", client_id: "c",
+    });
+    renderDialog({
+      eggLogs: [mk("1", "NEGERI BIASA", 100), mk("2", "NEGERI OMEGA", 40)],
+      orderLines: [
+        { skuCode: "N30B", packQty: 50 },
+        { eggProduct: "NEGERI OMEGA", looseQty: 40 },
+      ],
+    });
+    // N30B row + one NEGERI OMEGA row; NEGERI BIASA stays pooled under N30B.
+    const okBoxes = (await screen.findAllByLabelText(/ok/i)) as HTMLInputElement[];
+    expect(okBoxes).toHaveLength(2);
+    expect(screen.getByText("NEGERI OMEGA")).toBeInTheDocument();
+    // Entry is native kg, capped at the 40 kg sold.
+    fireEvent.change(okBoxes[1], { target: { value: "999" } });
+    expect(okBoxes[1].value).toBe("40");
+    fireEvent.change(okBoxes[1], { target: { value: "2,5" } });
+    fireEvent.click(screen.getByRole("button", { name: /record return/i }));
+    await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
+    const { lines } = recordReturnMock.mock.calls[0]![0];
+    // 2.5 kg as typed — not run through piecesToNative (which would give 0.16).
+    expect(lines).toEqual([
+      expect.objectContaining({ product: "NEGERI OMEGA", quantity: 2.5, outflowId: "outflow-2", skuCode: undefined }),
+    ]);
+  });
+
+  it("keeps the prior-returns cap when pack SKUs load after open", async () => {
+    // Regression: SKUs arriving after open changed the row set, the reset effect
+    // wiped the resolved outflow ids, and the cap forgot the 150 kg already back.
+    priorReturnsMock.mockImplementation((ids) =>
+      ids.includes("outflow-1")
+        ? { "outflow-1": { restock: 150, retakan: 0, writeoff: 0, total: 150, bySku: {} } }
+        : {}
+    );
+    packSkusMock.mockReturnValue({ skus: [], isLoading: true });
+    // Stable props, like both callers pass from returnRequest state.
+    const props = { eggLogs: [eggLog], orderLines: [{ skuCode: "N30B", packQty: 50 }] };
+    const { rerender } = renderDialog(props);
+    await act(() => new Promise((r) => setTimeout(r, 0))); // outflow ids resolve
+    // No interim native row for an egg the (still loading) pack row covers.
+    expect(screen.getAllByLabelText(/ok/i)).toHaveLength(1);
+
+    packSkusMock.mockReturnValue({ skus: PACK_SKUS, isLoading: false });
+    rerender(dialog(props));
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    const okBox = screen.getByLabelText(/ok/i) as HTMLInputElement;
+    fireEvent.change(okBox, { target: { value: "999" } });
+    expect(okBox.value).toBe("78"); // 5 kg left × 15.5 pieces/kg
+  });
+
+  it("merges duplicate SKU lines into one row so a return is emitted once", async () => {
+    // Regression: two N30B lines made two rows sharing one key/state, so one
+    // entry was submitted twice (double restock).
+    renderDialog({
+      orderLines: [
+        { skuCode: "N30B", packQty: 50 },
+        { skuCode: "N30B", packQty: 20 },
+      ],
+    });
+    const okBoxes = await screen.findAllByLabelText(/ok/i);
+    expect(okBoxes).toHaveLength(1);
+    expect(screen.getByText(/2[.,]100 butir/)).toBeInTheDocument(); // 70 packs × 30
+    fireEvent.change(okBoxes[0], { target: { value: "31" } });
+    fireEvent.click(screen.getByRole("button", { name: /record return/i }));
+    await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
+    const { lines } = recordReturnMock.mock.calls[0]![0];
+    expect(lines).toEqual([expect.objectContaining({ skuCode: "N30B", quantity: 2 })]);
   });
 });
