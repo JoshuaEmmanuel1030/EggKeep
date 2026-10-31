@@ -43,6 +43,11 @@ The column names are legacy — do NOT "fix" them and do NOT convert kg↔butir 
 - Offline outbox mirrors outflows: `src/lib/returnOutbox.ts` / `useReturnOutbox` / `returnRpc.ts`.
 - Feed display (`GroupedActivityLog.tsx`): shows delivered = sold − returned, with code `returnCode` (`src/lib/activityGrouping.ts`) → **O/R/H** (OK/Retak/Hancur = restock/retakan/writeoff), zero buckets omitted. Letters are fixed, not translated.
 
+## Export Rekonsiliasi (docs/spec-export-rekonsiliasi.md, docs/reconciliation.md)
+- The dashboard's xlsx export reads ONLY the views `v_recon_products` / `v_recon_ledger` / `v_recon_daily` (`supabase/migrations/20261029000000_recon_views.sql`); the client (`src/lib/reconExport.ts`, `reconXlsx.ts`) just lays rows out. Never recompute quantities from the conversion map there.
+- The §7 sheet-label map lives in `v_recon_products` only; `reconViewsSync.test.ts` fails if `CONVERSION_DICT` and that map drift. PO vs Kas Tunai is read from `activity_logs.metadata.orderType` via `relatedEntryId` (same rule as `entryKind`); there is no `outflows.source` column.
+- `tgl-utc` flags only the old form bug's exact shape (entered before 07:00 WIB with yesterday's date): most live rows were back-entered days later and must not be flagged.
+
 ## Delivery log (Log Pengiriman & Retur) — Phase 1
 - Spec: `docs/superpowers/specs/2026-10-29-delivery-return-log-design.md`. Routed page `/deliveries` (🚚 in Header / sidebar), one `deliveries` row per faktur keyed on the PO's `invoiceRef` (`invoice_ref_norm = upper(trim())`, unique). Opening a PO writes nothing; the first saved edit creates the row. The list is `purchase_orders` LEFT JOIN `deliveries` (`src/lib/deliveryFlags.ts` mirrors the `open_delivery_items` view). Never touches stock, outflows, returns or any RPC.
 - Drivers (Supir) live in `drivers` (Catalog → Supir, admin-only edit UI gate). `expiry_rules` is table + seed only until Phase 2.

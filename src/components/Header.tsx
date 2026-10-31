@@ -1,4 +1,4 @@
-import { Egg, Download, LogOut, ClipboardList, Truck } from "lucide-react";
+import { Egg, LogOut, ClipboardList, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
@@ -8,11 +8,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useStockCountStatus } from "@/hooks/useStockCountStatus";
 import { useOpenDeliveries } from "@/hooks/useDeliveries";
 
-interface HeaderProps {
-  onExport?: () => void;
-}
-
-export function Header({ onExport }: HeaderProps) {
+export function Header() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -71,12 +67,6 @@ export function Header({ onExport }: HeaderProps) {
               </span>
             )}
           </Button>
-          {onExport && (
-            <Button variant="outline" size="sm" onClick={onExport} className="gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3">
-              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">{t.header.exportCsv}</span>
-            </Button>
-          )}
           <SettingsMenu />
           <LanguageToggle />
           <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-3">

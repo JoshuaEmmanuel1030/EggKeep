@@ -66,8 +66,11 @@ export function buildSkuBomRows(
   boxCapacityMap: BoxCapacityMap,
   labelsPerPackMap: LabelsPerPackMap,
 ): SkuBomRow[] {
+  // kg here is recomputed from today's catalog factor, not the stored deduction
+  // (see the ponytail note above) — the label says so, so it is never read as
+  // the ledger figure. The ledger figure is in Export Rekonsiliasi.
   const unitOf = (product: string) =>
-    conversionMap[product]?.unit === "kg" ? "kg" : "butir";
+    conversionMap[product]?.unit === "kg" ? "kg (estimasi katalog saat ini)" : "butir";
 
   // Group component rows back into their originating orders.
   const groups = new Map<string, ActivityLog[]>();

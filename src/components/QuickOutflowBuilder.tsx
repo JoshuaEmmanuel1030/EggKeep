@@ -33,6 +33,7 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { format } from "date-fns";
 import { useDuplicateOrderCheck, DuplicateMatch } from "@/hooks/useDuplicateOrderCheck";
 
 interface QuickOutflowBuilderProps {
@@ -89,7 +90,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
     () => pinnedCodesFor(skus, buyers.find((b) => b.id === selectedBuyer?.id)?.pinnedSkuIds),
     [skus, buyers, selectedBuyer?.id]
   );
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [invoiceRef, setInvoiceRef] = useState("");
   const [dcId, setDcId] = useState<string | null>(null);
   const [lines, setLines] = useState<OrderLine[]>([]);

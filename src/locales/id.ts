@@ -1,7 +1,6 @@
 export const id = {
   // Header
   header: {
-    exportCsv: 'Ekspor CSV',
     logout: 'Keluar',
     inventoryTracker: 'Pelacak Inventaris',
     settings: 'Pengaturan',
@@ -279,6 +278,28 @@ export const id = {
     noFocusEggs: 'Belum ada jenis telur dipilih — ketuk “Fokus telur” untuk memilih.',
   },
 
+  // Export Rekonsiliasi (dasbor): docs/spec-export-rekonsiliasi.md
+  recon: {
+    button: 'Export Rekonsiliasi',
+    title: 'Export Rekonsiliasi',
+    description: 'Satu file xlsx (Ringkasan, Harian, Transaksi, Faktur, Retur, Katalog) dari buku stok dalam satuan asli, untuk dicocokkan dengan sheet Monitoring Stock dan Peachtree.',
+    from: 'Dari',
+    to: 'Sampai',
+    thisMonth: 'Bulan ini',
+    lastMonth: 'Bulan lalu',
+    last7: '7 hari terakhir',
+    numberFormat: 'Format angka',
+    numberFormatId: 'Indonesia (1.234,56)',
+    numberFormatStd: 'Standar (1234.56)',
+    includeVoid: 'Sertakan baris void',
+    includeRetakan: 'Sertakan produk RETAKAN',
+    export: 'Export',
+    exporting: 'Menyiapkan file…',
+    done: 'File siap',
+    rowsExported: 'transaksi diekspor',
+    failed: 'Export gagal',
+  },
+
   // Inflow
   inflow: {
     title: 'Catat Instock',
@@ -457,11 +478,11 @@ export const id = {
     statInflow: 'instock',
     statInflows: 'instock',
     statPending: 'belum sinkron',
-    export: 'Ekspor',
+    export: 'Export lainnya',
     exportActivityLog: 'Log aktivitas',
     exportActivityLogHint: 'CSV dari entri yang ditampilkan',
-    exportSkuBom: 'BOM SKU',
-    exportSkuBomHint: 'Bahan per SKU untuk outflow yang ditampilkan',
+    exportSkuBom: 'Export BOM Kemasan',
+    exportSkuBomHint: 'Bahan per SKU; kg = estimasi katalog saat ini',
     quickOutflow: 'Purchase order',
     waitingToSync: 'Menunggu sinkron',
     outflowOn: 'Keluar {date}',

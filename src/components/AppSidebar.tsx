@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import {
   BarChart2,
-  Download,
   Egg,
   History,
   House,
@@ -40,13 +39,12 @@ interface AppSidebarProps {
   pendingCount: number;
   isOnline: boolean;
   onSelectTab?: (tab: Exclude<SidebarKey, "stockCount" | "deliveries">) => void;
-  onExport?: () => void;
 }
 
 const footerIconBtn = "h-11 w-11 shrink-0 text-ek-nav hover:bg-ek-muted hover:text-ek-fg";
 
 /** Tablet-landscape left sidebar shared by every page (replaces the top Header + tab bar there). */
-export function AppSidebar({ active, pendingCount, isOnline, onSelectTab, onExport }: AppSidebarProps) {
+export function AppSidebar({ active, pendingCount, isOnline, onSelectTab }: AppSidebarProps) {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
@@ -168,18 +166,6 @@ export function AppSidebar({ active, pendingCount, isOnline, onSelectTab, onExpo
         <div className="-mx-2 flex flex-wrap items-center justify-between gap-y-1 [&>button]:h-11 [&>button]:min-w-11 [&>button]:px-2">
           <SettingsMenu />
           <LanguageToggle />
-          {onExport && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onExport}
-              title={t.header.exportCsv}
-              aria-label={t.header.exportCsv}
-              className={footerIconBtn}
-            >
-              <Download className="h-5 w-5" />
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="icon"

@@ -17,11 +17,12 @@ import {
 } from "@/lib/inventory";
 import {
   AlertTriangle, Clock, Filter, ChevronDown, ChevronRight, ChevronsUpDown,
-  FileText, CheckCircle2, TrendingDown, TrendingUp, Minus, Truck, SlidersHorizontal,
+  FileText, CheckCircle2, TrendingDown, TrendingUp, Minus, Truck, SlidersHorizontal, FileSpreadsheet,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { ReconExportDialog } from "@/components/ReconExportDialog";
 
 interface InventoryDashboardProps {
   stockSummary: StockSummary[];
@@ -78,6 +79,7 @@ export function InventoryDashboard({
   const [sortBy, setSortBy] = useState<"stock" | "name" | "days">("stock");
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [reconOpen, setReconOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
   const [focusedEggs, setFocusedEggs] = useState<string[]>(() => {
     try {
@@ -245,7 +247,7 @@ export function InventoryDashboard({
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      dayKeys.push(d.toISOString().split("T")[0]);
+      dayKeys.push(format(d, "yyyy-MM-dd"));
     }
     const result: Record<string, { level: number[]; inTotal: number; outTotal: number }> = {};
     for (const p of focusList) {
@@ -312,7 +314,7 @@ export function InventoryDashboard({
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      dayKeys.push(d.toISOString().split("T")[0]);
+      dayKeys.push(format(d, "yyyy-MM-dd"));
     }
     const equiv = (product: string, qty: number) => butirEquivalent(product, qty, conversionMap);
     const dailyNet = dayKeys.map((key) => {
@@ -529,8 +531,22 @@ export function InventoryDashboard({
               ? t.dashboard.oneThingToday
               : `${urgentCount} ${t.dashboard.manyThingsToday}`}
         </p>
-        <span className="text-xs text-muted-foreground shrink-0">{format(now, "EEE, d MMM")}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-2 sm:px-3"
+            onClick={() => setReconOpen(true)}
+            title={t.recon.button}
+            aria-label={t.recon.button}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t.recon.button}</span>
+          </Button>
+          <span className="text-xs text-muted-foreground">{format(now, "EEE, d MMM")}</span>
+        </div>
       </div>
+      <ReconExportDialog open={reconOpen} onOpenChange={setReconOpen} />
 
       {/* Readiness hero */}
       {headline.tone === "clear" ? (

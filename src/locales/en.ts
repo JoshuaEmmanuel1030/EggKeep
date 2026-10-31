@@ -1,7 +1,6 @@
 export const en = {
   // Header
   header: {
-    exportCsv: 'Export CSV',
     logout: 'Logout',
     inventoryTracker: 'Inventory Tracker',
     settings: 'Settings',
@@ -279,6 +278,28 @@ export const en = {
     noFocusEggs: 'No egg types selected — tap “Focus eggs” to choose which to track.',
   },
 
+  // Export Rekonsiliasi (dashboard): docs/spec-export-rekonsiliasi.md
+  recon: {
+    button: 'Export Rekonsiliasi',
+    title: 'Export Rekonsiliasi',
+    description: 'One xlsx (Ringkasan, Harian, Transaksi, Faktur, Retur, Katalog) built from the stock ledger in native units, to check against the Monitoring Stock sheet and Peachtree.',
+    from: 'From',
+    to: 'To',
+    thisMonth: 'This month',
+    lastMonth: 'Last month',
+    last7: 'Last 7 days',
+    numberFormat: 'Number format',
+    numberFormatId: 'Indonesia (1.234,56)',
+    numberFormatStd: 'Standard (1234.56)',
+    includeVoid: 'Include voided rows',
+    includeRetakan: 'Include RETAKAN products',
+    export: 'Export',
+    exporting: 'Preparing file…',
+    done: 'File ready',
+    rowsExported: 'movements exported',
+    failed: 'Export failed',
+  },
+
   // Inflow
   inflow: {
     title: 'Record Inflow',
@@ -457,11 +478,11 @@ export const en = {
     statInflow: 'inflow',
     statInflows: 'inflows',
     statPending: 'pending sync',
-    export: 'Export',
+    export: 'More exports',
     exportActivityLog: 'Activity log',
     exportActivityLogHint: 'CSV of the entries shown',
-    exportSkuBom: 'SKU BOM',
-    exportSkuBomHint: 'Per-SKU materials for outflows shown',
+    exportSkuBom: 'Export packaging BOM',
+    exportSkuBomHint: 'Per-SKU materials; kg = estimate from the current catalog',
     quickOutflow: 'Purchase order',
     waitingToSync: 'Waiting to sync',
     outflowOn: 'Outflow {date}',

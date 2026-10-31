@@ -44,7 +44,7 @@ describe("buildSkuBomRows", () => {
     expect(r.packQty).toBe(180);
     expect(r.eggProduct).toBe("NEGERI OMEGA");
     expect(r.eggQty).toBe(120); // 180*10 / 15
-    expect(r.eggUnit).toBe("kg");
+    expect(r.eggUnit).toBe("kg (estimasi katalog saat ini)");
     expect(r.packagingQty).toBe(180);
     expect(r.boxType).toBe("box osave");
     expect(r.boxes).toBe(10); // ceil(180/18)
