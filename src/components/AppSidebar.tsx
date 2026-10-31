@@ -10,6 +10,7 @@ import {
   PackageMinus,
   PackagePlus,
   SquareCheckBig,
+  Truck,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { SettingsMenu } from "@/components/SettingsMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useStockCountStatus } from "@/hooks/useStockCountStatus";
+import { useOpenDeliveries } from "@/hooks/useDeliveries";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +30,7 @@ export type SidebarKey =
   | "inflow"
   | "activity"
   | "stockCount"
+  | "deliveries"
   | "infos"
   | "catalog"
   | "users";
@@ -36,7 +39,7 @@ interface AppSidebarProps {
   active: SidebarKey;
   pendingCount: number;
   isOnline: boolean;
-  onSelectTab?: (tab: Exclude<SidebarKey, "stockCount">) => void;
+  onSelectTab?: (tab: Exclude<SidebarKey, "stockCount" | "deliveries">) => void;
   onExport?: () => void;
 }
 
@@ -49,6 +52,7 @@ export function AppSidebar({ active, pendingCount, isOnline, onSelectTab, onExpo
   const { user, signOut } = useAuth();
   const { isAdmin } = useUserRole();
   const { countedToday } = useStockCountStatus();
+  const openDeliveries = useOpenDeliveries()?.count;
 
   const items: [SidebarKey, string, LucideIcon][] = [
     ["dashboard", t.nav.home, House],
@@ -56,6 +60,7 @@ export function AppSidebar({ active, pendingCount, isOnline, onSelectTab, onExpo
     ["inflow", t.nav.inflow, PackagePlus],
     ["activity", t.nav.activities, History],
     ["stockCount", t.nav.stockCount, SquareCheckBig],
+    ["deliveries", t.nav.deliveries, Truck],
     ["infos", t.nav.infos, BarChart2],
     ["catalog", t.nav.catalog, Library],
   ];
@@ -63,6 +68,7 @@ export function AppSidebar({ active, pendingCount, isOnline, onSelectTab, onExpo
 
   const go = (key: SidebarKey) => {
     if (key === "stockCount") navigate("/stock-count");
+    else if (key === "deliveries") navigate(openDeliveries ? "/deliveries?open=1" : "/deliveries");
     else if (onSelectTab) onSelectTab(key);
     else navigate("/", { state: { tab: key } });
   };
@@ -110,6 +116,15 @@ export function AppSidebar({ active, pendingCount, isOnline, onSelectTab, onExpo
                 )}
               </span>
               <span className="min-w-0 truncate">{label}</span>
+              {key === "deliveries" && openDeliveries != null && openDeliveries > 0 && (
+                <span
+                  className="ml-auto flex h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-xs tabular-nums text-primary-foreground"
+                  title={t.deliveries.openCount.replace("{n}", String(openDeliveries))}
+                >
+                  {openDeliveries}
+                  <span className="sr-only"> {t.deliveries.openCount.replace("{n}", String(openDeliveries))}</span>
+                </span>
+              )}
               {key === "activity" && pendingCount > 0 && (
                 <span
                   className="ml-auto flex h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs tabular-nums text-white"

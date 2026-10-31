@@ -5,7 +5,7 @@ import { PurchaseOrderRow, addDays, localToday, monthStart } from "@/lib/buyerPr
 const PAGE = 1000; // PostgREST max rows per request
 
 // Pages an (ordered) query past the 1000-row cap so counts never silently undercount.
-async function fetchAllRows<T>(
+export async function fetchAllRows<T>(
   page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>
 ): Promise<T[]> {
   const rows: T[] = [];
