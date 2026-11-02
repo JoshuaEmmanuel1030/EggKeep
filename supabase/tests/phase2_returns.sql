@@ -1,6 +1,6 @@
 -- RPC tests for 20261103000000_delivery_lines_void_return.sql (Phase 2 "Retur per faktur").
 -- Spec: docs/superpowers/specs/2026-11-02-delivery-return-log-phase2-design.md,
--- Verification plan R1-R20.
+-- Verification plan R1-R20, plus R21-R22 from the data-integrity review.
 --
 -- Run by hand against a Supabase BRANCH (or a local stack) on which the migration has been
 -- applied: `execute_sql` of this whole file. NEVER against production. Everything runs in
@@ -189,12 +189,14 @@ begin
     raise exception 'R19 failed: daily closing balance (RETAKAN)'; end if;
 end $$;
 
--- R12: re-record after the void with the same quantities -> accepted, restocked into B again.
+-- R12: re-record after the void with the same quantities -> accepted. Per-batch room is
+-- ded + vd - rs_all: B 50 + 0 - 30 = 20, C 0 + 30 - 0 = 30 -> B gets 20, C gets 10.
 do $$
 begin
   perform pg_temp.ret('A', '[{"key":"e5","outflow":"S1.O","product":"TEST PHASE2 S1","qty":30,"disp":"restock","sku":"T3","prior":0},
                              {"key":"e6","outflow":"S1.O","product":"TEST PHASE2 S1","qty":10,"disp":"retakan","sku":"T3","prior":0}]');
-  if pg_temp.rem('S1.B') <> 30 then raise exception 'R12 failed: B = % (want 30)', pg_temp.rem('S1.B'); end if;
+  if pg_temp.rem('S1.B') <> 20 or pg_temp.rem('S1.C') <> 80 then
+    raise exception 'R12 failed: B % C % (want 20 / 80)', pg_temp.rem('S1.B'), pg_temp.rem('S1.C'); end if;
   if not exists (select 1 from return_restocks where return_id = pg_temp.id('e5') and inflow_id = pg_temp.id('S1.B')) then
     raise exception 'R12 failed: not restocked into B'; end if;
   if not pg_temp.reconciled() then raise exception 'R12 failed: reconcile'; end if;
@@ -274,7 +276,9 @@ begin
   if not pg_temp.reconciled() then raise exception 'R11 failed: reconcile'; end if;
 end $$;
 
--- R13: §6.3.3 example 1 -> after void_outflow(O): B 0, C 100, V voided.
+-- R13: §6.3.3 example 1 -> after void_outflow(O): B 0, C 100, V voided. R2 restocks into C
+-- (B's room is 50 - 50 = 0; C's is V's 50), so the live state is B 0, C 100, not the
+-- design's B 50, C 50; the end state is the same.
 do $$
 begin
   perform pg_temp.product('TEST PHASE2 E1');
@@ -285,7 +289,7 @@ begin
   perform pg_temp.sell('E1.sale', 'TEST PHASE2 E1', 100);
   perform pg_temp.void_ret('A', 'E1.R');                                     -- V takes 50 from C
   perform pg_temp.ret('A', '[{"key":"E1.R2","outflow":"E1.O","product":"TEST PHASE2 E1","qty":50,"disp":"restock","sku":"X2"}]');
-  if pg_temp.rem('E1.B') <> 50 or pg_temp.rem('E1.C') <> 50 then
+  if pg_temp.rem('E1.B') <> 0 or pg_temp.rem('E1.C') <> 100 then
     raise exception 'R13 failed: live state B % C %', pg_temp.rem('E1.B'), pg_temp.rem('E1.C'); end if;
   perform pg_temp.void_out('E1.O');
   if pg_temp.rem('E1.B') <> 0 or pg_temp.rem('E1.C') <> 100 then
@@ -343,9 +347,9 @@ begin
   if not pg_temp.reconciled() then raise exception 'R16 failed: reconcile'; end if;
 end $$;
 
--- R17: example 1 continued by a sale of 50 after R2 (the sale takes B's 50, so B would go
--- to -50) -> VOID_BLOCKED, no batch changed, O and V still live.
--- (The design's "example 3 + sale of 50" does not block: delta is 0 and B 50 is the true state.)
+-- R17: example 1 continued by a sale of 50 after R2 -> the void succeeds with the true state
+-- (B 0, C 50): the per-batch restock room keeps every delta >= 0, so VOID_BLOCKED stays a
+-- backstop. (The design's "example 3 + a sale of 50 -> VOID_BLOCKED" does not hold: delta 0.)
 do $$
 begin
   perform pg_temp.product('TEST PHASE2 E5');
@@ -356,17 +360,10 @@ begin
   perform pg_temp.sell('E5.sale', 'TEST PHASE2 E5', 100);
   perform pg_temp.void_ret('A', 'E5.R');
   perform pg_temp.ret('A', '[{"key":"E5.R2","outflow":"E5.O","product":"TEST PHASE2 E5","qty":50,"disp":"restock","sku":"X2"}]');
-  perform pg_temp.sell('E5.sale2', 'TEST PHASE2 E5', 50);                   -- B 0, C 50
-  begin
-    perform pg_temp.void_out('E5.O');
-    raise exception 'R17 failed: no error';
-  exception when others then
-    if sqlerrm not like 'VOID_BLOCKED%' then raise exception 'R17 failed: %', sqlerrm; end if;
-  end;
-  if pg_temp.rem('E5.B') <> 0 or pg_temp.rem('E5.C') <> 50 then raise exception 'R17 failed: batch changed'; end if;
-  if (select voided_at from outflows where id = pg_temp.id('E5.O')) is not null
-     or exists (select 1 from outflows where void_return_id = pg_temp.id('E5.R') and voided_at is not null) then
-    raise exception 'R17 failed: O or V voided'; end if;
+  perform pg_temp.sell('E5.sale2', 'TEST PHASE2 E5', 50);                   -- C 100 -> 50
+  perform pg_temp.void_out('E5.O');
+  if pg_temp.rem('E5.B') <> 0 or pg_temp.rem('E5.C') <> 50 then
+    raise exception 'R17 failed: B % C %', pg_temp.rem('E5.B'), pg_temp.rem('E5.C'); end if;
   if not pg_temp.reconciled() then raise exception 'R17 failed: reconcile'; end if;
 end $$;
 
@@ -411,6 +408,47 @@ begin
   end;
 end $$;
 
-select 'phase2_returns: R1-R20 passed' as result;
+-- R21 (review finding): another order's restock sits in the older batch, so V drains it
+-- first. Re-recording must not push B over its intake: A 100, B 100; X sells 100 (A 0); O
+-- sells 50 (B 50); X's return restocks 10 (A 10); R on O restocks 50 (B 100); void R: V takes
+-- 10 from A, 40 from B (A 0, B 60); R2 = 50 -> A 10, B 100 (room A 0+10-0, B 50+40-50).
+do $$
+begin
+  perform pg_temp.product('TEST PHASE2 E8');
+  perform pg_temp.batch('E8.A', 'TEST PHASE2 E8', '2026-01-01', 100);
+  perform pg_temp.batch('E8.B', 'TEST PHASE2 E8', '2026-01-02', 100);
+  perform pg_temp.sell('E8.X', 'TEST PHASE2 E8', 100);
+  perform pg_temp.sell('E8.O', 'TEST PHASE2 E8', 50);
+  perform pg_temp.ret('A', '[{"key":"E8.RX","outflow":"E8.X","product":"TEST PHASE2 E8","qty":10,"disp":"restock","sku":"X0"}]');
+  perform pg_temp.ret('A', '[{"key":"E8.R","outflow":"E8.O","product":"TEST PHASE2 E8","qty":50,"disp":"restock","sku":"X1"}]');
+  perform pg_temp.void_ret('A', 'E8.R');
+  if pg_temp.rem('E8.A') <> 0 or pg_temp.rem('E8.B') <> 60 then raise exception 'R21 failed: after void A % B %', pg_temp.rem('E8.A'), pg_temp.rem('E8.B'); end if;
+  perform pg_temp.ret('A', '[{"key":"E8.R2","outflow":"E8.O","product":"TEST PHASE2 E8","qty":50,"disp":"restock","sku":"X2"}]');
+  if pg_temp.rem('E8.A') <> 10 or pg_temp.rem('E8.B') <> 100 then raise exception 'R21 failed: after R2 A % B %', pg_temp.rem('E8.A'), pg_temp.rem('E8.B'); end if;
+  if not pg_temp.reconciled() then raise exception 'R21 failed: reconcile'; end if;
+  perform pg_temp.void_out('E8.O');                                          -- true state: A 10, B 100
+  if pg_temp.rem('E8.A') <> 10 or pg_temp.rem('E8.B') <> 100 then raise exception 'R21 failed: after void_outflow A % B %', pg_temp.rem('E8.A'), pg_temp.rem('E8.B'); end if;
+  if not pg_temp.reconciled() then raise exception 'R21 failed: reconcile after void_outflow'; end if;
+end $$;
+
+-- R22: a compensating outflow cannot be voided or returned against directly -> IS_RETURN_VOID.
+do $$
+begin
+  perform pg_temp.put('S1.Vc', pg_temp.id('S1.V'));
+  begin
+    perform pg_temp.void_out('S1.Vc');
+    raise exception 'R22 failed: no error (void_outflow)';
+  exception when others then
+    if sqlerrm not like 'IS_RETURN_VOID%' then raise exception 'R22 failed: %', sqlerrm; end if;
+  end;
+  begin
+    perform pg_temp.ret('A', '[{"key":"e10","outflow":"S1.Vc","product":"TEST PHASE2 S1","qty":1,"disp":"restock","sku":"T9"}]');
+    raise exception 'R22 failed: no error (record_return)';
+  exception when others then
+    if sqlerrm not like 'IS_RETURN_VOID%' then raise exception 'R22 failed: %', sqlerrm; end if;
+  end;
+end $$;
+
+select 'phase2_returns: R1-R22 passed' as result;
 
 rollback;

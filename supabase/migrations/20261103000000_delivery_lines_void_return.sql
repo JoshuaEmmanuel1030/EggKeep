@@ -39,7 +39,8 @@
 --   3. B=100. O takes 100. R +100. V takes 100. R2 +100. Live B100 -> delta 0 -> B100.
 --   4. B=C=100. O takes 50 from B. R +10 into B. Sale 60 from B. V takes 10 from C.
 --      Live B0 C90 -> delta B +40, C +10 -> B40 C100.
---   Example 3 followed by a sale of 50 -> VOID_BLOCKED (batch would leave [0, quantity]).
+--   record_return's per-batch restock cap (below) keeps delta_b >= 0 and every batch within
+--   [0, quantity], so VOID_BLOCKED is a backstop; it fires only on data written outside these RPCs.
 
 -- ── 1. delivery_lines ──────────────────────────────────────────────────────────
 create table public.delivery_lines (
@@ -161,8 +162,16 @@ grant select on public.purchase_orders to authenticated;
 -- Full body of 20261008000000_returns_sku_code.sql with four changes (CHANGED below):
 --   a. user_email stamped server-side (old bundles get it too);
 --   b. optional expected_prior per entry, checked once per outflow row per call;
---   c. caps count NON-voided returns only;
---   d. the retakan child inflow carries return_id.
+--   c. caps count NON-voided returns only; the per-batch restock cap becomes what the
+--      order's family still holds out of the batch: ded_b + vd_b - rs_all_b (O's deductions,
+--      plus its live compensating outflows' deductions, minus every restock of O's returns,
+--      voided included), over O's batches and the compensating outflows' batches. Without
+--      voids this is the old ded_b - rs_b. It never lets a batch exceed its intake (a voided
+--      restock's eggs may have been taken back from another batch) and keeps void_outflow's
+--      delta_b >= 0;
+--   d. the retakan child inflow carries return_id;
+--   e. hardening: a compensating outflow cannot be returned against (IS_RETURN_VOID), a
+--      present but non-numeric expected_prior is INVALID_ENTRY.
 create or replace function public.record_return(p_return jsonb)
 returns void
 language plpgsql
@@ -182,7 +191,6 @@ declare
   v_returned numeric;
   v_remaining numeric;
   v_restore numeric;
-  v_already numeric;
   v_total_deducted numeric;
   v_total_restored numeric;
   v_expected numeric;
@@ -233,6 +241,10 @@ begin
     if v_outflow.voided_at is not null then
       raise exception 'OUTFLOW_VOIDED: cannot return against a voided outflow %', v_outflow_id;
     end if;
+    -- CHANGED (e)
+    if v_outflow.void_return_id is not null then
+      raise exception 'IS_RETURN_VOID: outflow % is the compensation of a voided return', v_outflow_id;
+    end if;
 
     -- CHANGED (c): voided returns no longer count against the cap.
     select coalesce(sum(quantity),0) into v_returned
@@ -242,6 +254,9 @@ begin
     -- displayed. Checked at this outflow row's first non-skipped entry that carries the key,
     -- against the sum before anything of this call (v_call_qty), and not again in this call.
     -- Runs before the caps, so a stale form gets PRIOR_MISMATCH ("muat ulang").
+    if v_line ? 'expected_prior' and jsonb_typeof(v_line->'expected_prior') not in ('number', 'null') then
+      raise exception 'INVALID_ENTRY: expected_prior must be a number (got %)', v_line->'expected_prior';
+    end if;
     if v_line ? 'expected_prior' and jsonb_typeof(v_line->'expected_prior') = 'number'
        and not (v_outflow_id = any(v_checked)) then
       v_expected := (v_line->>'expected_prior')::numeric;
@@ -320,21 +335,32 @@ begin
         v_qty, v_total_deducted - v_total_restored, v_total_deducted, v_total_restored;
     end if;
 
+    -- CHANGED (c): per-batch room = ded_b + vd_b - rs_all_b, oldest first.
     v_remaining := v_qty;
     for ded in
-      select fd.inflow_id, fd.quantity_deducted
-      from fifo_deductions fd
-      join inflows i on i.id = fd.inflow_id
-      where fd.outflow_id = v_outflow_id and i.voided_at is null
-      order by i.date asc, i.created_at asc
+      select i.id as inflow_id,
+        coalesce((select sum(fd.quantity_deducted) from fifo_deductions fd
+                  where fd.outflow_id = v_outflow_id and fd.inflow_id = i.id), 0)
+        + coalesce((select sum(fd.quantity_deducted) from fifo_deductions fd
+                    join outflows v on v.id = fd.outflow_id
+                    where v.voided_at is null and fd.inflow_id = i.id
+                      and v.void_return_id in (select id from returns
+                                               where outflow_id = v_outflow_id and disposition = 'restock')), 0)
+        - coalesce((select sum(rr.quantity_restored) from return_restocks rr
+                    join returns r on r.id = rr.return_id
+                    where r.outflow_id = v_outflow_id and rr.inflow_id = i.id), 0) as room
+      from inflows i
+      where i.voided_at is null and i.id in (
+        select fd.inflow_id from fifo_deductions fd where fd.outflow_id = v_outflow_id
+        union select fd.inflow_id from fifo_deductions fd join outflows v on v.id = fd.outflow_id
+              where v.voided_at is null
+                and v.void_return_id in (select id from returns
+                                         where outflow_id = v_outflow_id and disposition = 'restock'))
+      order by i.date asc, i.created_at asc, i.id
       for update of i
     loop
       exit when v_remaining <= v_eps;
-      select coalesce(sum(rr.quantity_restored),0) into v_already
-        from return_restocks rr
-        join returns r on r.id = rr.return_id and r.voided_at is null
-        where r.outflow_id = v_outflow_id and rr.inflow_id = ded.inflow_id;
-      v_restore := least(v_remaining, ded.quantity_deducted - v_already);
+      v_restore := least(v_remaining, ded.room);
       if v_restore <= v_eps then continue; end if;
 
       update inflows set remaining_butir = remaining_butir + v_restore where id = ded.inflow_id;
@@ -361,7 +387,8 @@ grant execute on function public.record_return(jsonb) to authenticated;
 --          restock return of O)
 -- O and those compensating outflows are marked voided. Compensating outflows of retakan
 -- returns sit on the RETAKAN child and are left alone. A batch that would leave
--- [0, quantity] raises VOID_BLOCKED (the returned eggs were sold on; the owner decides).
+-- [0, quantity] raises VOID_BLOCKED: a backstop, unreachable while every restock goes
+-- through record_return's per-batch room (delta_b >= 0, other orders' net holdings >= 0).
 create or replace function public.void_outflow(p_outflow_id uuid, p_reason text)
 returns void
 language plpgsql
@@ -385,6 +412,10 @@ begin
   if not found then raise exception 'OUTFLOW_NOT_FOUND: %', p_outflow_id; end if;
   if v_outflow.voided_at is not null then
     raise exception 'ALREADY_VOIDED: %', p_outflow_id;
+  end if;
+  -- A compensating outflow is voided only together with its order.
+  if v_outflow.void_return_id is not null then
+    raise exception 'IS_RETURN_VOID: outflow % is the compensation of a voided return', p_outflow_id;
   end if;
 
   perform 1 from outflows v
@@ -494,13 +525,16 @@ begin
     --   restock on a voided outflow -> nothing: void_outflow already netted it
     --   retakan                     -> the RETAKAN child (void_outflow never touches it)
     --   writeoff                    -> nothing
+    -- A restock went into the outflow's own batches: compensate on the outflow's product,
+    -- not the client-supplied snapshot on the return row.
     v_product := case r.disposition
-                   when 'restock' then case when v_outflow.voided_at is null then r.product end
+                   when 'restock' then case when v_outflow.voided_at is null then v_outflow.product end
                    when 'retakan' then r.product || ' (RETAKAN)'
                  end;
     if v_product is not null then
       v_oid := gen_random_uuid();
-      v_entries := v_entries || jsonb_build_object('id', v_oid, 'product', v_product, 'category', r.category,
+      v_entries := v_entries || jsonb_build_object('id', v_oid, 'product', v_product,
+                     'category', case when r.disposition = 'restock' then v_outflow.category else r.category end,
                      'quantity_butir', r.quantity, 'date', v_date, 'invoice_supplier', 'VOID RETUR');
       v_tags := v_tags || jsonb_build_object('outflow_id', v_oid, 'return_id', r.id);
     end if;
