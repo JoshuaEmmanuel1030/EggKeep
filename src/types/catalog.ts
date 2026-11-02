@@ -9,6 +9,8 @@ export interface PackSKU {
   createdAt: string;
   basePackCode?: string | null;
   boxMode?: string | null;
+  // The unit word on the faktur ("Satuan di faktur"): box for the Osave boxes and N30B.
+  unitLabel?: "pak" | "box";
 }
 
 export interface PackSKUInput {
@@ -20,4 +22,5 @@ export interface PackSKUInput {
   isActive?: boolean;
   basePackCode?: string | null;
   boxMode?: string | null;
+  unitLabel?: "pak" | "box";
 }

@@ -27,9 +27,9 @@ vi.mock("@/hooks/useRecordReturn", () => ({
 }));
 vi.mock("@/hooks/usePriorReturns", () => ({
   usePriorReturns: () => ({
-    "outflow-1": { restock: 25, retakan: 25, writeoff: 0, total: 50, bySku: {} },
+    "outflow-1": { restock: 25, retakan: 25, writeoff: 0, total: 50, bySku: {}, anyReturns: true },
     "outflow-2": {
-      restock: 31, retakan: 0, writeoff: 0, total: 31,
+      restock: 31, retakan: 0, writeoff: 0, total: 31, anyReturns: true,
       bySku: {
         KP10B: { restock: 20, retakan: 0, writeoff: 0, total: 20 },
         KP6B: { restock: 11, retakan: 0, writeoff: 0, total: 11 },
@@ -38,7 +38,7 @@ vi.mock("@/hooks/usePriorReturns", () => ({
     // A box SKU return keyed by its own code (OSVN10O), on the NEGERI OMEGA outflow.
     // Stored in kg (10.58) -> the bubble must show butir (10.58 * 15.5 = 164).
     "outflow-3": {
-      restock: 10.58, retakan: 0, writeoff: 0, total: 10.58,
+      restock: 10.58, retakan: 0, writeoff: 0, total: 10.58, anyReturns: true,
       bySku: { OSVN10O: { restock: 10.58, retakan: 0, writeoff: 0, total: 10.58 } },
     },
   }),
