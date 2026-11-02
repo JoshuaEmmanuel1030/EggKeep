@@ -72,7 +72,6 @@ export const EMPTY_LINE_SUMMARY: LineSummary = {
   kurangPieces: 0,
   unresolvedCount: 0,
   claimRowCount: 0,
-  claimPecah: 0,
   full: false,
 };
 
@@ -168,10 +167,7 @@ export function summarizeLines(lines: DeliveryLineView[], requiresRef: boolean, 
     }
     if (l.reason === "kurang") s.kurangPieces += l.piecesTotal;
     if (l.reason === "masih_ditanyakan") s.unresolvedCount++;
-    if (requiresRef && l.physical) {
-      s.claimRowCount++;
-      s.claimPecah += pecah;
-    }
+    if (requiresRef && l.physical) s.claimRowCount++;
   }
   s.full = delivered && !lines.some((l) => l.quantity > 0);
   return s;

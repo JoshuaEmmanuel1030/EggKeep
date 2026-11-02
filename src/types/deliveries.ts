@@ -106,7 +106,6 @@ export interface LineSummary {
   kurangPieces: number;
   unresolvedCount: number;
   claimRowCount: number;
-  claimPecah: number;
   full: boolean;
 }
 

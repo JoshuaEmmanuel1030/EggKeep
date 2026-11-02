@@ -127,8 +127,7 @@ export default function Deliveries() {
       pecahWithoutRef: items.reduce((n, i) => n + (i.flags.needsClaimRef ? i.lineSummary.pecahWithoutRef : 0), 0),
       unresolved: items.filter((i) => i.flags.unresolved).length,
       kurang: kurangPiecesOf(live),
-      claimRows: live.reduce((n, i) => n + i.lineSummary.claimRowCount, 0),
-      claimPecah: live.reduce((n, i) => n + i.lineSummary.claimPecah, 0),
+      claimFaktur: live.filter((i) => i.lineSummary.claimRowCount > 0).length,
     };
   }, [items]);
   const rt = t.deliveries.retur;
@@ -142,7 +141,7 @@ export default function Deliveries() {
     ["needsClaimRef", rt.chipNeedsRef.replace("{n}", nf(counts.needsRef)).replace("{p}", nf(counts.pecahWithoutRef))],
     ["unresolved", rt.chipUnresolved.replace("{n}", nf(counts.unresolved))],
     ["kurang", rt.chipKurang.replace("{p}", nf(counts.kurang))],
-    ["claim", rt.chipClaim.replace("{n}", nf(counts.claimRows)).replace("{p}", nf(counts.claimPecah))],
+    ["claim", rt.chipClaim.replace("{n}", nf(counts.claimFaktur))],
   ];
   // Phase 2 chips stay hidden while their count is 0 (unless switched on), so the
   // row doesn't fill with "· 0" chips on a phone.
@@ -151,7 +150,7 @@ export default function Deliveries() {
     needsClaimRef: counts.needsRef,
     unresolved: counts.unresolved,
     kurang: counts.kurang,
-    claim: counts.claimRows,
+    claim: counts.claimFaktur,
   };
   const shownChips = chipDefs.filter(([key]) => chips[key] || chipCount[key] === undefined || chipCount[key]! > 0);
 
@@ -240,6 +239,7 @@ export default function Deliveries() {
               selected={isTablet && it.invoiceRefNorm === selectedNorm}
               onSelect={() => select(it.invoiceRef)}
               fmtShort={fmtShort}
+              showClaims={chips.claim}
             />
           ))}
         </div>
@@ -312,13 +312,18 @@ function DeliveryRow({
   selected,
   onSelect,
   fmtShort,
+  showClaims,
 }: {
   item: DeliveryListItem;
   selected: boolean;
   onSelect: () => void;
   fmtShort: (s: string) => string;
+  showClaims: boolean;
 }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const nf = (n: number) => n.toLocaleString(language === "id" ? "id-ID" : "en-US");
+  // With the Klaim chip on, each claim line shows its own figures (not a range total).
+  const claimLines = showClaims && item.requiresClaimRef ? item.lines.filter((l) => l.physical) : [];
   const rt = t.deliveries.retur;
   const d = item.delivery;
   const summary = d
@@ -355,6 +360,13 @@ function DeliveryRow({
       {summary && (
         <p className={cn("mt-1 text-xs", item.flags.needsClaimRef ? "text-red-700 dark:text-red-300" : "text-muted-foreground")}>{summary}</p>
       )}
+      {claimLines.map((l) => (
+        <p key={l.id} className="mt-1 text-xs tabular-nums text-muted-foreground">
+          <span className="font-mono">{l.skuCode}</span> · {nf(l.quantity)} {l.unitLabel === "box" ? rt.unitBox : rt.unitPak} ·{" "}
+          {l.returns ? rt.claimLinePecah.replace("{p}", nf(l.returns.pecahPieces)) : rt.rowAwaiting} ·{" "}
+          {l.claimRef ? <span className="font-mono">{l.claimRef}</span> : <span className="text-red-700 dark:text-red-300">{rt.claimNoRef}</span>}
+        </p>
+      ))}
       {(d || item.poMissing || item.duplicateInvoice) && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {d && (
