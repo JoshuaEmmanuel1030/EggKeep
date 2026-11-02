@@ -144,6 +144,16 @@ export default function Deliveries() {
     ["kurang", rt.chipKurang.replace("{p}", nf(counts.kurang))],
     ["claim", rt.chipClaim.replace("{n}", nf(counts.claimRows)).replace("{p}", nf(counts.claimPecah))],
   ];
+  // Phase 2 chips stay hidden while their count is 0 (unless switched on), so the
+  // row doesn't fill with "· 0" chips on a phone.
+  const chipCount: Partial<Record<keyof Chips, number>> = {
+    awaitingWarehouse: counts.awaiting,
+    needsClaimRef: counts.needsRef,
+    unresolved: counts.unresolved,
+    kurang: counts.kurang,
+    claim: counts.claimRows,
+  };
+  const shownChips = chipDefs.filter(([key]) => chips[key] || chipCount[key] === undefined || chipCount[key]! > 0);
 
   const list = (
     <div className="min-w-0 space-y-3">
@@ -190,7 +200,7 @@ export default function Deliveries() {
         />
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {chipDefs.map(([key, label]) => (
+        {shownChips.map(([key, label]) => (
           <Button
             key={key}
             type="button"
