@@ -14,10 +14,10 @@ import type { Delivery, DeliveryPo, DeliveryStatus } from "@/types/deliveries";
 type DeliveryRow = Database["public"]["Tables"]["deliveries"]["Row"];
 type PoRow = Pick<
   Database["public"]["Views"]["purchase_orders"]["Row"],
-  "buyer_name" | "dc_name" | "outflow_date" | "invoice_ref" | "order_lines" | "recorded_at"
+  "buyer_name" | "dc_name" | "outflow_date" | "invoice_ref" | "order_lines" | "recorded_at" | "egg_totals"
 >;
 
-export const PO_COLUMNS = "buyer_name, dc_name, outflow_date, invoice_ref, order_lines, recorded_at";
+export const PO_COLUMNS = "buyer_name, dc_name, outflow_date, invoice_ref, order_lines, recorded_at, egg_totals";
 
 export function rowToDelivery(r: DeliveryRow): Delivery {
   return {
@@ -47,6 +47,10 @@ export function rowToPo(r: PoRow): DeliveryPo {
     outflowDate: r.outflow_date ?? "",
     recordedAt: r.recorded_at ?? "",
     orderLines: (r.order_lines as unknown as PurchaseOrderLine[]) ?? [],
+    // outflow_id: added to egg_totals in Phase 2; null on legacy rows.
+    eggTotals: ((r.egg_totals as unknown as { product: string; quantity: number; outflow_id?: string | null }[]) ?? []).map(
+      (e) => ({ product: e.product, quantity: Number(e.quantity), outflowId: e.outflow_id ?? null })
+    ),
   };
 }
 

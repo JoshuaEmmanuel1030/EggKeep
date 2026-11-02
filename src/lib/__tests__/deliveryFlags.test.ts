@@ -39,6 +39,7 @@ const po = (over: Partial<DeliveryPo> = {}): DeliveryPo => ({
   outflowDate: "2026-10-26",
   recordedAt: "2026-10-26T01:00:00.000Z",
   orderLines: [{ skuCode: "N10O", packQty: 20 }],
+  eggTotals: [],
   ...over,
 });
 
@@ -97,9 +98,9 @@ describe("buildDeliveryItems (purchase_orders LEFT JOIN deliveries)", () => {
     expect(hiddenNoInvoice).toBe(0);
     expect(items.map((i) => i.invoiceRefNorm)).toEqual(["2610384", "2610383"]); // newest first
     expect(items[1].delivery?.id).toBe("d1");
-    expect(items[1].flags).toEqual({ notLogged: false, invoiceNotBack: true });
+    expect(items[1].flags).toMatchObject({ notLogged: false, invoiceNotBack: true });
     expect(items[0].delivery).toBeNull();
-    expect(items[0].flags).toEqual({ notLogged: true, invoiceNotBack: false });
+    expect(items[0].flags).toMatchObject({ notLogged: true, invoiceNotBack: false });
   });
 
   it("hides POs without an invoice_ref and counts them", () => {
@@ -113,7 +114,7 @@ describe("buildDeliveryItems (purchase_orders LEFT JOIN deliveries)", () => {
     expect(items).toHaveLength(1);
     expect(items[0].poMissing).toBe(true);
     expect(items[0].po).toBeNull();
-    expect(items[0].flags).toEqual({ notLogged: false, invoiceNotBack: false });
+    expect(items[0].flags).toMatchObject({ notLogged: false, invoiceNotBack: false });
   });
 
   it("a second PO reusing an invoice_ref is marked, not merged", () => {
@@ -124,7 +125,7 @@ describe("buildDeliveryItems (purchase_orders LEFT JOIN deliveries)", () => {
     const dup = items.find((i) => i.duplicateInvoice)!;
     expect(dup.buyerName).toBe("SEGARI"); // the later-recorded one
     expect(dup.delivery).toBeNull();
-    expect(dup.flags).toEqual({ notLogged: false, invoiceNotBack: false });
+    expect(dup.flags).toMatchObject({ notLogged: false, invoiceNotBack: false });
     const primary = items.find((i) => !i.duplicateInvoice)!;
     expect(primary.delivery?.id).toBe("d1");
   });

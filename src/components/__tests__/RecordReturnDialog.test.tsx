@@ -179,7 +179,7 @@ describe("RecordReturnDialog", () => {
   it("caps to what's still returnable after a prior partial return", async () => {
     // 100 of the 155 sold already came back -> only 55 kg is still returnable.
     priorReturnsMock.mockReturnValue({
-      "outflow-1": { restock: 100, retakan: 0, writeoff: 0, total: 100, bySku: {} },
+      "outflow-1": { restock: 100, retakan: 0, writeoff: 0, total: 100, bySku: {}, anyReturns: true },
     });
     renderDialog();
     fireEvent.change(restockInput(), { target: { value: "5" } });
@@ -306,7 +306,7 @@ describe("RecordReturnDialog", () => {
     // wiped the resolved outflow ids, and the cap forgot the 150 kg already back.
     priorReturnsMock.mockImplementation((ids) =>
       ids.includes("outflow-1")
-        ? { "outflow-1": { restock: 150, retakan: 0, writeoff: 0, total: 150, bySku: {} } }
+        ? { "outflow-1": { restock: 150, retakan: 0, writeoff: 0, total: 150, bySku: {}, anyReturns: true } }
         : {}
     );
     packSkusMock.mockReturnValue({ skus: [], isLoading: true });

@@ -19,6 +19,9 @@ export interface ReturnLineInput {
   // The pack SKU this return was entered under (null for loose/manual returns),
   // so the feed can attribute a pooled-egg return to its order line.
   skuCode?: string;
+  // The non-voided sum of returns on this outflow row (native, all SKUs) the
+  // client displayed; record_return refuses with PRIOR_MISMATCH when it moved.
+  expectedPrior?: number;
 }
 
 export interface RecordReturnInput {
@@ -26,19 +29,4 @@ export interface RecordReturnInput {
   buyerName?: string; // denormalized snapshot for retur-per-customer reporting
   reason?: string;
   lines: ReturnLineInput[];
-}
-
-// A persisted return row (shape mirrors the `returns` table).
-export interface ReturnRecord {
-  id: string;
-  outflowId: string;
-  returnDate: string;
-  product: string;
-  itemTypeId: string | null;
-  category: InventoryCategory;
-  quantity: number;
-  disposition: ReturnDisposition;
-  buyerName: string | null;
-  reason: string | null;
-  createdAt: string;
 }

@@ -81,7 +81,7 @@ export default function Deliveries() {
       toast.info(t.deliveries.exportEmpty);
       return;
     }
-    downloadCSV(buildDeliveryLogCsv(items), deliveryLogFilename(range.from, range.to));
+    downloadCSV(buildDeliveryLogCsv(items, range.from, range.to), deliveryLogFilename(range.from, range.to));
   };
 
   const fmtShort = (s: string) => toLocalDate(s).toLocaleDateString(locale, { day: "numeric", month: "short" });

@@ -7,7 +7,9 @@ import {
   formatDateId,
   formatNumberId,
   guardFormula,
-  itemToLogRow,
+  itemToLogRows,
+  buildClaimCsv,
+  claimCsvFilename,
   deliveryLogRowToCells,
   deliveryLogToCsv,
   buildDeliveryLogCsv,
@@ -42,46 +44,30 @@ const po = (over: Partial<DeliveryPo> = {}): DeliveryPo => ({
   outflowDate: "2026-10-26",
   recordedAt: "2026-10-26T01:00:00.000Z",
   orderLines: [{ skuCode: "N10O", packQty: 20 }],
+  eggTotals: [],
   ...over,
 });
 
 const itemsOf = (pos: DeliveryPo[], ds: Delivery[]) => buildDeliveryItems(pos, ds).items;
 
-// The sheet's header row, in its exact order (spec §4.7 column table).
+// Row 2 of the sheet's main tab, verbatim (Phase 2 spec §6.7.1).
 const SHEET_HEADERS = [
-  "PIC",
-  "Tgl Kirim",
-  "No. Faktur",
-  "Customer",
-  "Supir",
-  "Status Kirim",
-  "Tgl Faktur Balik",
-  "Paraf Admin",
-  "SKU",
-  "Qty Diterima (Pak)",
-  "Qty Retur (Pak)",
-  "Full",
-  "Alasan",
-  "Keterangan Kondisi",
-  "Tgl Kembali Gudang",
-  "Expired",
-  "Butir OK",
-  "Butir Retak",
-  "Butir Pecah",
-  "Paraf Gudang",
-  "No. Klaim",
-  "Status Klaim",
+  "PIC", "Tgl Kirim", "No. Faktur / PO", "Customer", "Supir", "Status Kirim", "Tgl Faktur Balik", "Paraf Admin",
+  "Item", "Qty Diterima (pack)", "Qty Retur (pack)", "Full", "Alasan Retur", "Catatan Kondisi", "Tgl Barang Balik",
+  "Tgl Expired", "Butir OK (ke stok)", "Butir Pecah", "Paraf Gudang", "No. Retur ARYO", "Status Tagihan",
 ];
+const itemToLogRow = (item: Parameters<typeof itemToLogRows>[0]) => itemToLogRows(item)[0];
 
 describe("delivery log columns", () => {
   it("match the sheet header row exactly, in order", () => {
     expect([...DELIVERY_LOG_HEADERS]).toEqual(SHEET_HEADERS);
+    expect(DELIVERY_LOG_HEADERS.join(";")).toBe(SHEET_HEADERS.join(";"));
   });
   it("follow the delivery_log column order from the spec", () => {
     expect(DELIVERY_LOG_COLUMNS.map((c) => c.key)).toEqual([
       "pic", "deliveryDate", "invoiceRef", "customer", "driverName", "status", "invoiceReturnedAt", "invoiceCheckedBy",
       "skuCode", "qtyReceivedPack", "qtyReturnedPack", "full", "reason", "conditionNotes", "returnedToWarehouseAt",
-      "expectedExpiry", "piecesOk", "piecesRetak", "piecesPecah", "warehouseCheckedBy", "claimRef", "claimStatus",
+      "expectedExpiry", "piecesOk", "piecesPecah", "warehouseCheckedBy", "claimRef", "claimStatus",
     ]);
   });
 });
@@ -117,14 +103,15 @@ describe("Indonesian formatting", () => {
 });
 
 describe("itemToLogRow / cells", () => {
-  it("fills columns 1-8 from the delivery and leaves 9-22 blank in Phase 1", () => {
+  it("a faktur with no lines: columns 1-8 from the delivery, Full filled, the rest blank", () => {
     const [item] = itemsOf([po()], [delivery()]);
     const cells = deliveryLogRowToCells(itemToLogRow(item));
-    expect(cells).toHaveLength(22);
+    expect(cells).toHaveLength(21);
     expect(cells.slice(0, 8)).toEqual([
       "dila@js.id", "26/10/2026", "2610383", "OSAVE Depok", "Hendi", "Terkirim", "28/10/2026", "yani@js.id",
     ]);
-    expect(cells.slice(8)).toEqual(Array(14).fill(""));
+    expect(cells[11]).toBe("Ya");
+    expect([...cells.slice(8, 11), ...cells.slice(12)]).toEqual(Array(12).fill(""));
   });
   it("an un-logged PO exports with blank PIC, driver, status and faktur balik", () => {
     const [item] = itemsOf([po({ dcName: null })], []);
@@ -163,15 +150,15 @@ describe("CSV", () => {
     const [header, row] = csv.slice(1).split("\n");
     expect(header).toBe(SHEET_HEADERS.map((h) => `"${h}"`).join(";"));
     expect(row.startsWith('"dila@js.id";"26/10/2026";"2610383";"Toko ""A"" Depok";"Hendi";"Terkirim";"28/10/2026";"yani@js.id";')).toBe(true);
-    expect(row.split(";")).toHaveLength(22);
+    expect(row.split(";")).toHaveLength(21);
   });
   it("exports every list row in list order: newest first, un-logged and orphan rows included", () => {
     const items = itemsOf(
       [po({ invoiceRef: "A", outflowDate: "2026-10-20" }), po({ invoiceRef: "B", outflowDate: "2026-10-27" })],
       [delivery({ id: "x", invoiceRef: "X", invoiceRefNorm: "X", deliveryDate: "2026-10-25" })] // no PO
     );
-    const lines = buildDeliveryLogCsv(items).split("\n");
-    expect(lines).toHaveLength(4);
+    const lines = buildDeliveryLogCsv(items, "2026-10-15", "2026-10-29").split("\n");
+    expect(lines).toHaveLength(6); // header, 3 rows, blank, summary
     expect(lines[1]).toContain('"B"');
     expect(lines[2]).toContain('"X"');
     expect(lines[3]).toContain('"A"');
