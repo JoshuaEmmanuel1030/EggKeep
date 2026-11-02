@@ -36,7 +36,7 @@ begin
 end $$;
 
 create function pg_temp.product(p_name text) returns void language sql as $$
-  insert into item_types (name, category, unit) values (p_name, 'egg', 'butir') $$;
+  insert into item_types (name, category, unit, eggs_per_unit) values (p_name, 'egg', 'btr', 1) $$;
 
 create function pg_temp.batch(p_key text, p_product text, p_date text, p_qty numeric) returns uuid
 language sql as $$

@@ -24,7 +24,8 @@ const wibTime = (iso: string) =>
 // §6.5.7 "Riwayat retur": every return on the faktur's egg outflow rows (any
 // sku_code, voided included), by save group, with "Batalkan retur ini".
 export function ReturnHistory({ eggOutflowIds, lines, poVoided }: { eggOutflowIds: string[]; lines: DeliveryLine[]; poVoided: boolean }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const locale = language === "id" ? "id-ID" : "en-US";
   const r = t.deliveries.retur;
   const { user } = useAuth();
   const { canEdit } = useVoidEntry();
@@ -91,13 +92,13 @@ export function ReturnHistory({ eggOutflowIds, lines, poVoided }: { eggOutflowId
                   <span className="font-mono text-xs">{g.skuCode ?? "—"}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="tabular-nums">{sum.total.toLocaleString("id-ID")} butir · <ReturnCodeParts returns={sum} /></span>
+                  <span className="tabular-nums">{sum.total.toLocaleString(locale)} butir · <ReturnCodeParts returns={sum} /></span>
                   {g.reason && <span>{RETURN_REASON_LABEL_ID[g.reason] ?? g.reason}</span>}
                   {(!g.skuCode || !skus.has(g.skuCode)) && <span className="italic">{r.noLine}</span>}
                 </div>
                 {g.rows.map((x) => (
                   <p key={x.id} className="text-xs text-muted-foreground tabular-nums">
-                    {x.disposition} {Number(x.quantity).toLocaleString("id-ID")} {unitOf(x.product) === "kg" ? "kg" : "butir"} {x.product}
+                    {x.disposition} {Number(x.quantity).toLocaleString(locale)} {unitOf(x.product) === "kg" ? "kg" : "butir"} {x.product}
                   </p>
                 ))}
               </div>
@@ -115,7 +116,7 @@ export function ReturnHistory({ eggOutflowIds, lines, poVoided }: { eggOutflowId
                       <p>
                         {r.pulled
                           .replace("{date}", formatDateId(wibDate(x.voided_at!)))
-                          .replace("{qty}", nativeToPieces(Number(x.quantity), unitOf(x.product)).toLocaleString("id-ID"))
+                          .replace("{qty}", nativeToPieces(Number(x.quantity), unitOf(x.product)).toLocaleString(locale))
                           .replace("{product}", x.disposition === "retakan" ? `${x.product} (RETAKAN)` : x.product)}
                       </p>
                     )}

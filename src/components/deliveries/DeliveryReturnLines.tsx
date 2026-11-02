@@ -53,7 +53,8 @@ interface SkuOption {
 // confirmed save per line that records the stock return through record_return.
 // Online-only (no outbox). Nothing stock-side is stored on delivery_lines.
 export function DeliveryReturnLines({ invoiceRef }: { invoiceRef: string }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const locale = language === "id" ? "id-ID" : "en-US";
   const r = t.deliveries.retur;
   const { user } = useAuth();
   const { data, ensureDelivery, setClaimRefForDelivery } = useDelivery(invoiceRef);
@@ -215,7 +216,7 @@ export function DeliveryReturnLines({ invoiceRef }: { invoiceRef: string }) {
                         .replace("{code}", opt.code)
                         .replace("{qty}", String(opt.packQty))
                         .replace("{unit}", unitWord)
-                        .replace("{pieces}", perPoUnit ? (opt.packQty * perPoUnit).toLocaleString("id-ID") : "?")}
+                        .replace("{pieces}", perPoUnit ? (opt.packQty * perPoUnit).toLocaleString(locale) : "?")}
                     </span>
                     {isBox ? (
                       <>
