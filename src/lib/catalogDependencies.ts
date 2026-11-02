@@ -24,6 +24,19 @@ export async function checkSKUDependencies(skuCode: string): Promise<DependencyC
     totalCount += outflowCount;
   }
 
+  // Delivery lines and returns keep the code as a snapshot (exact match): a
+  // renamed code would orphan them from the order line they belong to.
+  for (const table of ["delivery_lines", "returns"]) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { count, error } = await (supabase.from as any)(table)
+      .select("*", { count: "exact", head: true })
+      .eq("sku_code", skuCode);
+    if (!error && count && count > 0) {
+      details.push(`${table}:${count}`);
+      totalCount += count;
+    }
+  }
+
   return {
     hasDependencies: totalCount > 0,
     dependencyCount: totalCount,

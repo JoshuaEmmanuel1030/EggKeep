@@ -118,7 +118,7 @@ export const toolDefinitions = [
   {
     name: "get_returns",
     description:
-      "List customer returns (retur) in a date range, with totals by disposition (restock vs writeoff). Use for 'any returns yesterday'.",
+      "List customer returns (retur) in a date range, with totals by disposition (restock = OK back to stock, retakan = cracked, writeoff = broken). Voided returns are excluded. Use for 'any returns yesterday'.",
     input_schema: {
       type: "object",
       properties: {
@@ -126,7 +126,7 @@ export const toolDefinitions = [
         date_from: { type: "string" },
         date_to: { type: "string" },
         product: { type: "string" },
-        disposition: { type: "string", enum: ["restock", "writeoff"] },
+        disposition: { type: "string", enum: ["restock", "retakan", "writeoff"] },
       },
     },
   },
@@ -334,16 +334,17 @@ async function getReturnsTool(
     .select("return_date, product, category, quantity, disposition, buyer_name, reason")
     .gte("return_date", range.from)
     .lte("return_date", range.to)
+    .is("voided_at", null)
     .order("return_date", { ascending: false })
     .limit(MAX_LIMIT);
   if (typeof args.product === "string") q = q.eq("product", args.product);
-  if (args.disposition === "restock" || args.disposition === "writeoff") {
+  if (args.disposition === "restock" || args.disposition === "retakan" || args.disposition === "writeoff") {
     q = q.eq("disposition", args.disposition);
   }
   const { data, error } = await q;
   if (error) return { error: error.message };
 
-  const totals: Record<string, number> = { restock: 0, writeoff: 0 };
+  const totals: Record<string, number> = { restock: 0, retakan: 0, writeoff: 0 };
   for (const r of data ?? []) {
     totals[r.disposition] = (totals[r.disposition] ?? 0) + Number(r.quantity);
   }

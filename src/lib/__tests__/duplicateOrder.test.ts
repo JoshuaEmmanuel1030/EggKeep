@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { orderLinesSignature, orderDuplicateKey, DupOrderLine } from "../duplicateOrder";
+import { orderLinesSignature, orderDuplicateKey, findRefDuplicates, DupOrderLine } from "../duplicateOrder";
 
 describe("orderLinesSignature", () => {
   it("is order-independent", () => {
@@ -64,5 +64,30 @@ describe("orderDuplicateKey with DCs", () => {
   });
   it("keeps the old key when there is no DC", () => {
     expect(orderDuplicateKey("OSAVE", "2026-10-21", lines, null)).toBe(orderDuplicateKey("OSAVE", "2026-10-21", lines));
+  });
+});
+
+describe("findRefDuplicates (shared No. Faktur)", () => {
+  it("a ref already on a live PO of another date -> named with that PO's buyer and date", () => {
+    const m = findRefDuplicates(
+      [{ invoiceRef: " 2610319 ", buyerName: "Osave", outflowDate: "2026-11-02" }],
+      [{ invoiceRef: "2610319", buyerName: "Segari", outflowDate: "2026-10-19" }]
+    );
+    expect(m).toEqual([{ ref: "2610319", buyerName: "Segari", outflowDate: "2026-10-19" }]);
+  });
+  it("no ref, or an unused ref -> nothing (near-duplicates stay the other check's job)", () => {
+    expect(findRefDuplicates([{ invoiceRef: "", buyerName: "Osave", outflowDate: "2026-11-02" }], [{ invoiceRef: "", buyerName: "X", outflowDate: "x" }])).toEqual([]);
+    expect(findRefDuplicates([{ invoiceRef: "A1", buyerName: "Osave", outflowDate: "2026-11-02" }], [])).toEqual([]);
+  });
+  it("two queued orders of one batch sharing a ref -> flagged once", () => {
+    const m = findRefDuplicates(
+      [
+        { invoiceRef: "a1", buyerName: "Osave", outflowDate: "2026-11-02" },
+        { invoiceRef: "A1", buyerName: "Astro", outflowDate: "2026-11-02" },
+      ],
+      []
+    );
+    expect(m).toHaveLength(1);
+    expect(m[0].buyerName).toBe("Astro");
   });
 });

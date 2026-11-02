@@ -289,6 +289,11 @@ export function BuyerList({ isAdmin = false }: BuyerListProps) {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium">{buyer.name}</span>
+                  {buyer.requiresClaimRef && (
+                    <span className="shrink-0 rounded-full border border-red-200 px-1.5 text-[10px] text-red-700 dark:border-red-900 dark:text-red-300">
+                      {t.catalog.requiresClaimRefTag}
+                    </span>
+                  )}
                   {pins > 0 && (
                     <Badge variant="secondary" className="shrink-0">{t.buyerProfile.pinnedCount.replace("{n}", String(pins))}</Badge>
                   )}

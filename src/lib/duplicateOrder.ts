@@ -41,3 +41,33 @@ export function orderDuplicateKey(
   const key = `${buyerName} ${outflowDate} ${orderLinesSignature(lines)}`;
   return dcId ? `${key} @${dcId}` : key;
 }
+
+// Shared No. Faktur (Phase 2, §6.10): a ref already carried by a live PO, any
+// date, or by another order of the same batch. Since a shared ref blocks the
+// warehouse save on /deliveries, the builder warns at entry. Never blocks.
+export interface RefCarrier {
+  invoiceRef?: string | null;
+  buyerName: string;
+  outflowDate: string;
+}
+export interface RefMatch {
+  ref: string;
+  buyerName: string; // the PO (or queued order) that already uses the ref
+  outflowDate: string;
+}
+
+const normRef = (r: string | null | undefined) => (r ?? "").trim().toUpperCase();
+
+export function findRefDuplicates(orders: RefCarrier[], existing: RefCarrier[]): RefMatch[] {
+  const matches: RefMatch[] = [];
+  const seen = new Set<string>();
+  orders.forEach((o, i) => {
+    const ref = normRef(o.invoiceRef);
+    if (!ref) return;
+    const other = [...existing, ...orders.filter((_, j) => j !== i)].find((e) => normRef(e.invoiceRef) === ref);
+    if (!other || seen.has(ref)) return;
+    seen.add(ref);
+    matches.push({ ref: (o.invoiceRef ?? "").trim(), buyerName: other.buyerName, outflowDate: other.outflowDate });
+  });
+  return matches;
+}

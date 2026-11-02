@@ -83,3 +83,46 @@ keep working against the new schema, never the reverse.
 4. **After deploy** — open the app on one phone, tap the update toast (the SW
    checks on focus and every 15 min), confirm the new bundle loads, and watch
    Sentry → Issues for the new release.
+
+## 5. Voiding a return (`void_return`, Phase 2)
+
+Spec: `docs/superpowers/specs/2026-11-02-delivery-return-log-phase2-design.md` §6.3.
+
+- **Who:** the person who recorded the return within 48 hours, or an app admin
+  (`has_role(uid, 'admin')`) at any time. Checked on the server; the
+  "Batalkan retur ini" button in Riwayat retur (`/deliveries`) only mirrors it.
+- **What it does:** voids the whole save group (every row one `record_return`
+  call wrote for that outflow row and SKU) and records the opposite movement as
+  its own outflow (`outflows.void_return_id` set; jenis `retur_batal` in the
+  reconciliation export): OK eggs are taken back out of the parent product,
+  Retakan eggs out of "<PRODUCT> (RETAKAN)", FIFO from today's batches. History
+  is never rewritten; voided rows stay, struck through.
+- **`INSUFFICIENT_STOCK`:** the product no longer holds what the group put back
+  (the eggs were sold on). Nothing changed. Stock is right as it is; only the
+  business record is wrong. Retry when stock allows, or note it and correct
+  after the next physical count.
+- **`VOID_BLOCKED` (from `void_outflow`):** voiding an order would push a batch
+  outside `[0, quantity]`. A backstop: unreachable while every restock goes
+  through `record_return`. If it fires, stop and investigate with
+  `reconcile_inventory()`; do not hand-edit `remaining_butir`.
+- **`void_outflow` after a voided return:** restores each batch by
+  `ded − restocks (voided included) + compensating deductions` and voids the
+  order's compensating outflows with it, so the end state is as if the order,
+  its returns and their voids never happened. `reconcile_inventory()` must
+  return 0 rows afterwards.
+- **Do not run `recalculate_inventory_fifo` after Phase 2 voids exist.** It
+  replays outflows before re-applying restocks, so a compensating outflow (or
+  any sale of restocked eggs) is under-deducted and stock over-states.
+  `reconcile_inventory()` is the correctness check.
+- **Stop all voids:** `revoke execute on function public.void_return(uuid, text) from authenticated;`
+
+## 6. One-time sheet import (October 2026)
+
+`node --env-file=.env scripts/import-sheet-lines.mjs --xlsx <file> --dry-run`
+(Node 20.6+; `IMPORT_EMAIL` / `IMPORT_PASSWORD` in the environment, never in a
+file). Review the report, then run without `--dry-run`; a second run must add
+zero rows. Writes only `deliveries` / `delivery_lines` (`source =
+'sheet_import'`), never `returns`. A dry run also writes the report file
+(`--report`, default `docs/sheet-import-2026-10.md`). Reverse with
+`delete from delivery_lines where source = 'sheet_import';` then the
+`deliveries` ids the live report lists as created (only those with no other line).

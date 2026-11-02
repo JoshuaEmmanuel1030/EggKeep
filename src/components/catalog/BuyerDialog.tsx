@@ -19,11 +19,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 
 const buyerSchema = z.object({
   name: z.string().min(1, "Name is required"),
+  requiresClaimRef: z.boolean(),
 });
 
 type BuyerFormData = z.infer<typeof buyerSchema>;
@@ -47,11 +49,11 @@ export function BuyerDialog({
 
   const form = useForm<BuyerFormData>({
     resolver: zodResolver(buyerSchema),
-    defaultValues: { name: "" },
+    defaultValues: { name: "", requiresClaimRef: false },
   });
 
   useEffect(() => {
-    if (open) form.reset({ name: buyer?.name ?? "" });
+    if (open) form.reset({ name: buyer?.name ?? "", requiresClaimRef: !!buyer?.requiresClaimRef });
   }, [open, buyer, form]);
 
   const handleSubmit = async (data: BuyerFormData) => {
@@ -79,6 +81,19 @@ export function BuyerDialog({
                     <Input {...field} placeholder="Enter buyer name" autoFocus />
                   </FormControl>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="requiresClaimRef"
+              render={({ field }) => (
+                <FormItem className="flex items-center gap-2 space-y-0">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} />
+                  </FormControl>
+                  <FormLabel className="font-normal">{t.catalog.requiresClaimRef}</FormLabel>
                 </FormItem>
               )}
             />

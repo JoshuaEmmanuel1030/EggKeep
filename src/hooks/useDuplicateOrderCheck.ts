@@ -3,7 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   DupOrderLine,
   DUPLICATE_WINDOW_MINUTES,
+  findRefDuplicates,
   orderDuplicateKey,
+  type RefCarrier,
 } from "@/lib/duplicateOrder";
 
 // An order the builder is about to submit, reduced to what identifies a duplicate.
@@ -12,13 +14,36 @@ export interface OrderToCheck {
   outflowDate: string;
   orderLines: DupOrderLine[];
   dcId?: string;
+  invoiceRef?: string;
 }
 
-// A previously-recorded order that matches one being submitted.
+// A previously-recorded order that matches one being submitted: "near" = same
+// order recorded within the window; "ref" = its No. Faktur is already used by
+// the PO named here (buyerName / outflowDate), any date.
 export interface DuplicateMatch {
+  kind: "near" | "ref";
   buyerName: string;
   outflowDate: string;
   minutesAgo: number;
+  invoiceRef?: string;
+}
+
+const likeExact = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+// Live POs (the view excludes voided rows) carrying any of these refs, exact and
+// case-insensitive, any date.
+async function posWithRefs(refs: string[]): Promise<RefCarrier[]> {
+  const out: RefCarrier[] = [];
+  for (const ref of refs) {
+    const { data, error } = await supabase
+      .from("purchase_orders")
+      .select("invoice_ref, buyer_name, outflow_date")
+      .ilike("invoice_ref", likeExact(ref))
+      .limit(5);
+    if (error || !data) continue;
+    for (const r of data) out.push({ invoiceRef: r.invoice_ref, buyerName: r.buyer_name ?? "", outflowDate: r.outflow_date ?? "" });
+  }
+  return out;
 }
 
 // Checks the orders being submitted against recently-recorded quick-outflow
@@ -38,7 +63,16 @@ export function useDuplicateOrderCheck() {
       .is("voided_at", null)
       .gte("recorded_at", cutoff);
 
-    if (error || !data) return [];
+    const refs = [...new Set(orders.map((o) => (o.invoiceRef ?? "").trim()).filter(Boolean))];
+    const refMatches: DuplicateMatch[] = findRefDuplicates(orders, refs.length ? await posWithRefs(refs) : []).map((m) => ({
+      kind: "ref",
+      buyerName: m.buyerName,
+      outflowDate: m.outflowDate,
+      minutesAgo: 0,
+      invoiceRef: m.ref,
+    }));
+
+    if (error || !data) return refMatches;
 
     // Most-recent recorded_at per existing order key (rows repeat per line/entry).
     const recentByKey = new Map<string, string>();
@@ -62,13 +96,14 @@ export function useDuplicateOrderCheck() {
       const recordedAt = recentByKey.get(key);
       if (recordedAt) {
         matches.push({
+          kind: "near",
           buyerName: o.buyerName,
           outflowDate: o.outflowDate,
           minutesAgo: Math.max(0, Math.round((nowMs - new Date(recordedAt).getTime()) / 60_000)),
         });
       }
     }
-    return matches;
+    return [...matches, ...refMatches];
   }, []);
 
   return { check };

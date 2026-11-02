@@ -309,6 +309,9 @@ each. **W** = writes name-keyed data, **R** = reads/matches by name, **D** = dis
 | 34 | `src/integrations/supabase/types.ts` | — | regenerate after each DB stage |
 | 35 | `supabase/functions/inventory-assistant/index.ts` (lines 59–228) | R | analytics group-by-name; switch to id + joined display name so renames don't split series (Stage C; separate deploy) |
 | 36 | `supabase/migrations/*` — `record_order_outflows`, `recalculate_inventory_fifo` | R/W | v2 definitions in the draft file (Stage C) |
+| 37 | `src/lib/deliveryFlags.ts:buildLineViews` / `summarizeLineReturns`, `src/lib/deliveryExport.ts`, `src/components/deliveries/DeliveryReturnLines.tsx` | S | `delivery_lines.sku_code`, `unit_label`, `pieces_per_unit` and `returns.sku_code` are snapshots of the PO line's `pack_skus.code` and its unit at save (Phase 2); never re-resolved — a renamed code keeps old lines on the old code (`checkSKUDependencies` counts them) |
+| 38 | `src/lib/expiryRules.ts:resolveShelfLife` (via `useExpiryRules`) | R | `expiry_rules.sku_code` is resolved on read: exact match against the line's live base pack code (`buildSkuEggMap`) |
+| 39 | `scripts/lib/sheetImportRules.mjs` / `scripts/import-sheet-lines.mjs` | S | one-time import writes `delivery_lines.sku_code` from the live `pack_skus.code` (snapshot) |
 
 Roughly **36 locations touched by the audit; ~20 need code changes** (9 in Stage B,
 ~10 in Stage C, 2 retired in Stage D); the rest are verified-no-change.

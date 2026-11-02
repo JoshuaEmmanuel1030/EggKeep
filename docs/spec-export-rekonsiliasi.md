@@ -75,7 +75,7 @@ Six tabs, this order. Column order is fixed; do not append columns in the middle
 
 ### 5.1 `Ringkasan`
 Metadata block (not a table):
-- Periode, Dibuat (timestamp WIB), Versi skema (`1`), Jumlah transaksi, Catatan (count of flagged rows by flag type).
+- Periode, Dibuat (timestamp WIB), Versi skema (`2` since Phase 2; was `1`), Jumlah transaksi, Catatan (count of flagged rows by flag type).
 - Table: per product, `Item | Unit | Stok Awal Periode | Total Masuk | Total Keluar PO | Total Keluar Tunai | Total Retur Restock | Stok Akhir Periode`. Stok Akhir must equal the last day's Stok Akhir in `Harian`.
 
 ### 5.2 `Harian` — daily roll, mirrors Final Check
@@ -141,6 +141,14 @@ Sorted by Tanggal, No. Faktur. This tab is the primary join key to Peachtree (re
 ### 5.5 `Retur`
 `Tanggal Retur | No. Faktur Asal | Tanggal Faktur Asal | Pembeli | Item | Unit | Qty | Disposisi | Catatan | Return ID | Outflow ID`
 
+Phase 2 (schema version 2, `20261103000000_delivery_lines_void_return.sql`): the tab also lists jenis
+`retur_batal`, the compensating outflow `void_return` writes when a return is voided. In
+`v_recon_ledger` it carries its quantity as a **negative `retur`** (keluar columns null, so
+`v_recon_daily`'s arithmetic needs no new column), `return_id` = the voided return, `disposisi` = its
+disposition, flag `retur-batal`. The voided return itself stays a movement, flagged
+`retur-dibatalkan`; the Faktur tab's Retur column skips such restocks. Returns on a voided outflow
+now take the outflow's `voided_at`.
+
 ### 5.6 `Katalog` — snapshot at export time
 `Item (sheet) | Nama Katalog | Unit | Butir per Unit | Induk (parent) | Is RETAKAN | Box capacities (JSON)`
 Plus a second table: `pack_skus` with `SKU | Produk | Butir per Pack`. Purpose: the factor in force when this file was produced, so later catalog edits can't change the meaning of historical files.
@@ -187,6 +195,8 @@ Short tokens, comma-separated, so they can be filtered in Excel.
 | `faktur-ganda` | same No. Faktur + Item appears on more than one outflow in the range |
 | `qty-nol` | movement with quantity 0 or negative |
 | `tgl-aneh` | `date` outside 2026-07-01 .. today + 1 |
+| `retur-batal` | (schema 2) compensating outflow of a voided return (jenis `retur_batal`) |
+| `retur-dibatalkan` | (schema 2) a return row (or its RETAKAN inflow) whose return was voided |
 
 ## 9. Formatting rules
 

@@ -2,6 +2,7 @@ export interface Buyer {
   id: string;
   name: string;
   pinnedSkuIds?: string[]; // pack_skus ids pinned to the top of this buyer's PO SKU dropdown
+  requiresClaimRef?: boolean; // "Perlu No. Retur": physical returns need a No. Retur OSV (red flag)
 }
 
 export type BoxModeType = 'box kecil' | 'box osave' | 'box osave polos' | 'keranjang' | 'tray' | 'plastic';
