@@ -23,14 +23,12 @@ import { useVoidEntry } from "@/hooks/useVoidEntry";
 import { useRecordReturn } from "@/hooks/useRecordReturn";
 import { usePriorReturns } from "@/hooks/usePriorReturns";
 import { enqueueReturn } from "@/lib/returnOutbox";
-import { remainingReturnable, piecesToNative, nativeToPieces } from "@/lib/returnsCap";
+import { remainingReturnable, nativeToPieces } from "@/lib/returnsCap";
+import { buildReturnLines, buildSkuEggMap, type ReturnRowInput } from "@/lib/returnLines";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { ActivityLog } from "@/types/activityLog";
-import {
-  RecordReturnInput,
-  ReturnDisposition,
-  ReturnLineInput,
-} from "@/types/returns";
+import { RecordReturnInput, ReturnDisposition } from "@/types/returns";
+import type { InventoryCategory } from "@/types/inventory";
 
 interface RecordReturnDialogProps {
   open: boolean;
@@ -125,23 +123,18 @@ export function RecordReturnDialog({
   const [resolvedIds, setResolvedIds] = useState<Record<string, string | null>>({});
 
   const skuMap = useMemo(() => {
-    const byCode: Record<string, (typeof skus)[number]> = {};
-    for (const s of skus) byCode[s.code] = s;
+    // Box SKU (e.g. OSVN10B): it carries no egg count of its own — eggs come
+    // from its nested base pack × box capacity (packs/box), mirroring
+    // resolveBoxLine (shared rule: buildSkuEggMap). A box with no configured
+    // capacity keeps the box row's own fields, as before.
+    const eggs = buildSkuEggMap(skus, boxCapacityMap);
     const m: Record<string, { eggProduct: string; eggsPerPack: number }> = {};
     for (const s of skus) {
-      // Box SKU (e.g. OSVN10B): it carries no egg count of its own — eggs come
-      // from its nested base pack × box capacity (packs/box), mirroring
-      // resolveBoxLine in outflowCalculator. Without this, eggProduct/eggsPerPack
-      // are blank, the cap resolves to 0, and the input won't accept any value.
-      if (s.basePackCode && s.boxMode) {
-        const base = byCode[s.basePackCode];
-        const capacity = boxCapacityMap?.[s.boxMode]?.[s.basePackCode] ?? 0;
-        if (base && capacity > 0) {
-          m[s.code] = { eggProduct: base.eggProduct, eggsPerPack: base.eggsPerPack * capacity };
-          continue;
-        }
-      }
-      m[s.code] = { eggProduct: s.eggProduct, eggsPerPack: s.eggsPerPack };
+      const e = eggs[s.code];
+      m[s.code] =
+        s.basePackCode && s.boxMode && e.piecesPerBox != null
+          ? { eggProduct: e.eggProduct, eggsPerPack: e.piecesPerBox }
+          : { eggProduct: s.eggProduct, eggsPerPack: s.eggsPerPack };
     }
     return m;
   }, [skus, boxCapacityMap]);
@@ -316,48 +309,55 @@ export function RecordReturnDialog({
   const handleConfirm = async () => {
     if (!canSubmit) return;
 
-    // Running native budget per egg product, shared across all its rows, so
-    // pieces→native rounding can never push the summed native qty over the cap.
-    const eggRemaining: Record<string, number> = {};
-
-    const resolved: ReturnLineInput[] = [];
+    // Resolve every egg's outflow id first (the async fallback included): the
+    // shared builder is synchronous.
+    const outflowIdByProduct: Record<string, string | null> = {};
+    const remainingNativeByProduct: Record<string, number> = {};
+    const unitByProduct: Record<string, string | undefined> = {};
+    const categoryByProduct: Record<string, InventoryCategory> = {};
     for (const row of enteredLines) {
-      const log = eggLogByProduct[row.eggProduct];
-      const outflowId =
-        outflowIdForProduct(row.eggProduct) ?? (log ? await findRelatedEntryId(log) : null);
-      if (!outflowId || !log) {
-        toast.error(
-          t.activity.returnLineUnresolved.replace("{product}", row.label)
-        );
-        return;
-      }
-      if (!(row.eggProduct in eggRemaining)) {
-        eggRemaining[row.eggProduct] = remainingNativeForProduct(row.eggProduct);
-      }
-      const unit = conversionMap[row.eggProduct]?.unit;
-      // Emit one line per non-zero bucket, all sharing this outflowId. The user
-      // typed PIECES; convert to the egg's native unit and clamp to the running
-      // remainder so the egg-group's combined native qty never exceeds the cap.
-      const state = lines[row.key] ?? EMPTY_LINE;
-      for (const { key } of BUCKETS) {
-        const entered = parseQty(state[key]);
-        if (entered <= 0) continue;
-        // Pack rows entered pieces -> convert to native; fallback rows are already native.
-        const want = row.pieces ? piecesToNative(entered, unit) : entered;
-        const quantity = Math.min(want, eggRemaining[row.eggProduct]);
-        if (quantity <= 0) continue;
-        resolved.push({
-          id: makeId(),
-          outflowId,
-          skuCode: row.skuCode,
-          product: row.eggProduct,
-          category: log.category,
-          quantity,
-          disposition: key,
-        });
-        eggRemaining[row.eggProduct] -= quantity;
-      }
+      const product = row.eggProduct;
+      if (product in outflowIdByProduct) continue;
+      const log = eggLogByProduct[product];
+      outflowIdByProduct[product] = log ? outflowIdForProduct(product) ?? (await findRelatedEntryId(log)) : null;
+      remainingNativeByProduct[product] = remainingNativeForProduct(product);
+      unitByProduct[product] = conversionMap[product]?.unit;
+      if (log) categoryByProduct[product] = log.category;
     }
+
+    const builderRows: ReturnRowInput[] = enteredLines.map((row) => {
+      const state = lines[row.key] ?? EMPTY_LINE;
+      return {
+        key: row.key,
+        skuCode: row.skuCode,
+        eggProduct: row.eggProduct,
+        // Pack rows entered pieces; fallback rows are already native.
+        inPieces: row.pieces,
+        buckets: { restock: parseQty(state.restock), retakan: parseQty(state.retakan), writeoff: parseQty(state.writeoff) },
+      };
+    });
+    const built = buildReturnLines({
+      rows: builderRows,
+      outflowIdByProduct,
+      remainingNativeByProduct,
+      unitByProduct,
+      categoryByProduct,
+      ids: () => makeId(),
+    });
+    if (!built.ok) {
+      const row = enteredLines.find((r) => r.eggProduct === built.product);
+      if (built.kind === "unresolved") {
+        toast.error(t.activity.returnLineUnresolved.replace("{product}", row?.label ?? built.product));
+      } else {
+        toast.error(
+          t.activity.returnOverMax
+            .replace("{max}", (row ? remainingEntryForRow(row) : 0).toLocaleString())
+            .replace("{unit}", row?.pieces ? "butir" : unitLabel(built.product))
+        );
+      }
+      return;
+    }
+    const resolved = built.lines;
 
     if (resolved.length === 0) return;
 

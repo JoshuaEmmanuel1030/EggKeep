@@ -30,18 +30,36 @@ export async function callRecordReturn(input: RecordReturnInput): Promise<Return
           quantity: l.quantity,
           disposition: l.disposition,
           sku_code: l.skuCode ?? null,
+          ...(l.expectedPrior !== undefined ? { expected_prior: l.expectedPrior } : {}),
         })),
       },
     });
     if (error) throw error;
     return { ok: true };
   } catch (e) {
-    const online = typeof navigator === "undefined" || navigator.onLine;
-    // record_return errors (RETURN_EXCEEDS_OUTFLOW, RESTOCK_EXCEEDS_DEDUCTED,
-    // OUTFLOW_VOIDED, PARENT_TYPE_MISSING...) carry a Postgres code -> "server",
-    // so they are never queued on first submit.
-    const kind = classifyOutflowError(e, online);
-    const message = (e as { message?: string })?.message ?? String(e);
-    return { ok: false, kind, message };
+    return failure(e);
   }
+}
+
+// void_return voids a whole save group (one record_return call) as one
+// compensating stock movement. Online-only: never queued.
+export async function callVoidReturn(returnId: string, reason: string): Promise<ReturnSubmitResult> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.rpc as any)("void_return", { p_return_id: returnId, p_reason: reason });
+    if (error) throw error;
+    return { ok: true };
+  } catch (e) {
+    return failure(e);
+  }
+}
+
+function failure(e: unknown): ReturnSubmitResult {
+  const online = typeof navigator === "undefined" || navigator.onLine;
+  // record_return errors (RETURN_EXCEEDS_OUTFLOW, RESTOCK_EXCEEDS_DEDUCTED,
+  // OUTFLOW_VOIDED, PARENT_TYPE_MISSING...) carry a Postgres code -> "server",
+  // so they are never queued on first submit.
+  const kind = classifyOutflowError(e, online);
+  const message = (e as { message?: string })?.message ?? String(e);
+  return { ok: false, kind, message };
 }

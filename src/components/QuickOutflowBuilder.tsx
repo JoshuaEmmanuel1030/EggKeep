@@ -433,6 +433,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
         outflowDate: o.date,
         orderLines: buildOrderMetadata(o).orderLines ?? [],
         dcId: o.dcId,
+        invoiceRef: o.invoiceRef,
       }))
     );
     if (dups.length > 0) {
@@ -772,7 +773,13 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit }: QuickOu
               <ul className="mt-2 space-y-1 text-sm">
                 {dupMatches.map((d, i) => (
                   <li key={`${d.buyerName}-${d.outflowDate}-${i}`}>
-                    • {d.buyerName} ({d.outflowDate}) — {t.outflow.duplicateLine.replace("{minutes}", String(d.minutesAgo))}
+                    •{" "}
+                    {d.kind === "ref"
+                      ? t.outflow.duplicateRef
+                          .replace("{ref}", d.invoiceRef ?? "")
+                          .replace("{buyer}", d.buyerName)
+                          .replace("{date}", d.outflowDate)
+                      : `${d.buyerName} (${d.outflowDate}) — ${t.outflow.duplicateLine.replace("{minutes}", String(d.minutesAgo))}`}
                   </li>
                 ))}
               </ul>

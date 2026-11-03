@@ -41,6 +41,7 @@ const skuSchema = z.object({
   packagingItem: z.string().optional(),
   basePackCode: z.string().optional(),
   boxMode: z.string().optional(),
+  unitLabel: z.enum(["pak", "box"]),
   isActive: z.boolean(),
 }).refine((d) => d.kind !== "pack" || (d.eggsPerPack && d.eggsPerPack >= 1 && d.eggProduct),
   { message: "Pack SKUs need eggs-per-pack and an egg product", path: ["eggProduct"] })
@@ -78,11 +79,16 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
       packagingItem: "",
       basePackCode: "",
       boxMode: "",
+      unitLabel: "pak",
       isActive: true,
     },
   });
 
   const kind = form.watch("kind");
+  // A new box SKU is counted in boxes on the faktur by default.
+  useEffect(() => {
+    if (!sku) form.setValue("unitLabel", kind === "box" ? "box" : "pak");
+  }, [kind, sku, form]);
 
   useEffect(() => {
     if (open) {
@@ -96,6 +102,7 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
           packagingItem: sku.packagingItem || "",
           basePackCode: sku.basePackCode || "",
           boxMode: sku.boxMode || "",
+          unitLabel: sku.unitLabel ?? (sku.basePackCode ? "box" : "pak"),
           isActive: sku.isActive,
         });
       } else {
@@ -108,6 +115,7 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
           packagingItem: "",
           basePackCode: "",
           boxMode: "",
+          unitLabel: "pak",
           isActive: true,
         });
       }
@@ -124,6 +132,7 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
         packagingItem: null,
         basePackCode: data.basePackCode,
         boxMode: data.boxMode,
+        unitLabel: data.unitLabel,
         isActive: data.isActive,
       });
     } else {
@@ -135,6 +144,7 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
         packagingItem: data.packagingItem || null,
         basePackCode: null,
         boxMode: null,
+        unitLabel: data.unitLabel,
         isActive: data.isActive,
       });
     }
@@ -197,6 +207,28 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
                     </SelectContent>
                   </Select>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Satuan di faktur: the unit word on delivery lines (N30B is a 150-egg "box"). */}
+            <FormField
+              control={form.control}
+              name="unitLabel"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.catalog.unitLabel}</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="pak">pak</SelectItem>
+                      <SelectItem value="box">box</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </FormItem>
               )}
             />

@@ -47,6 +47,7 @@ import { orderBucketKey, returnCode } from "@/lib/activityGrouping";
 import { nativeToPieces } from "@/lib/returnsCap";
 import { usePriorReturns, ReturnsSummary, OutflowReturns } from "@/hooks/usePriorReturns";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
+import { buildSkuEggMap } from "@/lib/returnLines";
 import { useDeliveryStatuses } from "@/hooks/useDeliveries";
 import { normalizeInvoiceRef } from "@/lib/deliveryFlags";
 import { DeliveryStatusChip } from "./deliveries/DeliveryStatusChip";
@@ -377,7 +378,8 @@ export function useActivityFeed(logs: ActivityLog[], onVoided?: () => void) {
         (l) =>
           l.category === "egg" &&
           l.action_type === "outflow" &&
-          (returnsMap[l.metadata?.relatedEntryId ?? ""]?.total ?? 0) > 0
+          // Voided returns count too: correct_order's HAS_RETURNS refuses them.
+          !!returnsMap[l.metadata?.relatedEntryId ?? ""]?.anyReturns
       ),
     });
   };
@@ -1058,18 +1060,15 @@ export function useOrderReturns(order: BuyerOrder, returnsMap: Record<string, Ou
   // recorded against its underlying egg. Several SKUs can map to the same egg
   // (e.g. KP10B/KP6B -> KAMPUNG BIASA); each such line shows that egg's return.
   const { skus } = usePackSKUs();
+  const { boxCapacityMap } = useItemTypes();
   const skuToEgg = useMemo(() => {
-    const byCode: Record<string, (typeof skus)[number]> = {};
-    for (const s of skus) byCode[s.code] = s;
+    // Box SKUs (e.g. OSVN10O) carry no eggProduct of their own — their egg
+    // comes from the nested base pack (shared rule: buildSkuEggMap).
+    const eggs = buildSkuEggMap(skus, boxCapacityMap);
     const m: Record<string, string> = {};
-    for (const s of skus) {
-      // Box SKUs (e.g. OSVN10O) carry no eggProduct of their own — their egg
-      // comes from the nested base pack. Resolve it so box-SKU lines match their
-      // returns (mirrors the dialog's skuMap); normal packs use eggProduct directly.
-      m[s.code] = (s.basePackCode ? byCode[s.basePackCode]?.eggProduct : null) || s.eggProduct;
-    }
+    for (const [code, e] of Object.entries(eggs)) m[code] = e.eggProduct;
     return m;
-  }, [skus]);
+  }, [skus, boxCapacityMap]);
 
   // A pack line shows ONLY its own per-SKU return (from the egg outflow's bySku),
   // so two SKUs sharing one egg don't both show the egg's pooled total (doubling).

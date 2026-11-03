@@ -2,6 +2,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Buyer } from "@/types/quickOutflow";
 
+// Written only when set, so a caller without it leaves the column alone.
+const claimRefColumn = (v: boolean | undefined) =>
+  (v === undefined ? {} : { requires_claim_ref: v }) as Record<string, never>;
+
 export function useBuyers() {
   const queryClient = useQueryClient();
 
@@ -16,17 +20,23 @@ export function useBuyers() {
 
       if (error) throw error;
 
-      return (data || []).map((row) => ({ id: row.id, name: row.name, pinnedSkuIds: row.pinned_sku_ids ?? [] }));
+      return (data || []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        pinnedSkuIds: row.pinned_sku_ids ?? [],
+        // requires_claim_ref: Phase 2 column, not in the generated types yet.
+        requiresClaimRef: !!(row as { requires_claim_ref?: boolean }).requires_claim_ref,
+      }));
     },
   });
 
   // default_box_mode is no longer set from the UI (boxes come from box SKUs);
   // the column keeps its DB default and existing values.
   const addBuyer = useMutation({
-    mutationFn: async ({ name }: { name: string }) => {
+    mutationFn: async ({ name, requiresClaimRef }: { name: string; requiresClaimRef?: boolean }) => {
       const { data, error } = await supabase
         .from("buyers")
-        .insert({ name })
+        .insert({ name, ...claimRefColumn(requiresClaimRef) })
         .select()
         .single();
 
@@ -39,10 +49,10 @@ export function useBuyers() {
   });
 
   const updateBuyer = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+    mutationFn: async ({ id, name, requiresClaimRef }: { id: string; name: string; requiresClaimRef?: boolean }) => {
       const { data, error } = await supabase
         .from("buyers")
-        .update({ name })
+        .update({ name, ...claimRefColumn(requiresClaimRef) })
         .eq("id", id)
         .select()
         .single();

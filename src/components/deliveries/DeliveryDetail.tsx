@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, Info, Loader2, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowLeft, Check, ChevronDown, Info, Loader2, Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,12 +13,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useDelivery, isDuplicateInvoiceError, type DeliveryDetailData, type DeliveryPatch } from "@/hooks/useDelivery";
+import { useDeliveryReturns } from "@/hooks/useDeliveryReturns";
 import { useDrivers } from "@/hooks/useDrivers";
+import { useItemTypes } from "@/hooks/useItemTypes";
+import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { localToday, toLocalDate } from "@/lib/buyerProfile";
-import { STATUS_NEEDS_NOTE, customerLabel } from "@/lib/deliveryFlags";
+import { STATUS_NEEDS_NOTE, customerLabel, lineHasPhysicalReturn } from "@/lib/deliveryFlags";
+import { buildSkuEggMap } from "@/lib/returnLines";
 import { DELIVERY_STATUSES, type DeliveryStatus, type Driver } from "@/types/deliveries";
 import { DeliveryStatusChip, deliveryStatusLabel } from "./DeliveryStatusChip";
 import { DriverDialog } from "./DriverDialog";
+import { DeliveryReturnLines } from "./DeliveryReturnLines";
+import { ReturnHistory } from "./ReturnHistory";
 
 const NO_DRIVER = "__none__";
 
@@ -38,9 +45,28 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const email = user?.email ?? null;
-  const { data, isLoading, isError, refetch, save } = useDelivery(invoiceRef, placeholder);
+  const { data, isLoading, isError, isPlaceholderData, refetch, save } = useDelivery(invoiceRef, placeholder);
   const { drivers, activeDrivers } = useDrivers();
   const locale = language === "id" ? "id-ID" : "en-US";
+  const { skus } = usePackSKUs();
+  const { boxCapacityMap } = useItemTypes();
+  const skuEggMap = useMemo(() => buildSkuEggMap(skus, boxCapacityMap), [skus, boxCapacityMap]);
+  const { rows: returnRows, isFetched: returnsFetched } = useDeliveryReturns(data?.eggOutflowIds ?? []);
+
+  // A faktur with an orange line (physical return, warehouse not done) opens on
+  // the Retur section with Pengiriman and Faktur balik collapsed (§6.5.8).
+  const orange =
+    data?.poState === "ok" &&
+    (data?.lines ?? []).some(
+      (l) => lineHasPhysicalReturn(l) && !returnRows.some((x) => !x.voided_at && x.sku_code === l.skuCode)
+    );
+  const [phase1Open, setPhase1Open] = useState(true);
+  const [openDecided, setOpenDecided] = useState(false);
+  useEffect(() => {
+    if (openDecided || !data || isPlaceholderData || (data.eggOutflowIds.length > 0 && !returnsFetched)) return;
+    setOpenDecided(true);
+    if (orange) setPhase1Open(false);
+  }, [data, orange, openDecided, isPlaceholderData, returnsFetched]);
 
   const delivery = data?.delivery ?? null;
   const po = data?.po ?? null;
@@ -119,6 +145,15 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
     }
   };
 
+  // The PO line's unit word from the catalog (pak / box) and its piece equivalent.
+  const unitWord = (code: string) =>
+    skus.find((s) => s.code === code)?.unitLabel === "box" ? t.deliveries.retur.unitBox : t.deliveries.packs;
+  const piecesOf = (code: string, packs: number): number | null => {
+    const e = skuEggMap[code];
+    const per = e ? (e.isBoxMode ? e.piecesPerBox : e.piecesPerPak) : null;
+    return per ? per * packs : null;
+  };
+
   const fmtDate = (s: string | null | undefined) =>
     s ? toLocalDate(s).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }) : "";
   const fieldLabel = "text-xs font-semibold text-muted-foreground";
@@ -157,7 +192,14 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
           }
         />
       )}
-      {data && data.duplicatePos > 0 && <Banner title={t.deliveries.duplicateInvoice} help={t.deliveries.duplicateInvoiceHelp} />}
+      {data && data.duplicatePos > 0 && (
+        <Banner
+          title={t.deliveries.duplicateInvoice}
+          help={`${t.deliveries.duplicateInvoiceHelp}${
+            data.duplicatePoLabels ? ` (${data.duplicatePoLabels.map((p) => `${p.buyerName} ${fmtDate(p.outflowDate)}`).join(" · ")})` : ""
+          }`}
+        />
+      )}
 
       {isLoading && !data ? (
         <div className="flex items-center justify-center py-10">
@@ -178,6 +220,14 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
         </Card>
       ) : (
         <>
+          <Collapsible open={phase1Open} onOpenChange={setPhase1Open} className="space-y-4">
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="gap-1.5 px-1 text-xs text-muted-foreground">
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${phase1Open ? "" : "-rotate-90"}`} />
+              {t.deliveries.sectionShipment} · {t.deliveries.sectionInvoiceBack}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-4">
           {/* 1. Pengiriman */}
           <Card>
             <CardContent className="space-y-4 p-4">
@@ -203,7 +253,12 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
                         </Badge>
                         <span className="text-muted-foreground">×</span>
                         <span className="font-semibold tabular-nums">{line.skuCode ? line.packQty ?? "" : line.looseQty ?? ""}</span>
-                        <span className="text-xs text-muted-foreground">{line.skuCode ? t.deliveries.packs : t.deliveries.loose}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {line.skuCode ? unitWord(line.skuCode) : t.deliveries.loose}
+                          {line.skuCode && piecesOf(line.skuCode, line.packQty ?? 0) != null
+                            ? ` (${piecesOf(line.skuCode, line.packQty ?? 0)!.toLocaleString(locale)} butir)`
+                            : ""}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -342,6 +397,14 @@ export function DeliveryDetail({ invoiceRef, placeholder, isAdmin, onBack, onInv
               )}
             </CardContent>
           </Card>
+          </CollapsibleContent>
+          </Collapsible>
+
+          {/* 3. Retur (Phase 2) */}
+          {(livePo || delivery) && <DeliveryReturnLines invoiceRef={invoiceRef} />}
+          {data && (
+            <ReturnHistory eggOutflowIds={data.eggOutflowIds ?? []} lines={data.lines ?? []} poVoided={data.poState === "voided"} />
+          )}
         </>
       )}
 

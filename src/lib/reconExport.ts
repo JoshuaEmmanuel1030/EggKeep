@@ -1,5 +1,6 @@
 // Export Rekonsiliasi: pure tab builders over rows of the v_recon_* views
-// (supabase/migrations/20261029000000_recon_views.sql). Spec:
+// (supabase/migrations/20261029000000_recon_views.sql; v_recon_ledger restated in
+// 20261103000000_delivery_lines_void_return.sql). Spec:
 // docs/spec-export-rekonsiliasi.md (§5 tabs, §7 order, §8 flags, §9 format).
 //
 // Every number here is a stored value in the product's native unit, taken from
@@ -14,22 +15,23 @@ export type ReconJenis =
   | "return_restock"
   | "return_retakan"
   | "return_writeoff"
+  | "retur_batal" // compensating outflow of a voided return: negative retur
   | "stock_count";
 
 export const RECON_JENIS: ReconJenis[] = [
   "inflow", "outflow_po", "outflow_tunai",
-  "return_restock", "return_retakan", "return_writeoff", "stock_count",
+  "return_restock", "return_retakan", "return_writeoff", "retur_batal", "stock_count",
 ];
 
 // §8 flag tokens. The views set all but `faktur-ganda`, which depends on the
 // exported range and is added here.
 export const RECON_FLAGS = [
   "tgl-utc", "void", "retakan", "sku-yatim", "tanpa-faktur", "faktur-ganda",
-  "qty-nol", "tgl-aneh", "tanpa-log",
+  "qty-nol", "tgl-aneh", "tanpa-log", "retur-batal", "retur-dibatalkan",
 ] as const;
 export const FLAG_FAKTUR_GANDA = "faktur-ganda";
 
-export const RECON_SCHEMA_VERSION = 1;
+export const RECON_SCHEMA_VERSION = 2;
 
 /** One row of v_recon_ledger. */
 export interface ReconLedgerRow {
@@ -194,7 +196,8 @@ export function buildReconSheets(data: ReconData, opts: ReconOptions, now: Date 
   // Restock returns per original outflow (Faktur.Retur).
   const restockByOutflow = new Map<string, number>();
   for (const r of ledger) {
-    if (r.jenis !== "return_restock" || !r.outflow_id) continue;
+    // A voided restock stays a movement in the ledger; it is no longer a return of the faktur.
+    if (r.jenis !== "return_restock" || !r.outflow_id || r.flags.includes("retur-dibatalkan")) continue;
     restockByOutflow.set(r.outflow_id, (restockByOutflow.get(r.outflow_id) ?? 0) + (r.retur ?? 0));
   }
 
@@ -284,7 +287,7 @@ export function buildReconSheets(data: ReconData, opts: ReconOptions, now: Date 
       col("Disposisi", "text", 11), col("Catatan", "text", 24), col("Return ID", "text", 38), col("Outflow ID", "text", 38),
     ],
     rows: ledger
-      .filter((r) => r.jenis.startsWith("return_"))
+      .filter((r) => r.jenis.startsWith("return_") || r.jenis === "retur_batal")
       .map((r) => ({
         unit: r.unit,
         cells: [

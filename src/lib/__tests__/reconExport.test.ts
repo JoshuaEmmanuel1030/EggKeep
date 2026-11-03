@@ -281,7 +281,7 @@ describe("buildReconSheets — flags, voids, Faktur, Retur, Katalog", () => {
     const meta = Object.fromEntries(sheet(sheets, "Ringkasan").meta!);
     expect(meta["Periode"]).toBe("29/09/2026 – 30/09/2026");
     expect(meta["Dibuat"]).toBe("29/10/2026 10:04 WIB");
-    expect(meta["Versi skema"]).toBe(1);
+    expect(meta["Versi skema"]).toBe(2);
     expect(meta["Produk tanpa label"]).toBe(0);
   });
 

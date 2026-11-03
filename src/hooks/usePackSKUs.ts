@@ -2,6 +2,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PackSKU, PackSKUInput } from "@/types/catalog";
 
+// Written only when set, so an input without it leaves the column's value alone.
+const unitLabelColumn = (input: PackSKUInput) =>
+  (input.unitLabel ? { unit_label: input.unitLabel } : {}) as Record<string, never>;
+
 export function usePackSKUs() {
   const queryClient = useQueryClient();
 
@@ -27,6 +31,8 @@ export function usePackSKUs() {
         createdAt: row.created_at,
         basePackCode: row.base_pack_code,
         boxMode: row.box_mode,
+        // unit_label: Phase 2 column, not in the generated types yet.
+        unitLabel: ((row as { unit_label?: string }).unit_label === "box" ? "box" : "pak") as "pak" | "box",
       }));
     },
   });
@@ -44,6 +50,7 @@ export function usePackSKUs() {
           is_active: input.isActive ?? true,
           base_pack_code: input.basePackCode ?? null,
           box_mode: input.boxMode ?? null,
+          ...unitLabelColumn(input),
         })
         .select()
         .single();
@@ -69,6 +76,7 @@ export function usePackSKUs() {
           is_active: input.isActive ?? true,
           base_pack_code: input.basePackCode ?? null,
           box_mode: input.boxMode ?? null,
+          ...unitLabelColumn(input),
         })
         .eq("id", id)
         .select()

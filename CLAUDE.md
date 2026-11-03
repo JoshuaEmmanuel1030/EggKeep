@@ -53,6 +53,12 @@ The column names are legacy — do NOT "fix" them and do NOT convert kg↔butir 
 - Drivers (Supir) live in `drivers` (Catalog → Supir, admin-only edit UI gate). `expiry_rules` is table + seed only until Phase 2.
 - Export (`src/lib/deliveryExport.ts`) emits the sheet's column order with fixed Indonesian headers, `dd/mm/yyyy`, decimal comma, `;` separator; Phase 1 fills columns 1–8 only.
 
+## Delivery log — Phase 2 "Retur per faktur"
+- Spec: `docs/superpowers/specs/2026-11-02-delivery-return-log-phase2-design.md` (read its "Implementation notes"). Migration `20261103000000_delivery_lines_void_return.sql`; RPC tests `supabase/tests/phase2_returns.sql` (run on a branch/local stack only).
+- `delivery_lines` = store side only (SKU, unit, reason, No. Retur OSV, expiry); never feeds stock. Warehouse-done / OK / Pecah derive from non-voided `returns` on the PO's egg outflow rows with the line's `sku_code` (`purchase_orders.egg_totals[].outflow_id`). One physical-return line per (faktur, SKU); `NO_PHYSICAL_RETURN` in `deliveryFlags.ts` is mirrored by the partial unique index (sync test).
+- `void_return` voids a save group (same outflow_id, sku_code, created_at) as a compensating outflow (`outflows.void_return_id`) through `record_order_outflows`; `void_outflow` restores per batch by `ded − restocks (all) + compensating deductions`; `record_return` caps each batch at that same room. Business readers filter `returns.voided_at is null`; `void_outflow` / `reconcile_inventory` / `recalculate_inventory_fifo` must not. Do not run `recalculate_inventory_fifo` once voids exist.
+- Shared return-entry rules: `src/lib/returnLines.ts` (used by `RecordReturnDialog` and `DeliveryReturnLines`); O/R/H sums: `src/lib/returnsSummary.ts`.
+
 ## UUID migration (in progress — see docs/uuid-migration/PLAN.md)
 - Stage A APPLIED (2026-07-07): `item_type_id` on inflows/outflows, `egg/packaging_item_type_id` on pack_skus, FK-validated, resolver triggers auto-fill ids on name-only inserts.
 - Names are STILL the operational key until Stage C. Until then: renaming catalog items does NOT cascade to `pack_skus` name pointers (SQL pass required) and box names must equal the `BoxModeType` union — do not rename boxes.
