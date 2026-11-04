@@ -65,6 +65,23 @@ describe("buildSkuBomRows", () => {
     expect(rows[0].eggUnit).toBe("butir");
   });
 
+  it("legacy rows of one manual sale carry their own void flag", () => {
+    const common = {
+      user_id: "u", action_type: "outflow" as const, category: "egg" as const,
+      recorded_at: "2026-11-03T01:00:00.000Z", created_at: "2026-11-03T01:00:00.000Z", client_id: "c",
+      metadata: { orderType: "manual" as const, outflowDate: "2026-11-03", saleId: "s1" },
+    };
+    const sale: ActivityLog[] = [
+      { ...common, id: "a", product: "NEGERI OMEGA", quantity_butir: 2, voided_at: "2026-11-03T02:00:00.000Z" },
+      { ...common, id: "b", product: "KAMPUNG MERAH", quantity_butir: 30 },
+    ];
+    const rows = buildSkuBomRows(sale, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
+    expect(rows.map((r) => [r.eggProduct, r.voided])).toEqual([
+      ["NEGERI OMEGA", true],
+      ["KAMPUNG MERAH", false],
+    ]);
+  });
+
   it("Purchase Order (no boxMode, has DC): Box SKU boxes kept, DC exported, no invented box mode", () => {
     const poSkus: PackSKU[] = [
       ...skus,
