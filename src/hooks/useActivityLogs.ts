@@ -4,6 +4,7 @@ import { ActivityLog } from "@/types/activityLog";
 import { InventoryCategory } from "@/types/inventory";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { fetchAllRows } from "@/hooks/usePurchaseOrders";
 import { useOfflineSync } from "./useOfflineSync";
 
 export function useActivityLogs() {
@@ -20,14 +21,15 @@ export function useActivityLogs() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("activity_logs")
-        .select("*")
-        .order("recorded_at", { ascending: false });
+      // Paged past PostgREST's 1000-row cap. id breaks recorded_at ties (one order's
+      // rows share a timestamp) so a row can't be skipped or repeated between pages.
+      const rows = await fetchAllRows((from, to) =>
+        supabase.from("activity_logs").select("*").order("recorded_at", { ascending: false }).order("id").range(from, to)
+      );
+      // Newest first, so a row saved while paging pushes others onto the next page.
+      const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
 
-      if (error) throw error;
-
-      const mappedLogs: ActivityLog[] = (data || []).map((row) => ({
+      const mappedLogs: ActivityLog[] = uniqueRows.map((row) => ({
         id: row.id,
         user_id: row.user_id,
         action_type: row.action_type as 'inflow' | 'outflow',
