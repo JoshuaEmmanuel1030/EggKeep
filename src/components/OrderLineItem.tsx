@@ -266,7 +266,7 @@ export function OrderLineItem({
   }
 
   return (
-    <div className={cn("space-y-3 p-4 border rounded-lg bg-card", tablet && "m-2")}>
+    <div data-line-id={line.id} className={cn("space-y-3 p-4 border rounded-lg bg-card", tablet && "m-2")}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

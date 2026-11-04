@@ -2,8 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
-import { RadialAddButton, type RadialItem } from "@/components/RadialAddButton";
-import { CLOSE_MS, HOLD_MS, SUPPRESS_MS } from "@/lib/radial";
+import { RadialAddButton, type RadialAddButtonProps, type RadialItem } from "@/components/RadialAddButton";
+import { CLOSE_MS, HOLD_MS, PHONE_HOLD_MS, SUPPRESS_MS } from "@/lib/radial";
 
 // 4 items: top, right, bottom, left.
 const ITEMS: RadialItem[] = [
@@ -13,7 +13,7 @@ const ITEMS: RadialItem[] = [
   { key: "d", label: "B10" },
 ];
 
-const setup = (items = ITEMS) => {
+const setup = (items = ITEMS, props: Partial<RadialAddButtonProps> = {}) => {
   const onTap = vi.fn();
   const onPick = vi.fn();
   const view = render(
@@ -24,6 +24,7 @@ const setup = (items = ITEMS) => {
       centerVerb="Tambah"
       onTap={onTap}
       onPick={onPick}
+      {...props}
     />
   );
   return { onTap, onPick, btn: screen.getByRole("button", { name: "Tambah Baris" }), ...view };
@@ -37,6 +38,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("RadialAddButton", () => {
@@ -89,6 +91,79 @@ describe("RadialAddButton", () => {
     // Only the one trailing click is swallowed.
     fireEvent.click(btn);
     expect(onTap).toHaveBeenCalledTimes(1);
+  });
+
+  it("holdMs: a 150 ms press with 180 opens nothing and its release is a tap; at 180 ms it opens", () => {
+    const { onTap, btn } = setup(ITEMS, { holdMs: PHONE_HOLD_MS });
+    fireEvent.pointerDown(btn, ptr(500, 400));
+    act(() => void vi.advanceTimersByTime(150));
+    expect(ring()).toBeNull();
+    fireEvent.pointerUp(window, ptr(500, 400));
+    fireEvent.click(btn);
+    expect(onTap).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerDown(btn, ptr(500, 400));
+    act(() => void vi.advanceTimersByTime(PHONE_HOLD_MS - 1));
+    expect(ring()).toBeNull();
+    act(() => void vi.advanceTimersByTime(1));
+    expect(ring()).not.toBeNull();
+  });
+
+  it("holdMs: a drag still opens the ring at once", () => {
+    const { btn } = setup(ITEMS, { holdMs: PHONE_HOLD_MS });
+    fireEvent.pointerDown(btn, ptr(500, 400));
+    fireEvent.pointerMove(window, ptr(500, 390));
+    expect(ring()).not.toBeNull();
+  });
+
+  // ── Visible area (on-screen keyboard, small phones) ──────────────────────────
+  const openAt = (x: number, y: number, props: Partial<RadialAddButtonProps> = {}) => {
+    const { btn } = setup(ITEMS, props);
+    fireEvent.pointerDown(btn, ptr(x, y));
+    hold();
+    return ring() as HTMLElement;
+  };
+  const phone = (visualViewport?: object) => {
+    vi.stubGlobal("innerWidth", 390);
+    vi.stubGlobal("innerHeight", 844);
+    vi.stubGlobal("visualViewport", visualViewport);
+  };
+
+  it("stays inside a keyboard-shortened view, in layout-viewport px", () => {
+    // y 200..600 of the 844 px layout viewport is what the user can see.
+    phone({ offsetLeft: 0, offsetTop: 200, width: 390, height: 400 });
+    const el = openAt(195, 840); // a press the keyboard covers
+    expect(el.style.getPropertyValue("--R")).toBe("112px");
+    expect(el.style.left).toBe("195px");
+    expect(el.style.top).toBe("432px"); // 600 - (R + 56)
+    expect(el.style.getPropertyValue("--cx")).toBe("195px");
+  });
+
+  it("a view too short for the disc shrinks the ring and centres it, offsets included", () => {
+    phone({ offsetLeft: 20, offsetTop: 200, width: 320, height: 300 });
+    const el = openAt(100, 590);
+    expect(el.style.getPropertyValue("--R")).toBe("94px"); // floor(300 / 2) - 56
+    expect(el.style.left).toBe("170px"); // pad 150 inside the view, + 20
+    expect(el.style.top).toBe("350px"); // centred at 150, + 200
+    expect(el.style.getPropertyValue("--cx")).toBe("170px");
+  });
+
+  it("falls back to the window without visualViewport", () => {
+    phone(undefined);
+    const el = openAt(195, 840);
+    expect(el.style.left).toBe("195px");
+    expect(el.style.top).toBe(`${844 - 168}px`);
+  });
+
+  it("leaves room for the banner on the phone only, and none without a banner", () => {
+    phone(undefined);
+    expect(openAt(195, 100).style.top).toBe("236px"); // R + 56 + 68
+    cleanup();
+    expect(openAt(195, 100, { banner: undefined }).style.top).toBe("168px");
+    cleanup();
+    vi.stubGlobal("innerWidth", 1194);
+    vi.stubGlobal("innerHeight", 834);
+    expect(openAt(195, 100).style.top).toBe("168px"); // the tablet keeps the handoff's clamp
   });
 
   it("swallows a trailing click that lands on a common ancestor, only within the window", () => {

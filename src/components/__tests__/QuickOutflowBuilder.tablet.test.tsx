@@ -1,13 +1,21 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, cleanup, within, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, within, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { QuickOutflowBuilder } from "@/components/QuickOutflowBuilder";
 import { toast } from "@/hooks/use-toast";
 import { localToday, type RecentPo } from "@/lib/buyerProfile";
+import { calculateLineMaterials } from "@/lib/outflowCalculator";
+import { HOLD_MS, PHONE_HOLD_MS } from "@/lib/radial";
 import type { StockSummary } from "@/types/inventory";
+
+// Pass-through spy: the only place a test can see the raw line object.
+vi.mock("@/lib/outflowCalculator", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/outflowCalculator")>();
+  return { ...actual, calculateLineMaterials: vi.fn(actual.calculateLineMaterials) };
+});
 
 // ── Hook mocks: no Supabase / network. ────────────────────────────────────────
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "u1", email: "staff@js.test" } }) }));
@@ -91,6 +99,15 @@ const addPackLine = (qty: string) => {
   fireEvent.click(screen.getByText("Pilih SKU...").closest("button"));
   fireEvent.click(screen.getByRole("option", { name: /Kampung 10 Biasa/ }));
   fireEvent.change(screen.getByLabelText("Jumlah (paket)"), { target: { value: qty } });
+};
+
+const ptr = (x: number, y: number) => ({ pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y });
+const trigger = () => screen.getByRole("button", { name: "Tambah Baris" });
+const ringItems = () => [...document.querySelectorAll(".ek-rad-it")].map((el) => el.textContent);
+// Press, then drag 70 px up: opens the ring and highlights item 0.
+const openRing = () => {
+  fireEvent.pointerDown(trigger(), ptr(500, 400));
+  fireEvent.pointerMove(window, ptr(500, 330));
 };
 
 describe("QuickOutflowBuilder — tablet (6a)", () => {
@@ -196,15 +213,6 @@ describe("QuickOutflowBuilder — tablet (6a)", () => {
   });
 
   // ── Radial quick-add on Tambah Baris ─────────────────────────────────────────
-  const ptr = (x: number, y: number) => ({ pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y });
-  const trigger = () => screen.getByRole("button", { name: "Tambah Baris" });
-  const ringItems = () => [...document.querySelectorAll(".ek-rad-it")].map((el) => el.textContent);
-  // Press, then drag 70 px up: opens the ring and highlights item 0.
-  const openRing = () => {
-    fireEvent.pointerDown(trigger(), ptr(500, 400));
-    fireEvent.pointerMove(window, ptr(500, 330));
-  };
-
   it("a short tap still adds a blank line", () => {
     render(ui(true));
     fireEvent.pointerDown(trigger(), ptr(500, 400));
@@ -255,5 +263,59 @@ describe("QuickOutflowBuilder — tablet (6a)", () => {
     expect(ringItems()).toEqual(["KP10B", "KP6"]);
     expect(document.querySelector(".ek-rad-pin")).toBeNull();
     fireEvent.pointerCancel(window, ptr(500, 330));
+  });
+});
+
+describe("QuickOutflowBuilder — phone radial", () => {
+  const qtyInputs = () => screen.queryAllByPlaceholderText("Masukkan jml");
+
+  it("a plain tap adds a blank pack line", () => {
+    render(ui(false));
+    fireEvent.pointerDown(trigger(), ptr(200, 600));
+    fireEvent.pointerUp(window, ptr(200, 600));
+    fireEvent.click(trigger());
+    expect(qtyInputs()).toHaveLength(1);
+    expect(screen.getByText("Pilih SKU...")).toBeInTheDocument();
+    expect(document.querySelector(".ek-rad")).toBeNull();
+  });
+
+  it("a pick appends a pack line with exactly { id, lineType, skuCode } and focuses its Jumlah", () => {
+    render(ui(false));
+    fireEvent.click(trigger()); // a blank line first: the pick appends after it
+    openRing();
+    expect(ringItems()).toEqual(["KP10B", "KP6"]);
+    fireEvent.pointerUp(window, ptr(500, 330));
+    fireEvent.click(trigger()); // the trailing click adds nothing
+
+    expect(qtyInputs()).toHaveLength(2);
+    const qty = qtyInputs()[1];
+    const row = qty.closest("[data-line-id]") as HTMLElement;
+    expect(within(row).getByText("Kampung 10 Biasa")).toBeInTheDocument();
+    expect(qty).toHaveFocus();
+    expect(row).toHaveClass("ek-rad-new");
+
+    const line = vi.mocked(calculateLineMaterials).mock.calls.at(-1)[0];
+    expect(line).toStrictEqual({ id: row.getAttribute("data-line-id"), lineType: "pack", skuCode: "KP10B" });
+  });
+
+  it("the phone waits the longer hold; the tablet keeps 90 ms", () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(ui(false));
+      fireEvent.pointerDown(trigger(), ptr(200, 600));
+      act(() => void vi.advanceTimersByTime(PHONE_HOLD_MS - 1));
+      expect(document.querySelector(".ek-rad")).toBeNull();
+      act(() => void vi.advanceTimersByTime(1));
+      expect(document.querySelector(".ek-rad")).not.toBeNull();
+      unmount();
+
+      render(ui(true));
+      fireEvent.pointerDown(trigger(), ptr(200, 600));
+      act(() => void vi.advanceTimersByTime(HOLD_MS));
+      expect(document.querySelector(".ek-rad")).not.toBeNull();
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
   });
 });

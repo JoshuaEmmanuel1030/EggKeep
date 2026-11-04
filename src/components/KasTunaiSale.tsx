@@ -14,10 +14,10 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { loadOutbox } from "@/lib/outflowOutbox";
-import { FLASH_MS, RADIAL_FLASH_CLASS } from "@/lib/radial";
-import { RadialAddButton, type RadialItem } from "./RadialAddButton";
+import { RadialAddButton, revealPickedRow, type RadialItem } from "./RadialAddButton";
 import {
   buildKasEntries,
+  eggRingItems,
   isBrokenKasLine,
   isValidKasLine,
   kasDateLabel,
@@ -95,17 +95,7 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
       return rest.length ? rest : [emptyLine()];
     });
 
-  // Radial ring: the egg products minus the (RETAKAN) children, which would
-  // crowd it (they stay in the dropdown). "NEGERI BIASA" -> NEGERI over BIASA.
-  const radialEggs = useMemo<RadialItem[]>(() => {
-    const retakan = new Set(itemTypes.filter((it) => it.isRetakan).map((it) => it.name));
-    return eggProductNames
-      .filter((name) => !retakan.has(name))
-      .map((name) => {
-        const [label, ...rest] = name.split(" ");
-        return { key: name, label, sub: rest.join(" ") || undefined };
-      });
-  }, [itemTypes, eggProductNames]);
+  const radialEggs = useMemo(() => eggRingItems(eggProductNames, itemTypes), [itemTypes, eggProductNames]);
 
   // A radial pick fills the first line with no egg yet, else appends one; the
   // effect below focuses its Jumlah and flashes it once rendered.
@@ -122,10 +112,7 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
     const id = pickedLineId.current;
     pickedLineId.current = null;
     const row = id && bodyRef.current?.querySelector<HTMLElement>(`[data-line-id="${id}"]`);
-    if (!row) return;
-    row.querySelector("input")?.focus(); // the card's only input: Jumlah
-    row.classList.add(RADIAL_FLASH_CLASS);
-    window.setTimeout(() => row.classList.remove(RADIAL_FLASH_CLASS), FLASH_MS);
+    if (row) revealPickedRow(row); // the card's only input: Jumlah
   }, [lines]);
 
   const openPicker = () => {

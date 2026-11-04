@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,9 @@ import {
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { parseCountInput } from "@/lib/stockCount";
+import { eggRingItems } from "@/lib/kasTunai";
+import { PHONE_HOLD_MS } from "@/lib/radial";
+import { RadialAddButton, revealPickedRow, type RadialItem } from "./RadialAddButton";
 import { PackageMinus, Plus, Trash2, ChevronsUpDown, Check, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -46,7 +49,7 @@ const CATEGORIES: InventoryCategory[] = ["egg", "box", "label", "packaging"];
 export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
   const { user } = useAuth();
   const { t } = useLanguage();
-  const { getTypesByCategory, conversionMap, eggProductNames } = useItemTypes();
+  const { getTypesByCategory, conversionMap, eggProductNames, itemTypes } = useItemTypes();
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [submitting, setSubmitting] = useState(false);
   
@@ -85,6 +88,33 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
       },
     }));
   };
+
+  const radialEggs = useMemo(() => eggRingItems(eggProductNames, itemTypes), [eggProductNames, itemTypes]);
+
+  // Radial pick: fills the first egg row with no product, else appends one,
+  // applying what the row's product combobox applies. The effect below reveals it.
+  const pickedItemId = useRef<string | null>(null);
+  const pickEgg = ({ key: product }: RadialItem) => {
+    const patch: Partial<CategoryItem> = conversionMap[product]?.unit !== "kg" ? { product, inputUnit: "butir" } : { product };
+    const empty = categoryData.egg.items.find((i) => !i.product);
+    const item = empty ?? createEmptyItem();
+    pickedItemId.current = item.id;
+    setCategoryData((prev) => ({
+      ...prev,
+      egg: {
+        ...prev.egg,
+        items: empty
+          ? prev.egg.items.map((i) => (i.id === item.id ? { ...i, ...patch } : i))
+          : [...prev.egg.items, { ...item, ...patch }],
+      },
+    }));
+  };
+  useEffect(() => {
+    const id = pickedItemId.current;
+    pickedItemId.current = null;
+    const row = id && document.querySelector<HTMLElement>(`[data-line-id="${id}"]`);
+    if (row) revealPickedRow(row); // the row's first input: Quantity (the invoice input comes second)
+  }, [categoryData]);
 
   const removeItemFromCategory = (category: InventoryCategory, itemId: string) => {
     setCategoryData((prev) => ({
@@ -302,6 +332,8 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
                 onUpdateItem={(itemId, field, value) =>
                   updateItem(category, itemId, field, value)
                 }
+                eggRing={radialEggs}
+                onPickEgg={pickEgg}
               />
             );
           })}
@@ -337,6 +369,9 @@ interface OutflowCategorySectionProps {
   onAddItem: () => void;
   onRemoveItem: (itemId: string) => void;
   onUpdateItem: (itemId: string, field: keyof CategoryItem, value: string) => void;
+  // The egg section adds through the radial ring instead of the header button.
+  eggRing: RadialItem[];
+  onPickEgg: (item: RadialItem) => void;
 }
 
 function OutflowCategorySection({
@@ -348,8 +383,11 @@ function OutflowCategorySection({
   onAddItem,
   onRemoveItem,
   onUpdateItem,
+  eggRing,
+  onPickEgg,
 }: OutflowCategorySectionProps) {
   const { t } = useLanguage();
+  const isEgg = category === "egg";
 
   return (
     <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
@@ -357,9 +395,11 @@ function OutflowCategorySection({
         <h3 className="font-semibold text-sm flex items-center gap-2">
           <Badge variant="outline">{t.categories[category]}</Badge>
         </h3>
-        <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
-          <Plus className="h-3 w-3 mr-1" /> {t.common.addItem}
-        </Button>
+        {!isEgg && (
+          <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
+            <Plus className="h-3 w-3 mr-1" /> {t.common.addItem}
+          </Button>
+        )}
       </div>
 
       {items.map((item, index) => (
@@ -376,10 +416,25 @@ function OutflowCategorySection({
         />
       ))}
 
-      {items.length === 0 && (
+      {!isEgg && items.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-2">
           {t.common.clickAddItem}
         </p>
+      )}
+
+      {/* Wrapped: space-y-3 would zero the trigger's margin-bottom, where its caption sits. */}
+      {isEgg && (
+        <div>
+          <RadialAddButton
+            caption={t.kas.addEgg}
+            items={eggRing}
+            banner={{ text: t.radial.pickEgg }}
+            centerVerb={t.radial.add}
+            holdMs={PHONE_HOLD_MS}
+            onTap={onAddItem}
+            onPick={onPickEgg}
+          />
+        </div>
       )}
     </div>
   );
@@ -429,7 +484,8 @@ function OutflowItemRow({
   const displayUnit = category === "egg" ? (isKgProduct && inputUnit === "kg" ? "kg" : "butir") : "pcs";
 
   return (
-    <div className="space-y-2 p-3 bg-background rounded border">
+    // data-line-id: the form finds a radial-picked row by it to focus and flash it.
+    <div data-line-id={item.id} className="space-y-2 p-3 bg-background rounded border">
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{t.common.item} {index + 1}</span>
         <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
