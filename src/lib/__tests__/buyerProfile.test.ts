@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   PurchaseOrderRow, anchorDate, dayOfMonthPattern, groupSkusForBuyer, monthlyTotals,
-  nextLikelyWeekday, pinnedCodesFor, skuShares, spanDays, typicalDay, weekdayPattern,
+  nextLikelyWeekday, pinnedCodesFor, radialSkuCodes, RecentPo, skuShares, spanDays, typicalDay, weekdayPattern,
 } from "@/lib/buyerProfile";
 
 const order = (outflowDate: string, lines: [string, number][], eggs: [string, number][] = []): PurchaseOrderRow => ({
@@ -155,5 +155,50 @@ describe("nextLikelyWeekday counts today", () => {
     // Thu 15 and Thu 22 Oct have orders (Thu usual); Mon 19 Oct is also usual, so a search starting tomorrow would return Mon.
     const h = [order("2026-10-15", [["N30B", 1]]), order("2026-10-19", [["KP6O", 1]]), order("2026-10-22", [["N30B", 1]])];
     expect(nextLikelyWeekday(weekdayPattern(h, TODAY), TODAY)).toBe(4);
+  });
+});
+
+describe("radialSkuCodes", () => {
+  const po = (buyerName: string | null, outflowDate: string, lines: [string, number][]): RecentPo => ({
+    buyerName, outflowDate, orderLines: lines.map(([skuCode, packQty]) => ({ skuCode, packQty })),
+  });
+  const all = () => true;
+  // OSAVE: A in 7 POs, B in 6 … G in 1 (all qty 1), so A..G rank in that order.
+  const osave = ["A", "B", "C", "D", "E", "F", "G"].flatMap((code, i) =>
+    Array.from({ length: 7 - i }, (_, n) => po("OSAVE", `2026-10-${String(10 + n).padStart(2, "0")}`, [[code, 1]])));
+
+  it("ranks the buyer's codes most-ordered first, capped at six", () => {
+    expect(radialSkuCodes(osave, "OSAVE", TODAY, all)).toEqual({ codes: ["A", "B", "C", "D", "E", "F"], scope: "buyer" });
+    expect(radialSkuCodes(osave, "OSAVE", TODAY, all, 2).codes).toEqual(["A", "B"]);
+  });
+  it("counts POs containing the SKU, not quantity", () => {
+    const h = [po("SBOX", "2026-10-20", [["X", 1], ["X", 1]]), po("SBOX", "2026-10-21", [["X", 1]]), po("SBOX", "2026-10-21", [["Y", 500]])];
+    expect(radialSkuCodes(h, "SBOX", TODAY, all).codes).toEqual(["X", "Y"]);
+  });
+  it("a SKU line saved with no qty does not count as an order for it", () => {
+    const h = [po("OSAVE", "2026-10-20", [["KP10B", 20]]), po("OSAVE", "2026-10-21", [["KP6", undefined], ["KP10B", 20]]), po("OSAVE", "2026-10-21", [["KP6", 0], ["A", 5]])];
+    expect(radialSkuCodes(h, "OSAVE", TODAY, all).codes).toEqual(["KP10B", "A"]);
+  });
+  it("drops inactive codes before the cut, so the seventh active code moves up", () => {
+    expect(radialSkuCodes(osave, "OSAVE", TODAY, (c) => c !== "B").codes).toEqual(["A", "C", "D", "E", "F", "G"]);
+  });
+  it("ignores POs outside the 56-day window", () => {
+    const h = [po("OSAVE", "2026-08-27", [["OLD", 1]]), po("OSAVE", "2026-08-27", [["OLD", 1]]), po("OSAVE", "2026-08-28", [["NEW", 1]])];
+    expect(radialSkuCodes(h, "OSAVE", TODAY, all).codes).toEqual(["NEW"]);
+  });
+  it("ranks across all buyers when no buyer is given", () => {
+    // Z: 3 POs over SBOX and an unnamed order, so it ties E (kept ahead) and passes F (2).
+    const h = [...osave, po("SBOX", "2026-10-20", [["Z", 1]]), po(null, "2026-10-21", [["Z", 1]]), po(null, "2026-10-21", [["Z", 1]])];
+    expect(radialSkuCodes(h, null, TODAY, all)).toEqual({ codes: ["A", "B", "C", "D", "E", "Z"], scope: "all" });
+  });
+  it("falls back to all buyers when the buyer has no active in-window history", () => {
+    const h = [...osave, po("SEGARI", "2026-08-01", [["A", 1]]), po("FMI", "2026-10-21", [["DEAD", 1]])];
+    expect(radialSkuCodes(h, "SEGARI", TODAY, all)).toMatchObject({ codes: ["A", "B", "C", "D", "E", "F"], scope: "all" });
+    expect(radialSkuCodes(h, "FMI", TODAY, (c) => c !== "DEAD").scope).toBe("all");
+    expect(radialSkuCodes(h, "ASTRO", TODAY, all).scope).toBe("all");
+  });
+  it("returns no codes when there is no history at all", () => {
+    expect(radialSkuCodes([], "OSAVE", TODAY, all)).toEqual({ codes: [], scope: "all" });
+    expect(radialSkuCodes([], null, TODAY, all)).toEqual({ codes: [], scope: "all" });
   });
 });

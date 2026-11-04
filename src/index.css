@@ -147,6 +147,467 @@
   }
 }
 
+/* ── Radial quick-add (Tambah Baris / Tambah telur on the tablet Pesanan) ──────
+   Markup + gesture: src/components/RadialAddButton.tsx; geometry: src/lib/radial.ts.
+   Ported value-for-value from the handoff prototype's .rad-* rules
+   (docs/superpowers/specs/design_handoff_radial_outflow/radial-outflow.html).
+   In the components layer so utilities passed via className still win. */
+@layer components {
+  /* Whole page while a press is pending / the ring is open. */
+  .ek-rad-hold {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Trigger: 45px gradient circle, caption 6px below (inside the button, so it
+     is the accessible name and part of the hit area). */
+  .ek-rad-trigger {
+    position: relative;
+    width: 45px;
+    height: 45px;
+    padding: 0;
+    margin: 14px auto 28px;
+    display: flex;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 0;
+    background: linear-gradient(160deg, #f6ac32 0%, #ee940f 55%, #e2850a 100%);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(217, 119, 6, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transition: box-shadow 0.2s, transform 0.15s, background 0.2s;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ek-rad-trigger > svg {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    stroke-width: 2.8;
+    display: block;
+  }
+  .ek-rad-cap {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #7a6f63;
+    white-space: nowrap;
+  }
+  @media (hover: hover) {
+    .ek-rad-trigger:hover {
+      background: linear-gradient(160deg, #f8b443 0%, #f29b17 55%, #e68b0c 100%);
+      box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.18), 0 0 20px 3px rgba(245, 158, 11, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+  }
+  .ek-rad-trigger:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 3px;
+  }
+  .ek-rad-trigger:active {
+    transform: scale(0.94);
+  }
+  .ek-rad-trigger[data-pending] {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.24), 0 0 24px 5px rgba(245, 158, 11, 0.6);
+  }
+  .ek-rad-absorb {
+    animation: ek-rad-absorb 0.42s cubic-bezier(0.3, 1.6, 0.5, 1);
+  }
+  @keyframes ek-rad-absorb {
+    0% {
+      transform: scale(0.86);
+      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55), 0 2px 6px rgba(217, 119, 6, 0.28);
+    }
+    45% {
+      transform: scale(1.12);
+    }
+    100% {
+      transform: scale(1);
+      box-shadow: 0 0 0 14px rgba(245, 158, 11, 0), 0 2px 6px rgba(217, 119, 6, 0.28);
+    }
+  }
+
+  /* Overlay: the viewport, never takes input. Above the drawers / sidebars
+     (z-20/21) and dialog overlays (z-50), below toasts (z-100). */
+  .ek-rad-ov {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 60;
+    overflow: hidden;
+  }
+  .ek-rad-dim {
+    position: absolute;
+    inset: 0;
+    background: rgba(28, 26, 24, 0.06);
+    opacity: 0;
+    transition: opacity 0.14s;
+  }
+  .ek-rad {
+    position: absolute;
+    width: 0;
+    height: 0;
+  }
+  /* Disc-sized layers share one box: R + 52 around the centre. */
+  .ek-rad-disc,
+  .ek-rad-arc,
+  .ek-rad-div,
+  .ek-rad-wave {
+    position: absolute;
+    left: calc(-1 * (var(--R) + 52px));
+    top: calc(-1 * (var(--R) + 52px));
+    width: calc(2 * (var(--R) + 52px));
+    height: calc(2 * (var(--R) + 52px));
+    border-radius: 50%;
+  }
+  /* Light matte glass: grain, top-left sheen, warm tint. */
+  .ek-rad-disc {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .16 0 0 0 0 .14 0 0 0 0 .12 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+      radial-gradient(110% 85% at 30% 12%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 58%),
+      linear-gradient(165deg, rgba(255, 253, 248, 0.64), rgba(238, 231, 220, 0.54));
+    background-size: 140px 140px, 100% 100%, 100% 100%;
+    backdrop-filter: blur(26px) saturate(1.1);
+    -webkit-backdrop-filter: blur(26px) saturate(1.1);
+    box-shadow: 0 22px 56px rgba(60, 45, 30, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -14px 30px rgba(120, 100, 80, 0.1);
+    transform: scale(0.12);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.16, 1.1, 0.3, 1.15), opacity 0.14s;
+  }
+  /* Highlighted sector wedge (--from / --span set inline). */
+  .ek-rad-arc {
+    background: conic-gradient(from var(--from, 0deg), rgba(245, 158, 11, 0.42) 0 var(--span, 60deg), transparent var(--span, 60deg));
+    -webkit-mask: radial-gradient(circle, transparent 0 46px, #000 47px, #000 calc(var(--R) + 44px), transparent calc(var(--R) + 45px));
+    mask: radial-gradient(circle, transparent 0 46px, #000 47px, #000 calc(var(--R) + 44px), transparent calc(var(--R) + 45px));
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  /* Sector dividers, 0.7deg lines on the boundaries. */
+  .ek-rad-div {
+    background: repeating-conic-gradient(from calc(var(--span) / -2), rgba(42, 38, 34, 0.18) 0 0.7deg, transparent 0.7deg var(--span));
+    -webkit-mask: radial-gradient(circle, transparent 0 52px, #000 53px, #000 calc(var(--R) + 40px), transparent calc(var(--R) + 41px));
+    mask: radial-gradient(circle, transparent 0 52px, #000 53px, #000 calc(var(--R) + 40px), transparent calc(var(--R) + 41px));
+    opacity: 0;
+    transition: opacity 0.2s 0.08s;
+  }
+  .ek-rad-wave {
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55);
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  .ek-rad-bub {
+    position: absolute;
+    left: calc(var(--s) / -2);
+    top: calc(var(--s) / -2);
+    width: var(--s);
+    height: var(--s);
+    border-radius: 50%;
+    background: var(--c);
+    opacity: 0;
+  }
+  /* Items fly out from the centre to (--x, --y), staggered by --d. */
+  .ek-rad-it {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 96px;
+    height: 56px;
+    margin: -28px 0 0 -48px;
+    color: #2a2622;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 6px;
+    transform: translate(0, 0) scale(0.15);
+    opacity: 0;
+    transition: transform 0.34s cubic-bezier(0.17, 0.89, 0.32, 1.45) var(--d), opacity 0.14s var(--d);
+  }
+  .ek-rad-it b {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+    transition: color 0.1s;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  .ek-rad-it small {
+    font-size: 10.5px;
+    line-height: 1.2;
+    color: #5c534a;
+    margin-top: 3px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .ek-rad-it.ek-rad-pin::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    margin-left: -3.5px;
+    width: 7px;
+    height: 7px;
+    border-radius: 99px;
+    background: #f59e0b;
+  }
+  .ek-rad-it.ek-rad-on b {
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5), 0 3px 6px rgba(124, 45, 18, 0.28), 0 6px 14px rgba(124, 45, 18, 0.18);
+  }
+  .ek-rad-it.ek-rad-on small {
+    color: #fff3e0;
+  }
+  .ek-rad-hd {
+    position: absolute;
+    left: 50%;
+    top: calc(-1 * (var(--R) + 52px) - 46px);
+    transform: translateX(-50%);
+    white-space: nowrap;
+    background: rgba(32, 29, 26, 0.9);
+    color: #f3ede4;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 99px;
+    display: flex;
+    gap: 8px;
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .ek-rad-hd span {
+    color: rgba(243, 237, 228, 0.6);
+    font-weight: 500;
+  }
+  .ek-rad-c {
+    position: absolute;
+    left: -40px;
+    top: -40px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.35);
+    box-shadow: inset 0 0 0 1px rgba(42, 38, 34, 0.12);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: #5c534a;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .ek-rad-cx {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+  }
+  .ek-rad-cx svg {
+    display: block;
+  }
+  .ek-rad-ct {
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.15;
+    padding: 0 8px;
+  }
+  .ek-rad-c.ek-rad-act {
+    background: rgba(245, 158, 11, 0.22);
+    color: #7c2d12;
+  }
+  .ek-rad-c.ek-rad-act b {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ek-rad-pt {
+    position: absolute;
+    left: -7px;
+    top: -7px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.18);
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  /* Open ("explode"). */
+  .ek-rad-show .ek-rad-dim,
+  .ek-rad-show .ek-rad-div,
+  .ek-rad-show .ek-rad-hd,
+  .ek-rad-show .ek-rad-c {
+    opacity: 1;
+  }
+  .ek-rad-show .ek-rad-disc {
+    transform: scale(1);
+    opacity: 1;
+  }
+  .ek-rad-show .ek-rad-it {
+    transform: translate(var(--x), var(--y)) scale(1);
+    opacity: 1;
+  }
+  .ek-rad-show .ek-rad-it.ek-rad-on {
+    transform: translate(var(--x), var(--y)) scale(1.18);
+    color: #7c2d12;
+    transition-delay: 0s;
+  }
+  .ek-rad-show .ek-rad-pt {
+    opacity: 0.9;
+  }
+  .ek-rad-show .ek-rad-wave {
+    animation: ek-rad-wave 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  }
+  .ek-rad-show .ek-rad-bub {
+    animation: ek-rad-bub 0.62s cubic-bezier(0.15, 0.7, 0.3, 1) var(--t) forwards;
+  }
+  @keyframes ek-rad-wave {
+    0% {
+      opacity: 0.9;
+      transform: scale(0.2);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.18);
+    }
+  }
+  @keyframes ek-rad-bub {
+    0% {
+      opacity: 0;
+      transform: translate(0, 0) scale(0.3);
+    }
+    15% {
+      opacity: 0.95;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(var(--bx), var(--by)) scale(1);
+    }
+  }
+
+  /* Close: shrink into the trigger (--tx, --ty), no rotation. */
+  .ek-rad-out .ek-rad {
+    animation: ek-rad-suck 0.18s cubic-bezier(0.55, 0, 0.75, 0.2) forwards;
+  }
+  @keyframes ek-rad-suck {
+    0% {
+      transform: translate(0, 0) scale(1);
+      opacity: 1;
+      filter: blur(0);
+    }
+    60% {
+      opacity: 1;
+    }
+    100% {
+      transform: translate(var(--tx), var(--ty)) scale(0.05);
+      opacity: 0;
+      filter: blur(1.5px);
+    }
+  }
+  .ek-rad-out .ek-rad-it {
+    transition: none;
+  }
+  .ek-rad-out .ek-rad-it b {
+    animation: ek-rad-lbl 0.18s ease-in forwards;
+  }
+  @keyframes ek-rad-lbl {
+    0% {
+      opacity: 1;
+      letter-spacing: -0.01em;
+    }
+    100% {
+      opacity: 0.2;
+      letter-spacing: -0.12em;
+    }
+  }
+  .ek-rad-out .ek-rad-div {
+    animation: ek-rad-div 0.18s ease-in forwards;
+  }
+  @keyframes ek-rad-div {
+    to {
+      opacity: 0.9;
+      filter: brightness(0.7);
+    }
+  }
+  .ek-rad-out .ek-rad-disc {
+    animation: ek-rad-disc 0.18s ease-in forwards;
+  }
+  @keyframes ek-rad-disc {
+    0% {
+      box-shadow: 0 22px 56px rgba(60, 45, 30, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+    100% {
+      box-shadow: 0 4px 10px rgba(217, 119, 6, 0.35), inset 0 0 0 2px rgba(245, 158, 11, 0.7), inset 0 0 40px rgba(245, 158, 11, 0.45);
+    }
+  }
+  .ek-rad-out .ek-rad-hd,
+  .ek-rad-out .ek-rad-pt,
+  .ek-rad-out .ek-rad-bub,
+  .ek-rad-out .ek-rad-wave {
+    opacity: 0 !important;
+    transition: opacity 0.08s ease-in;
+    animation: none;
+  }
+  .ek-rad-out .ek-rad-c {
+    transition: opacity 0.12s ease-in 0.03s;
+    opacity: 0;
+  }
+  .ek-rad-out .ek-rad-dim {
+    opacity: 0;
+    transition: opacity 0.18s;
+  }
+
+  /* Row a pick just added (RADIAL_FLASH_CLASS). */
+  .ek-rad-new {
+    animation: ek-rad-new 1.2s ease-out;
+  }
+  @keyframes ek-rad-new {
+    0% {
+      background: #fdf0dc;
+    }
+    100% {
+      background: transparent;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ek-rad-disc,
+    .ek-rad-it,
+    .ek-rad-c,
+    .ek-rad-dim {
+      transition: none !important;
+    }
+    .ek-rad-out .ek-rad {
+      animation: none;
+      opacity: 0;
+    }
+    .ek-rad-absorb {
+      animation: none;
+    }
+    .ek-rad-bub,
+    .ek-rad-wave {
+      display: none;
+    }
+  }
+}
+
 @media print {
   body > *:not([data-radix-portal]) {
     display: none !important;

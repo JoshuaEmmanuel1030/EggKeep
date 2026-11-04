@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { PurchaseOrderRow, addDays, localToday, monthStart } from "@/lib/buyerProfile";
+import { PurchaseOrderRow, RecentPo, WINDOW_DAYS, addDays, localToday, monthStart } from "@/lib/buyerProfile";
 
 const PAGE = 1000; // PostgREST max rows per request
 
@@ -70,6 +70,34 @@ export function useBuyerOrderStats() {
         stats.set(r.buyer_name, s);
       }
       return stats;
+    },
+  });
+}
+
+// Every buyer's POs in the last WINDOW_DAYS: feeds the radial add menu's
+// "often ordered" SKUs (radialSkuCodes), for the selected buyer or all buyers.
+export function useRecentPurchaseOrders() {
+  return useQuery({
+    queryKey: ["purchase_orders", "recent"],
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<RecentPo[]> => {
+      const since = addDays(localToday(), -(WINDOW_DAYS - 1));
+      const data = await fetchAllRows((from, to) =>
+        supabase
+          .from("purchase_orders")
+          .select("buyer_name, outflow_date, order_lines")
+          .gte("outflow_date", since)
+          .order("outflow_date")
+          .order("recorded_at")
+          .range(from, to)
+      );
+      return data
+        .filter((r) => r.outflow_date)
+        .map((r) => ({
+          buyerName: r.buyer_name,
+          outflowDate: r.outflow_date as string,
+          orderLines: (r.order_lines as unknown as RecentPo["orderLines"]) ?? [],
+        }));
     },
   });
 }

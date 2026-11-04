@@ -157,10 +157,12 @@ export function buildSkuBomRows(
       }
     } else {
       // Legacy/manual outflow with no orderLines: pass through the egg rows as-is.
+      // Each row is its own line, so it carries its own void flag (a multi-line
+      // manual / Kas Tunai sale can have one line voided and the rest live).
       for (const l of group) {
         if (l.category !== "egg") continue;
         rows.push({
-          ...base, ...blank, lineType: "legacy",
+          ...base, ...blank, lineType: "legacy", voided: l.voided_at != null,
           eggProduct: l.product, eggQty: l.quantity_butir, eggUnit: unitOf(l.product),
         });
       }

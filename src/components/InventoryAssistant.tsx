@@ -17,7 +17,9 @@ interface Message {
   content: string;
 }
 
-export function InventoryAssistant() {
+// className overrides the corner position (e.g. tablet Pesanan, where the
+// right side holds the order panel and the Kas Tunai drawer).
+export function InventoryAssistant({ className }: { className?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const { t } = useLanguage();
   // The greeting is rendered from t (not stored) so it follows a language switch.
@@ -80,7 +82,7 @@ export function InventoryAssistant() {
     return (
       <Button
         onClick={() => setIsOpen(true)}
-        className={cn("fixed bottom-20 right-4 sm:bottom-6 sm:right-6 h-14 w-14 rounded-full shadow-lg z-50", lift)}
+        className={cn("fixed bottom-20 right-4 sm:bottom-6 sm:right-6 h-14 w-14 rounded-full shadow-lg z-50", lift, className)}
         size="icon"
         aria-label={t.assistant.open}
       >
@@ -90,7 +92,7 @@ export function InventoryAssistant() {
   }
 
   return (
-    <Card className={cn("fixed bottom-20 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-96 h-[60vh] sm:h-[500px] max-h-[500px] shadow-xl z-50 flex flex-col", lift)}>
+    <Card className={cn("fixed bottom-20 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-96 h-[60vh] sm:h-[500px] max-h-[500px] shadow-xl z-50 flex flex-col", lift, className)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b">
         <CardTitle className="text-lg flex items-center gap-2">
           <Bot className="h-5 w-5 text-primary" />

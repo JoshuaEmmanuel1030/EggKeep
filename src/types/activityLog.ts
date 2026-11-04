@@ -26,6 +26,11 @@ export interface ActivityLogMetadata {
   }>;
   // Raw materials that were consumed
   relatedProducts?: Array<{ product: string; quantity: number; type: string }>;
+  // Kas Tunai walk-in sale (tablet): every row of one sale shares saleId, plus
+  // the optional customer name / note typed on it.
+  saleId?: string;
+  customerName?: string;
+  note?: string;
 }
 
 export interface ActivityLog {
