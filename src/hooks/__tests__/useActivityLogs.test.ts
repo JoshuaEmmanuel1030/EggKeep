@@ -52,8 +52,15 @@ function query() {
   return q;
 }
 
+const realtime: Record<string, (payload: { new: Row }) => void> = {};
 vi.mock("@/integrations/supabase/client", () => {
-  const channel = { on: () => channel, subscribe: () => channel };
+  const channel = {
+    on: (_type: string, filter: { event: string }, handler: (payload: { new: Row }) => void) => {
+      realtime[filter.event] = handler;
+      return channel;
+    },
+    subscribe: () => channel,
+  };
   return { supabase: { from: () => query(), channel: () => channel, removeChannel: () => {} } };
 });
 const user = { id: "u1", email: "staff@js.test" };
@@ -135,5 +142,24 @@ describe("useActivityLogs paging", () => {
     expect(result.current.logs).toHaveLength(1739);
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" }));
     errorLog.mockRestore();
+  });
+});
+
+describe("useActivityLogs realtime", () => {
+  it("maps inserted and updated rows onto the feed", async () => {
+    const result = await load(makeRows(1));
+    const [existing] = makeRows(1);
+    const [inserted] = makeRows(1, "new");
+
+    act(() =>
+      realtime.INSERT({ new: { ...inserted, recorded_at: "2026-11-01T00:00:00.000Z", quantity_original: "1.5", category: null } })
+    );
+    expect(result.current.logs[0]).toMatchObject({ id: "new-00000", quantity_original: 1.5, category: "egg", isSynced: true });
+
+    act(() => realtime.UPDATE({ new: { ...existing, voided_at: "2026-11-02T00:00:00.000Z", void_reason: "salah input" } }));
+    expect(result.current.logs.find((l) => l.id === "log-00000")).toMatchObject({
+      voided_at: "2026-11-02T00:00:00.000Z",
+      void_reason: "salah input",
+    });
   });
 });
