@@ -61,10 +61,10 @@ const firstDate = (orders: PurchaseOrderRow[]) =>
   orders.reduce<string | null>((min, o) => (min === null || o.outflowDate < min ? o.outflowDate : min), null);
 
 // Later of today and the latest delivery date (POs can be entered before delivery).
-export const anchorDate = (orders: PurchaseOrderRow[], today: string) =>
+export const anchorDate = (orders: { outflowDate: string }[], today: string) =>
   orders.reduce((max, o) => (o.outflowDate > max ? o.outflowDate : max), today);
 
-export function windowOrders(orders: PurchaseOrderRow[], today: string) {
+export function windowOrders<T extends { outflowDate: string }>(orders: T[], today: string): T[] {
   const end = anchorDate(orders, today);
   const start = addDays(end, -(WINDOW_DAYS - 1));
   return orders.filter((o) => o.outflowDate >= start && o.outflowDate <= end);
@@ -152,13 +152,14 @@ export interface SkuShare { code: string; orders: number; qty: number; share: nu
 
 // SKUs ordered in the window: orders containing it (once per order), total qty,
 // share of the window's orders. Also drives "Suggest" and per-SKU order counts.
-export function skuShares(orders: PurchaseOrderRow[], today: string): SkuShare[] {
+// A line with no qty (a mis-picked SKU left blank) is not an order for it.
+export function skuShares(orders: Pick<PurchaseOrderRow, "outflowDate" | "orderLines">[], today: string): SkuShare[] {
   const w = windowOrders(orders, today);
   const counts = new Map<string, { orders: number; qty: number }>();
   for (const o of w) {
     const seen = new Set<string>();
     for (const l of o.orderLines) {
-      if (!l.skuCode) continue;
+      if (!l.skuCode || !(l.packQty > 0)) continue;
       const c = counts.get(l.skuCode) ?? { orders: 0, qty: 0 };
       if (!seen.has(l.skuCode)) {
         c.orders++;
@@ -171,6 +172,21 @@ export function skuShares(orders: PurchaseOrderRow[], today: string): SkuShare[]
   return [...counts]
     .map(([code, c]) => ({ code, ...c, share: c.orders / w.length }))
     .sort((a, b) => b.share - a.share || b.qty - a.qty);
+}
+
+// A recent PO from any buyer (buyerName is the name snapshot on the order).
+export interface RecentPo { buyerName: string | null; outflowDate: string; orderLines: PurchaseOrderLine[] }
+
+// Radial add menu on the tablet PO: the buyer's most-ordered SKUs (POs containing
+// them in the window, as skuShares ranks), active ones only, dropped before the
+// cut. A buyer with none — or no buyer — falls back to the ranking across all buyers.
+export function radialSkuCodes(
+  orders: RecentPo[], buyerName: string | null, today: string,
+  isActive: (code: string) => boolean, limit = 6,
+): { codes: string[]; scope: "buyer" | "all" } {
+  const top = (os: RecentPo[]) => skuShares(os, today).map((s) => s.code).filter(isActive).slice(0, limit);
+  const mine = buyerName ? top(orders.filter((o) => o.buyerName === buyerName)) : [];
+  return mine.length ? { codes: mine, scope: "buyer" } : { codes: top(orders), scope: "all" };
 }
 
 export interface MonthlyRow { key: string; byMonth: Record<string, number>; total: number }

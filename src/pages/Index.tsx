@@ -97,6 +97,11 @@ const Index = () => {
       const result = await submitOrderOutflows(entries);
 
       const logPayloads = toOutflowLogPayloads(entries, userEmail, metadata, new Date().toISOString());
+      // A tablet Kas Tunai sale (saleId) stays on Pesanan: the next walk-in and
+      // the "Hari ini" list are right there. Everything else goes to Beranda.
+      const done = () => {
+        if (!metadata?.saleId) setActiveTab("dashboard");
+      };
 
       if (!result.ok) {
         if (result.kind === "network") {
@@ -109,7 +114,7 @@ const Index = () => {
             title: t.outbox.savedOffline,
             description: t.outbox.savedOfflineDesc,
           });
-          setActiveTab("dashboard");
+          done();
           return true; // order accepted — forms clear, banner shows pending sync
         }
         return false; // server rejected (e.g. INSUFFICIENT_STOCK) — already toasted
@@ -118,7 +123,7 @@ const Index = () => {
       for (const log of logPayloads) {
         await addActivityLog(log);
       }
-      setActiveTab("dashboard");
+      done();
       return true;
     },
     [submitOrderOutflows, addActivityLog, enqueueOutflowOrder, t]
@@ -165,11 +170,19 @@ const Index = () => {
         </div>
       </TabsContent>
 
-      <TabsContent value="outflow" className={pane} {...paneA11y}>
-        <div className="max-w-4xl mx-auto">
+      {/* Tablet: full height, no padded scroll pane; the order area and the
+          right panel scroll on their own. Same element in both layouts. */}
+      <TabsContent
+        value="outflow"
+        className={isTablet ? "m-0 min-h-0 flex-1 flex-col data-[state=active]:flex" : pane}
+        {...paneA11y}
+      >
+        <div className={isTablet ? "contents" : "max-w-4xl mx-auto"}>
           <OutflowPage
+            tablet={isTablet}
             stockSummary={stockSummary}
             inflows={inflows}
+            logs={logs}
             onSubmit={handleOutflowSubmit}
           />
         </div>
@@ -305,7 +318,9 @@ const Index = () => {
         </footer>
       )}
 
-      <InventoryAssistant />
+      {/* Tablet Pesanan: keep the chat clear of the right panel's pinned
+          buttons, the Kas Tunai rail and its drawer (48 + 380 + 24px). */}
+      <InventoryAssistant className={isTablet && activeTab === "outflow" ? "sm:bottom-6 sm:right-[452px]" : undefined} />
     </div>
   );
 };

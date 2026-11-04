@@ -19,6 +19,8 @@ export const en = {
     // Tablet sidebar
     home: 'Home',
     activities: 'Activities',
+    collapseMenu: 'Hide menu',
+    expandMenu: 'Open menu',
   },
 
   // Common
@@ -515,6 +517,40 @@ export const en = {
     partialSubmissionDesc: '{done} {orders} recorded. {failed} still queued — fix stock and re-submit.',
     nothingDeducted: 'nothing was deducted.',
     outflowSaveFailed: 'Failed to save outflow — nothing was deducted.',
+    // Tablet Purchase Order layout
+    materialsButton: 'Materials',
+    stockShort: 'Short',
+    linesCount: '{n} lines',
+  },
+
+  // Cash (Kas Tunai): walk-in cash sale on the tablet Orders page
+  kas: {
+    title: 'Cash',
+    subtitle: 'Walk-in cash sale',
+    today: 'today',
+    changeDate: 'Change date',
+    backToToday: 'Back to today',
+    customerName: 'Customer name',
+    eggs: 'Eggs',
+    addEgg: 'Add egg',
+    note: 'Note',
+    todayList: 'Today',
+    salesCount: '{n} sales',
+    noName: 'No name',
+    submit: 'Record Sale',
+    recorded: 'Sale recorded',
+    recordedDesc: '{n} egg types deducted from stock',
+    close: 'Close cash sale',
+  },
+
+  // Radial add menu (press-and-hold the tablet add button)
+  radial: {
+    frequent: 'Often ordered',
+    allBuyers: 'all buyers',
+    noHistory: '{buyer} has no history',
+    last8w: 'last 8 weeks',
+    add: 'Add',
+    pickEgg: 'Pick an egg',
   },
 
   // Activity

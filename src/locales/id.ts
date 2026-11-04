@@ -19,6 +19,8 @@ export const id = {
     // Tablet sidebar
     home: 'Beranda',
     activities: 'Aktivitas',
+    collapseMenu: 'Sembunyikan menu',
+    expandMenu: 'Buka menu',
   },
 
   // Common
@@ -514,6 +516,40 @@ export const id = {
     partialSubmissionDesc: '{done} {orders} tercatat. {failed} masih di antrian — perbaiki stok lalu kirim ulang.',
     nothingDeducted: 'tidak ada stok yang dipotong.',
     outflowSaveFailed: 'Gagal menyimpan pesanan — tidak ada stok yang dipotong.',
+    // Tablet Purchase Order layout
+    materialsButton: 'Rincian bahan',
+    stockShort: 'Stok kurang',
+    linesCount: '{n} baris',
+  },
+
+  // Kas Tunai: penjualan tunai walk-in di halaman Pesanan tablet
+  kas: {
+    title: 'Kas Tunai',
+    subtitle: 'Penjualan tunai walk-in',
+    today: 'hari ini',
+    changeDate: 'Ubah tanggal',
+    backToToday: 'Kembali ke hari ini',
+    customerName: 'Nama pelanggan',
+    eggs: 'Telur',
+    addEgg: 'Tambah telur',
+    note: 'Catatan',
+    todayList: 'Hari ini',
+    salesCount: '{n} penjualan',
+    noName: 'Tanpa nama',
+    submit: 'Catat Penjualan',
+    recorded: 'Penjualan tercatat',
+    recordedDesc: '{n} jenis telur dipotong dari stok',
+    close: 'Tutup Kas Tunai',
+  },
+
+  // Menu radial tambah (tekan-tahan tombol tambah di tablet)
+  radial: {
+    frequent: 'Sering dipesan',
+    allBuyers: 'semua pembeli',
+    noHistory: '{buyer} belum ada riwayat',
+    last8w: '8 minggu terakhir',
+    add: 'Tambah',
+    pickEgg: 'Pilih telur',
   },
 
   // Activity
