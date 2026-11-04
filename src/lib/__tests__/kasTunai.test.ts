@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildKasEntries,
+  eggRingItems,
   isBrokenKasLine,
   isValidKasLine,
   kasDateLabel,
@@ -39,6 +40,18 @@ function log(over: Partial<ActivityLog>): ActivityLog {
     ...over,
   };
 }
+
+describe("eggRingItems", () => {
+  it("drops the retakan children and splits the name into label over sub", () => {
+    const names = ["KAMPUNG", "KAMPUNG (RETAKAN)", "NEGERI BIASA", "ASIN MATENG KECIL"];
+    const types = [{ name: "KAMPUNG" }, { name: "KAMPUNG (RETAKAN)", isRetakan: true }, { name: "NEGERI BIASA", isRetakan: false }];
+    expect(eggRingItems(names, types)).toEqual([
+      { key: "KAMPUNG", label: "KAMPUNG", sub: undefined },
+      { key: "NEGERI BIASA", label: "NEGERI", sub: "BIASA" },
+      { key: "ASIN MATENG KECIL", label: "ASIN", sub: "MATENG KECIL" },
+    ]);
+  });
+});
 
 describe("kasStockQty", () => {
   it("kg typed on a kg product passes through, decimal comma included", () => {

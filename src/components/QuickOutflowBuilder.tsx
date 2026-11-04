@@ -19,8 +19,8 @@ import { buildOrderEntries, buildOrderMetadata as buildPayloadMetadata, type Ord
 import { useBuyers } from "@/hooks/useBuyers";
 import { localToday, pinnedCodesFor, radialSkuCodes } from "@/lib/buyerProfile";
 import { useRecentPurchaseOrders } from "@/hooks/usePurchaseOrders";
-import { RadialAddButton, type RadialItem } from "./RadialAddButton";
-import { FLASH_MS, RADIAL_FLASH_CLASS } from "@/lib/radial";
+import { RadialAddButton, revealPickedRow, type RadialItem } from "./RadialAddButton";
+import { PHONE_HOLD_MS } from "@/lib/radial";
 import { useBuyerDcs } from "@/hooks/useBuyerDcs";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { useItemTypes } from "@/hooks/useItemTypes";
@@ -174,8 +174,8 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit, tablet }:
     }]);
   };
 
-  // Radial pick (tablet): a pack line with the SKU already chosen, as the SKU
-  // picker would set it. The effect below brings it into view once rendered.
+  // Radial pick: a pack line with the SKU already chosen, as the SKU picker
+  // would set it. The effect below brings it into view once rendered.
   const orderAreaRef = useRef<HTMLDivElement>(null);
   const pickedLineId = useRef<string | null>(null);
   const addPickedLine = (skuCode: string) => {
@@ -186,13 +186,11 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit, tablet }:
   useEffect(() => {
     const id = pickedLineId.current;
     pickedLineId.current = null;
-    const area = orderAreaRef.current;
-    const row = id && area?.querySelector<HTMLElement>(`[data-line-id="${id}"]`);
+    const row = id && document.querySelector<HTMLElement>(`[data-line-id="${id}"]`);
     if (!row) return;
-    area.scrollTop = area.scrollHeight;
-    row.querySelector("input")?.focus(); // the row's only input: Jumlah
-    row.classList.add(RADIAL_FLASH_CLASS);
-    window.setTimeout(() => row.classList.remove(RADIAL_FLASH_CLASS), FLASH_MS);
+    const area = orderAreaRef.current; // tablet only: the order area scrolls itself
+    if (area) area.scrollTop = area.scrollHeight;
+    revealPickedRow(row); // the row's first input: Jumlah
   }, [lines]);
 
   // Remove order line
@@ -655,6 +653,17 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit, tablet }:
     />
   ));
 
+  const radialAdd = (
+    <PoRadialAdd
+      buyerName={selectedBuyer?.name ?? null}
+      skus={skus}
+      pinnedSkuCodes={pinnedSkuCodes}
+      onTap={addLine}
+      onPick={(item) => addPickedLine(item.key)}
+      holdMs={tablet ? undefined : PHONE_HOLD_MS}
+    />
+  );
+
   const summaryAggregates = orderQueue.length > 0 ? totalAggregates : aggregates;
   const canQueue = hasValidLines && !!selectedBuyer;
   const canSubmit = !submitting && (hasValidLines || orderQueue.length > 0);
@@ -704,13 +713,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit, tablet }:
               </div>
             )}
 
-            <PoRadialAdd
-              buyerName={selectedBuyer?.name ?? null}
-              skus={skus}
-              pinnedSkuCodes={pinnedSkuCodes}
-              onTap={addLine}
-              onPick={(item) => addPickedLine(item.key)}
-            />
+            {radialAdd}
           </div>
 
           {/* Right panel: queue, summary, pinned actions */}
@@ -919,15 +922,9 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit, tablet }:
                   </div>
                 )}
 
-                {/* Add Line button at bottom */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-12"
-                  onClick={addLine}
-                >
-                  <Plus className="h-4 w-4 mr-2" /> {t.outflow.addLine}
-                </Button>
+                {/* Add Line at bottom. Wrapped: space-y-4 would zero the trigger's
+                    margin-bottom, where its caption sits. */}
+                <div>{radialAdd}</div>
               </div>
 
               {/* Summary panel */}
@@ -1049,12 +1046,13 @@ interface PoRadialAddProps {
   pinnedSkuCodes: Set<string>;
   onTap: () => void;
   onPick: (item: RadialItem) => void;
+  holdMs?: number;
 }
 
-// Tablet Tambah Baris: a tap adds a blank line; press-drag picks one of the
-// buyer's most-ordered active SKUs (all buyers' when the buyer has none). Its
-// own component so only the tablet fetches the recent POs.
-function PoRadialAdd({ buyerName, skus, pinnedSkuCodes, onTap, onPick }: PoRadialAddProps) {
+// Tambah Baris: a tap adds a blank line; press-drag picks one of the buyer's
+// most-ordered active SKUs (all buyers' when the buyer has none). Its own
+// component so the recent-PO query re-renders only the trigger.
+function PoRadialAdd({ buyerName, skus, pinnedSkuCodes, onTap, onPick, holdMs }: PoRadialAddProps) {
   const { t } = useLanguage();
   const { data: recent } = useRecentPurchaseOrders();
   const { codes, scope } = useMemo(() => {
@@ -1076,6 +1074,7 @@ function PoRadialAdd({ buyerName, skus, pinnedSkuCodes, onTap, onPick }: PoRadia
       centerVerb={t.radial.add}
       onTap={onTap}
       onPick={onPick}
+      holdMs={holdMs}
     />
   );
 }

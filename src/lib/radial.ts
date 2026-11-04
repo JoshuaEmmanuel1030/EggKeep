@@ -5,6 +5,9 @@
 
 export const HOLD_MS = 90; // a press held this long opens the ring...
 export const MOVE_TOL = 8; // ...or one that moves more than this (px)
+// The phone's hold: a thumb tap often lasts longer than 90 ms, and a drag opens
+// the ring at once anyway, so the longer hold only makes taps reliable.
+export const PHONE_HOLD_MS = 180;
 export const DEAD_ZONE = 40; // release within this radius of the press point = cancel
 export const SUPPRESS_MS = 350; // swallow the click that trails a ring session
 export const CLOSE_MS = 180; // shrink-into-the-trigger animation
@@ -29,15 +32,27 @@ export interface Bubble extends Point {
   delay: number; // ms
 }
 
+const MIN_RADIUS = 88;
+
 // Item ring radius. The disc is R + 52 (CSS), the screen clamp pad R + 56.
-export const ringRadius = (n: number): number => (n <= 7 ? 112 : 128);
+// fit is the smaller side of the visible area: small phones and a
+// keyboard-shortened view shrink the ring so the disc plus its margin fits.
+export const ringRadius = (n: number, fit = Infinity): number =>
+  Math.max(MIN_RADIUS, Math.min(n <= 7 ? 112 : 128, Math.floor(fit / 2) - 56));
+
+// topRoom for the phone's banner: its bottom edge sits R + 64 above the centre,
+// two lines are about 52 px tall, and 8 px of margin makes R + 124 from the top
+// against the pad of R + 56.
+export const BANNER_ROOM = 68;
 
 // The ring opens on the press point, pulled in so the whole disc stays on
-// screen. A viewport too small for the disc centres it instead.
-export function clampCentre(x: number, y: number, R: number, width: number, height: number): Point {
+// screen, with topRoom more clear above it (the disc wins when there's no room
+// for both). A viewport too small for the disc centres it instead.
+export function clampCentre(x: number, y: number, R: number, width: number, height: number, topRoom = 0): Point {
   const pad = R + 56;
-  const clamp = (v: number, max: number) => (max <= 2 * pad ? max / 2 : Math.min(Math.max(v, pad), max - pad));
-  return { x: clamp(x, width), y: clamp(y, height) };
+  const clamp = (v: number, max: number, room = 0) =>
+    max <= 2 * pad ? max / 2 : Math.min(Math.max(v, pad + room), max - pad);
+  return { x: clamp(x, width), y: clamp(y, height, topRoom) };
 }
 
 // Item i sits at -90° + i·360/n: item 0 at the top, then clockwise (screen y

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  BANNER_ROOM,
   BUBBLE_COLORS,
   DEAD_ZONE,
   clampCentre,
@@ -20,6 +21,28 @@ describe("radial geometry", () => {
     expect(ringRadius(1)).toBe(112);
     expect(ringRadius(7)).toBe(112);
     expect(ringRadius(8)).toBe(128);
+  });
+
+  it("shrinks the radius to fit the visible area, down to a floor of 88", () => {
+    expect(ringRadius(7, Infinity)).toBe(112);
+    expect(ringRadius(8, Infinity)).toBe(128);
+    expect(ringRadius(4, 320)).toBe(104);
+    expect(ringRadius(8, 360)).toBe(124);
+    expect(ringRadius(4, 361)).toBe(112); // floor(180.5) - 56 = 124, capped by n
+    expect(ringRadius(4, 200)).toBe(88);
+    // A 1194×834 tablet keeps the handoff's values.
+    expect(ringRadius(7, 834)).toBe(112);
+    expect(ringRadius(8, 834)).toBe(128);
+  });
+
+  it("keeps topRoom clear above the disc; the disc wins when there's no room for both", () => {
+    expect(clampCentre(200, 10, 112, 390, 844, BANNER_ROOM)).toEqual({ x: 200, y: 168 + 68 });
+    expect(clampCentre(200, 300, 112, 390, 844, BANNER_ROOM)).toEqual({ x: 200, y: 300 }); // already clear
+    expect(clampCentre(200, 10, 112, 390, 400, BANNER_ROOM)).toEqual({ x: 200, y: 400 - 168 });
+    expect(clampCentre(200, 10, 112, 390, 300, BANNER_ROOM)).toEqual({ x: 200, y: 150 }); // too short: centred
+    // topRoom never touches the x axis, and 0 is the plain clamp.
+    expect(clampCentre(5, 400, 112, 1194, 834, BANNER_ROOM).x).toBe(168);
+    expect(clampCentre(1190, 5, 128, 1194, 834, 0)).toEqual(clampCentre(1190, 5, 128, 1194, 834));
   });
 
   it("clamps the centre so the disc (pad R + 56) fits the screen", () => {

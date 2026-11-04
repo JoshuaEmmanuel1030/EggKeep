@@ -1,5 +1,5 @@
-// The round + trigger behind Tambah Baris / Tambah telur on the tablet Pesanan,
-// with a one-gesture radial quick-add: press, drag toward an item, release.
+// The round + trigger behind Tambah Baris / Tambah telur on Pesanan (tablet and
+// phone), with a one-gesture radial quick-add: press, drag toward an item, release.
 // A plain tap (or Enter / Space) still calls onTap. The ring is portalled over
 // the whole viewport, aria-hidden and pointer-events:none; geometry and timing
 // live in src/lib/radial.ts, the look in src/index.css (.ek-rad-*).
@@ -9,9 +9,12 @@ import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   ABSORB_MS,
+  BANNER_ROOM,
   CLOSE_MS,
+  FLASH_MS,
   HOLD_MS,
   MOVE_TOL,
+  RADIAL_FLASH_CLASS,
   SUPPRESS_MS,
   clampCentre,
   highlightIndex,
@@ -41,7 +44,17 @@ export interface RadialAddButtonProps {
   centerVerb: string; // t.radial.add
   onTap: () => void; // click, keyboard, or a short tap
   onPick: (item: RadialItem) => void;
+  holdMs?: number; // default HOLD_MS; the phone passes PHONE_HOLD_MS
   className?: string;
+}
+
+// A row a pick just added: focus its first input (Jumlah / Quantity; focus()
+// scrolls it into view natively) and flash it.
+// eslint-disable-next-line react-refresh/only-export-components
+export function revealPickedRow(row: HTMLElement) {
+  row.querySelector("input")?.focus();
+  row.classList.add(RADIAL_FLASH_CLASS);
+  window.setTimeout(() => row.classList.remove(RADIAL_FLASH_CLASS), FLASH_MS);
 }
 
 interface Ring {
@@ -62,7 +75,7 @@ type Phase = "idle" | "pending" | "open" | "held";
 
 const vars = (v: Record<string, string>) => v as CSSProperties;
 
-export function RadialAddButton({ caption, items, banner, centerVerb, onTap, onPick, className }: RadialAddButtonProps) {
+export function RadialAddButton({ caption, items, banner, centerVerb, onTap, onPick, holdMs = HOLD_MS, className }: RadialAddButtonProps) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
   const dotRef = useRef<HTMLDivElement>(null);
@@ -179,8 +192,19 @@ export function RadialAddButton({ caption, items, banner, centerVerb, onTap, onP
     st.closeTimer = 0;
     b.classList.remove("ek-rad-absorb");
 
-    const R = ringRadius(list.length);
-    const c = clampCentre(st.x, st.y, R, window.innerWidth, window.innerHeight);
+    // The VISIBLE area: with the on-screen keyboard up the layout viewport is
+    // taller than what the user can see, and fixed elements can sit behind the
+    // keyboard. The ring's coordinates stay layout-viewport px, like clientX/Y.
+    const vv = window.visualViewport;
+    const view = vv
+      ? { left: vv.offsetLeft, top: vv.offsetTop, width: vv.width, height: vv.height }
+      : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const R = ringRadius(list.length, Math.min(view.width, view.height));
+    // Room only for the phone's banner (same breakpoint as its CSS): at 1024 px
+    // and up it keeps the handoff's position, and so does the centre.
+    const topRoom = latest.current.banner && window.innerWidth < 1024 ? BANNER_ROOM : 0;
+    const inView = clampCentre(st.x - view.left, st.y - view.top, R, view.width, view.height, topRoom);
+    const c = { x: inView.x + view.left, y: inView.y + view.top };
     const r = b.getBoundingClientRect();
     st.phase = "open";
     st.items = list;
@@ -280,7 +304,7 @@ export function RadialAddButton({ caption, items, banner, centerVerb, onTap, onP
     st.y = e.clientY;
     attach();
     e.currentTarget.setAttribute("data-pending", "");
-    st.holdTimer = window.setTimeout(open, HOLD_MS);
+    st.holdTimer = window.setTimeout(open, holdMs);
   };
 
   const span = ring ? 360 / ring.items.length : 0;
@@ -300,7 +324,7 @@ export function RadialAddButton({ caption, items, banner, centerVerb, onTap, onP
               key={ring.key}
               ref={ringRef}
               className="ek-rad"
-              style={{ left: ring.cx, top: ring.cy, ...vars({ "--R": `${ring.R}px`, "--tx": `${ring.tx}px`, "--ty": `${ring.ty}px` }) }}
+              style={{ left: ring.cx, top: ring.cy, ...vars({ "--R": `${ring.R}px`, "--cx": `${ring.cx}px`, "--tx": `${ring.tx}px`, "--ty": `${ring.ty}px` }) }}
             >
               <div className="ek-rad-wave" />
               <div className="ek-rad-disc" />

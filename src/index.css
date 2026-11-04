@@ -147,7 +147,7 @@
   }
 }
 
-/* ── Radial quick-add (Tambah Baris / Tambah telur on the tablet Pesanan) ──────
+/* ── Radial quick-add (Tambah Baris / Tambah telur on Pesanan) ─────────────────
    Markup + gesture: src/components/RadialAddButton.tsx; geometry: src/lib/radial.ts.
    Ported value-for-value from the handoff prototype's .rad-* rules
    (docs/superpowers/specs/design_handoff_radial_outflow/radial-outflow.html).
@@ -387,6 +387,23 @@
   .ek-rad-hd span {
     color: rgba(243, 237, 228, 0.6);
     font-weight: 500;
+  }
+  /* Phone: long fallback text is wider than the screen. Centred on the viewport
+     (the ring may sit off-centre), wrapping and growing upward from the disc. */
+  @media (max-width: 1023px) {
+    .ek-rad-hd {
+      left: calc(50vw - var(--cx));
+      top: auto;
+      bottom: calc(var(--R) + 52px + 12px);
+      width: max-content;
+      max-width: calc(100vw - 24px);
+      white-space: normal;
+      flex-wrap: wrap;
+      justify-content: center;
+      text-align: center;
+      row-gap: 2px;
+      border-radius: 17px;
+    }
   }
   .ek-rad-c {
     position: absolute;

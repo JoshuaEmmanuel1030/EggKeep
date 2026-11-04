@@ -2,8 +2,9 @@
 // only): sale lines -> stock entries, the "Hari ini" list of today's cash
 // sales, and the picked-date label. No React / Supabase, so it stays tested.
 import { isSameDay, parseISO } from "date-fns";
-import type { ConversionMap, OutflowEntry } from "@/types/inventory";
+import type { ConversionMap, ItemType, OutflowEntry } from "@/types/inventory";
 import type { ActivityLog } from "@/types/activityLog";
+import type { RadialItem } from "@/components/RadialAddButton";
 import { parseCountInput } from "@/lib/stockCount";
 import { entryKind } from "@/lib/activityGrouping";
 import { getStockUnit, toStockUnits } from "@/lib/inventory";
@@ -25,6 +26,19 @@ export interface KasSale {
 // The unit the line is typed in: kg only on a weight-sold egg with the switch on.
 const kasInputUnit = (line: KasLine, conversionMap: ConversionMap): "kg" | "butir" =>
   conversionMap[line.product]?.unit === "kg" && line.inputUnit === "kg" ? "kg" : "butir";
+
+// The radial egg ring (Kas Tunai and the phone's manual form): the egg products
+// minus the (RETAKAN) children, which would crowd it (they stay in the
+// dropdown). "NEGERI BIASA" -> NEGERI over BIASA.
+export function eggRingItems(eggProductNames: string[], itemTypes: Pick<ItemType, "name" | "isRetakan">[]): RadialItem[] {
+  const retakan = new Set(itemTypes.filter((it) => it.isRetakan).map((it) => it.name));
+  return eggProductNames
+    .filter((name) => !retakan.has(name))
+    .map((name) => {
+      const [label, ...rest] = name.split(" ");
+      return { key: name, label, sub: rest.join(" ") || undefined };
+    });
+}
 
 // The screen prints counts in id-ID ("1.200 butir"), so a typed "1.000" is a
 // thousand, not 1. A count is a whole number: "2,5" butir is invalid (null).
