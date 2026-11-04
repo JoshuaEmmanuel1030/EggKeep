@@ -39,10 +39,21 @@ export function useOfflineSync() {
     }
   }, []);
 
-  // Save pending logs to localStorage
-  const savePendingLogs = useCallback((logs: PendingActivityLog[]) => {
-    localStorage.setItem(PENDING_LOGS_KEY, JSON.stringify(logs));
-    setPendingLogs(logs);
+  // Change the queue from what's STORED, not this render's pendingLogs: an
+  // order writes its log rows in a loop through one addActivityLog closure, so
+  // a stale copy kept only the last failed row. Also covers the other hook
+  // instance (Index's and useActivityLogs' share the key).
+  const updatePendingLogs = useCallback((fn: (logs: PendingActivityLog[]) => PendingActivityLog[]) => {
+    let stored: PendingActivityLog[] = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PENDING_LOGS_KEY) || "[]");
+      if (Array.isArray(parsed)) stored = parsed;
+    } catch (e) {
+      console.error("Error loading pending logs:", e);
+    }
+    const next = fn(stored);
+    localStorage.setItem(PENDING_LOGS_KEY, JSON.stringify(next));
+    setPendingLogs(next);
   }, []);
 
   // Monitor online/offline status
@@ -107,10 +118,7 @@ export function useOfflineSync() {
       }
 
       if (successfulSyncs.length > 0) {
-        const remaining = pendingLogs.filter(
-          (log) => !successfulSyncs.includes(log.id)
-        );
-        savePendingLogs(remaining);
+        updatePendingLogs((logs) => logs.filter((log) => !successfulSyncs.includes(log.id)));
 
         toast({
           title: "Synced successfully",
@@ -122,7 +130,7 @@ export function useOfflineSync() {
     } finally {
       setIsSyncing(false);
     }
-  }, [user, isOnline, pendingLogs, isSyncing, savePendingLogs]);
+  }, [user, isOnline, pendingLogs, isSyncing, updatePendingLogs]);
 
   // Auto-sync when online and there are pending logs
   useEffect(() => {
@@ -164,7 +172,7 @@ export function useOfflineSync() {
           return true;
         } catch (error) {
           console.error("Error adding log, saving offline:", error);
-          savePendingLogs([...pendingLogs, newLog]);
+          updatePendingLogs((logs) => [...logs, newLog]);
           toast({
             title: "Saved offline",
             description: "Entry will sync when connected",
@@ -172,7 +180,7 @@ export function useOfflineSync() {
           return true;
         }
       } else {
-        savePendingLogs([...pendingLogs, newLog]);
+        updatePendingLogs((logs) => [...logs, newLog]);
         toast({
           title: "Saved offline",
           description: "Entry will sync when connected",
@@ -180,7 +188,7 @@ export function useOfflineSync() {
         return true;
       }
     },
-    [user, isOnline, pendingLogs, savePendingLogs]
+    [user, isOnline, updatePendingLogs]
   );
 
   return {
