@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
+import { format, parseISO, subDays } from "date-fns";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { InflowForm } from "@/components/InflowForm";
+import { kasDateLabel } from "@/lib/kasTunai";
 import { toast } from "@/hooks/use-toast";
-import type { InflowEntry } from "@/types/inventory";
+import type { InflowEntry, StockSummary } from "@/types/inventory";
 
 // Everything that reaches Supabase is behind these hooks, so no test here can write.
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "u1", email: "staff@js.test" } }) }));
@@ -49,13 +51,24 @@ const submitted = async (onSubmit: ReturnType<typeof vi.fn>) => {
   return onSubmit.mock.calls[0] as unknown as [InflowEntry[], string];
 };
 
-describe("InflowForm submit payload", () => {
-  const renderForm = (onSubmit: ReturnType<typeof vi.fn>) =>
-    render(
-      <LanguageProvider>
-        <InflowForm onSubmit={onSubmit as never} />
-      </LanguageProvider>
-    );
+const STOCK = [
+  { product: "NEGERI OMEGA", totalStock: 186 },
+  { product: "KAMPUNG BIASA", totalStock: 2000 },
+] as StockSummary[];
+
+const form = (onSubmit: ReturnType<typeof vi.fn>, tablet: boolean) => (
+  <LanguageProvider>
+    <InflowForm onSubmit={onSubmit as never} tablet={tablet} stockSummary={STOCK} />
+  </LanguageProvider>
+);
+const todayIso = () => format(new Date(), "yyyy-MM-dd");
+
+// Both layouts run the same handleSubmit, so both must send the same payload.
+describe.each([
+  ["phone", false],
+  ["tablet", true],
+])("InflowForm submit payload (%s)", (_layout, tablet) => {
+  const renderForm = (onSubmit: ReturnType<typeof vi.fn>) => render(form(onSubmit, tablet));
 
   it("sends one entry per valid row in category order, each in the product's native unit", async () => {
     const onSubmit = vi.fn(async () => true);
@@ -141,5 +154,177 @@ describe("InflowForm submit payload", () => {
       description: "Barang masuk tidak tersimpan. Silakan coba lagi.",
       variant: "destructive",
     });
+  });
+
+  it("puts the date back on today after a successful submit, not after a failed one", async () => {
+    const past = format(subDays(new Date(), 3), "yyyy-MM-dd");
+    const fill = () => {
+      toggle("Telur");
+      pickProduct(0, "NEGERI OMEGA");
+      typeQty(0, "10");
+      fireEvent.change(screen.getByLabelText("Tanggal"), { target: { value: past } });
+    };
+
+    const rejected = vi.fn(async () => false);
+    const { unmount } = renderForm(rejected);
+    fill();
+    await submitted(rejected);
+    await waitFor(() => expect(submitButton()).toBeEnabled());
+    expect(screen.getByLabelText("Tanggal")).toHaveValue(past);
+    unmount();
+
+    const accepted = vi.fn(async () => true);
+    renderForm(accepted);
+    fill();
+    const [entries] = await submitted(accepted);
+    expect(entries[0].date).toBe(past);
+    await waitFor(() => expect(screen.getByLabelText("Tanggal")).toHaveValue(todayIso()));
+  });
+});
+
+describe("InflowForm tablet layout", () => {
+  const renderTablet = (onSubmit = vi.fn(async () => true)) => render(form(onSubmit, true));
+  const card = (name: string) => screen.getByRole("checkbox", { name: new RegExp(name) });
+
+  it("counts only rows that will be recorded, on the card, the ready line and the button", () => {
+    renderTablet();
+    expect(card("Telur")).toHaveTextContent("Off");
+    expect(screen.getByText("Tambahkan minimal satu item dengan nilai valid")).toBeInTheDocument();
+    expect(submitButton()).toBeDisabled();
+
+    toggle("Telur");
+    expect(card("Telur")).toBeChecked();
+    expect(card("Telur")).toHaveTextContent("0 item");
+
+    pickProduct(0, "NEGERI OMEGA");
+    typeQty(0, "0"); // typed, but handleSubmit would drop it
+    expect(card("Telur")).toHaveTextContent("0 item");
+    expect(submitButton()).toBeDisabled();
+
+    typeQty(0, "300");
+    expect(card("Telur")).toHaveTextContent("1 item");
+    expect(card("Kotak")).toHaveTextContent("Off");
+    expect(screen.getByText("siap ditambahkan")).toHaveTextContent("1 item");
+    expect(submitButton()).toBeEnabled();
+
+    toggle("Telur");
+    expect(submitButton()).toBeDisabled();
+  });
+
+  it("Ringkasan adds the quantity to the stock in the product's own unit", () => {
+    renderTablet();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    typeQty(0, "52,89");
+    typeSupplier(0, "Farm A");
+    fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
+    pickProduct(1, "KAMPUNG BIASA");
+    typeQty(1, "1500");
+    toggle("Kemasan");
+    pickProduct(2, "MIKA 10");
+    typeQty(2, "500");
+
+    const panel = screen.getByText("Ringkasan").closest("aside") as HTMLElement;
+    // kg: 186 + 52,89, with no butir factor anywhere near it.
+    expect(within(panel).getByText("+52,89 kg")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Farm A · Stok 186 → 238,89 kg");
+    // butir: 2.000 + 1.500.
+    expect(within(panel).getByText("+1.500 butir")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Stok 2.000 → 3.500 butir");
+    // Nothing in the stock summary yet: starts from 0, in pcs.
+    expect(within(panel).getByText("+500 pcs")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Stok 0 → 500 pcs");
+  });
+
+  it("shows the empty states: nothing enabled, and a category with no rows", () => {
+    renderTablet();
+    // The field label, the dashed block, and the Ringkasan.
+    expect(screen.getAllByText("Pilih Kategori")).toHaveLength(3);
+
+    toggle("Telur");
+    expect(screen.getAllByText("Pilih Kategori")).toHaveLength(1);
+    expect(screen.getAllByText('Klik "Tambah Item" untuk menambah entri')).toHaveLength(1); // Ringkasan
+
+    fireEvent.click(screen.getByRole("button", { name: "Hapus baris" }));
+    expect(screen.getAllByText('Klik "Tambah Item" untuk menambah entri')).toHaveLength(2); // + the table
+  });
+
+  it("puts the unit inside Jumlah: kg, butir, pcs", () => {
+    renderTablet();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    expect(screen.getByLabelText("Jumlah (kg)")).toBeInTheDocument();
+    pickProduct(0, "KAMPUNG BIASA");
+    expect(screen.getByLabelText("Jumlah (butir)")).toBeInTheDocument();
+    toggle("Label");
+    expect(screen.getByLabelText("Jumlah (pcs)")).toBeInTheDocument();
+  });
+
+  it("shows the conversion line for kg eggs only; a butir egg has none", () => {
+    renderTablet();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    expect(screen.queryByText(/butir\/kg/)).not.toBeInTheDocument(); // no qty yet
+    typeQty(0, "300");
+    expect(screen.getByText(/butir\/kg/).parentElement).toHaveTextContent("300 kg = 4.650 butir (× 15,5 butir/kg)");
+
+    pickProduct(0, "KAMPUNG BIASA");
+    expect(screen.getByLabelText("Jumlah (butir)")).toHaveValue("300");
+    expect(screen.queryByText(/ = /)).not.toBeInTheDocument();
+  });
+
+  it("warns in Indonesian about an egg with no conversion, and shows no conversion line", () => {
+    renderTablet();
+    toggle("Telur");
+    pickProduct(0, "PUYUH BARU");
+    typeQty(0, "50");
+    expect(screen.getByText(/Belum ada konversi satuan untuk PUYUH BARU/)).toBeInTheDocument();
+    expect(screen.queryByText(/ = /)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Jumlah (butir)")).toBeInTheDocument();
+  });
+
+  it("the date link changes the date, the Ringkasan follows it, and × goes back to today", () => {
+    renderTablet();
+    const past = format(subDays(new Date(), 3), "yyyy-MM-dd");
+    const longDate = (iso: string) =>
+      parseISO(iso).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+    expect(screen.getByTitle("Ubah tanggal")).toHaveTextContent("hari ini");
+    expect(screen.getByText(longDate(todayIso()))).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Tanggal"), { target: { value: past } });
+    expect(screen.getByTitle("Ubah tanggal")).toHaveTextContent(kasDateLabel(past, "id-ID"));
+    expect(screen.getByText(longDate(past))).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Kembali ke hari ini" }));
+    expect(screen.getByLabelText("Tanggal")).toHaveValue(todayIso());
+    expect(screen.getByTitle("Ubah tanggal")).toHaveTextContent("hari ini");
+  });
+
+  it("rotating keeps what was typed, and a date cleared in portrait becomes today", async () => {
+    const onSubmit = vi.fn(async () => true);
+    const { rerender } = render(form(onSubmit, false));
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    typeQty(0, "10");
+    fireEvent.change(screen.getByLabelText("Tanggal"), { target: { value: "" } });
+
+    rerender(form(onSubmit, true));
+
+    expect(screen.getByLabelText("Jumlah (kg)")).toHaveValue("10");
+    expect(screen.getByTitle("Ubah tanggal")).toHaveTextContent("hari ini");
+    const [entries] = await submitted(onSubmit);
+    expect(entries[0].date).toBe(todayIso());
+  });
+});
+
+describe("InflowForm phone layout", () => {
+  it("keeps today's conversion line for a butir egg", () => {
+    render(form(vi.fn(), false));
+    toggle("Telur");
+    pickProduct(0, "KAMPUNG BIASA");
+    typeQty(0, "1500");
+    expect(screen.getByText(/butir$/)).toHaveTextContent(/1500 pcs = 1[.,]500 butir/);
+    expect(screen.queryByRole("heading", { name: "Ringkasan" })).not.toBeInTheDocument();
   });
 });

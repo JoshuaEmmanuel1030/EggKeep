@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
-import { AlertCircle, Check, ChevronDown, ChevronRight, ChevronsUpDown, ShoppingCart, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, ChevronRight, ChevronsUpDown, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -15,12 +15,12 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { loadOutbox } from "@/lib/outflowOutbox";
 import { RadialAddButton, revealPickedRow, type RadialItem } from "./RadialAddButton";
+import { SubtleDateLink } from "./SubtleDateLink";
 import {
   buildKasEntries,
   eggRingItems,
   isBrokenKasLine,
   isValidKasLine,
-  kasDateLabel,
   kasSaleSummary,
   kasStockQty,
   mergeKasSales,
@@ -64,7 +64,6 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
   const [lines, setLines] = useState<KasLine[]>(() => [emptyLine()]);
   const [submitting, setSubmitting] = useState(false);
   const [justRecorded, setJustRecorded] = useState<KasSale[]>([]);
-  const dateRef = useRef<HTMLInputElement>(null);
 
   const availableByProduct = useMemo(() => {
     const m = new Map<string, number>();
@@ -114,17 +113,6 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
     const row = id && bodyRef.current?.querySelector<HTMLElement>(`[data-line-id="${id}"]`);
     if (row) revealPickedRow(row); // the card's only input: Jumlah
   }, [lines]);
-
-  const openPicker = () => {
-    const el = dateRef.current;
-    if (!el) return;
-    try {
-      el.showPicker();
-    } catch {
-      el.focus();
-      el.click();
-    }
-  };
 
   const handleSubmit = async () => {
     const saleDate = date ?? today();
@@ -178,44 +166,7 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
             {t.kas.title}
             <small className="flex items-center gap-1 font-sans text-[13px] font-medium text-ek-mfg">
               {t.kas.subtitle} ·
-              <span className="relative inline-flex">
-                <button
-                  type="button"
-                  onClick={openPicker}
-                  title={t.kas.changeDate}
-                  className={cn(
-                    "inline-flex items-center gap-0.5 whitespace-nowrap border-b border-dotted border-[#b8ab9a] leading-[1.2] hover:text-ek-fg",
-                    date && "border-amber-500 text-amber-700"
-                  )}
-                >
-                  {date ? kasDateLabel(date, locale) : t.kas.today}
-                  <ChevronDown aria-hidden className="h-3 w-3 opacity-60" strokeWidth={2.4} />
-                </button>
-                <input
-                  ref={dateRef}
-                  type="date"
-                  value={date ?? max}
-                  max={max}
-                  tabIndex={-1}
-                  aria-label={t.common.date}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setDate(v && v < max ? v : null);
-                  }}
-                  className="pointer-events-none absolute bottom-0 left-0 h-px w-px border-0 p-0 opacity-0"
-                />
-              </span>
-              {date && (
-                <button
-                  type="button"
-                  onClick={() => setDate(null)}
-                  aria-label={t.kas.backToToday}
-                  title={t.kas.backToToday}
-                  className="ml-0.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full text-ek-mfg hover:bg-ek-muted hover:text-ek-fg"
-                >
-                  <X aria-hidden className="h-[11px] w-[11px]" strokeWidth={2.6} />
-                </button>
-              )}
+              <SubtleDateLink value={date} onChange={setDate} />
             </small>
           </span>
         </h3>
