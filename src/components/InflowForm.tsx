@@ -280,25 +280,26 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
                     aria-checked={!!group}
                     onClick={() => toggleCategory(category)}
                     className={cn(
-                      "flex h-[72px] min-w-0 items-center gap-2.5 rounded-[14px] border-2 border-ek-border bg-card px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      // pr-1, like the prototype: a 152px card only just fits "Kemasan" beside the icon.
+                      "flex h-[72px] min-w-0 items-center rounded-[14px] border-2 border-ek-border bg-card py-2.5 pl-3 pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       group && "border-emerald-600 bg-[#f0fdf8]"
                     )}
                   >
                     <span
                       className={cn(
-                        "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[7px] border-2 border-[#cfc5b6] text-white",
+                        "mr-2.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[7px] border-2 border-[#cfc5b6] text-white",
                         group && "border-emerald-600 bg-emerald-600"
                       )}
                     >
                       {group && <Check aria-hidden className="h-3.5 w-3.5" strokeWidth={3} />}
                     </span>
-                    <span className="min-w-0">
-                      <span className="block text-[15.5px] font-semibold">{t.categories[category]}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15.5px] font-semibold">{t.categories[category]}</span>
                       <span className="mt-0.5 block text-[12.5px] text-ek-mfg">
                         {group ? `${group.lines.length} ${t.common.items}` : t.inflow.off}
                       </span>
                     </span>
-                    <Icon aria-hidden className={cn("ml-auto h-[22px] w-[22px] shrink-0", color)} />
+                    <Icon aria-hidden className={cn("ml-1.5 h-[22px] w-[22px] shrink-0", color)} />
                   </button>
                 );
               })}
