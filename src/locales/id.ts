@@ -430,6 +430,11 @@ export const id = {
     failedToSave: 'Gagal menyimpan',
     inflowNotSaved: 'Barang masuk tidak tersimpan. Silakan coba lagi.',
     pleaseAddOneItem: 'Tambahkan minimal satu item dengan nilai valid',
+    subtitle: 'Barang masuk',
+    summary: 'Ringkasan',
+    off: 'Off',
+    stockLine: 'Stok {now} → {after} {unit}',
+    noConversion: 'Belum ada konversi satuan untuk {product} — jumlah dicatat sebagai butir 1:1. Atur satuannya di Katalog jika dijual per kg.',
   },
 
   // Outflow

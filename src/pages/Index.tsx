@@ -164,9 +164,16 @@ const Index = () => {
         />
       </TabsContent>
 
-      <TabsContent value="inflow" className={pane} {...paneA11y}>
-        <div className="max-w-2xl mx-auto">
-          <InflowForm onSubmit={handleInflowSubmit} />
+      {/* Tablet: full height, no padded scroll pane; the form area and the right
+          panel scroll on their own. Same element in both layouts, so rotating
+          keeps what was typed. */}
+      <TabsContent
+        value="inflow"
+        className={isTablet ? "m-0 min-h-0 flex-1 flex-col data-[state=active]:flex" : pane}
+        {...paneA11y}
+      >
+        <div className={isTablet ? "contents" : "max-w-2xl mx-auto"}>
+          <InflowForm tablet={isTablet} stockSummary={stockSummary} onSubmit={handleInflowSubmit} />
         </div>
       </TabsContent>
 
@@ -319,8 +326,17 @@ const Index = () => {
       )}
 
       {/* Tablet Pesanan: keep the chat clear of the right panel's pinned
-          buttons, the Kas Tunai rail and its drawer (48 + 380 + 24px). */}
-      <InventoryAssistant className={isTablet && activeTab === "outflow" ? "sm:bottom-6 sm:right-[452px]" : undefined} />
+          buttons, the Kas Tunai rail and its drawer (48 + 380 + 24px).
+          Tablet Masuk: clear of the right panel's pinned submit (300 + 24px). */}
+      <InventoryAssistant
+        className={
+          isTablet && activeTab === "outflow"
+            ? "sm:bottom-6 sm:right-[452px]"
+            : isTablet && activeTab === "inflow"
+              ? "sm:bottom-6 sm:right-[324px]"
+              : undefined
+        }
+      />
     </div>
   );
 };

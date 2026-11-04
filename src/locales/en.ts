@@ -431,6 +431,11 @@ export const en = {
     failedToSave: 'Failed to save',
     inflowNotSaved: 'Inflow not saved. Please try again.',
     pleaseAddOneItem: 'Please add at least one item with valid values',
+    subtitle: 'Incoming goods',
+    summary: 'Summary',
+    off: 'Off',
+    stockLine: 'Stock {now} → {after} {unit}',
+    noConversion: 'No unit conversion set for {product} — the quantity is recorded as butir 1:1. Set its unit in the Catalog if it is sold by kg.',
   },
 
   // Outflow
