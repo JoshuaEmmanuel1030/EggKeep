@@ -24,6 +24,7 @@ import {
   reliability,
   returnSpike,
   summarizeBuyer,
+  supplierName,
   turnoverDays,
   weekEnd,
   weeklyCounts,
@@ -316,6 +317,22 @@ describe("Kas Tunai", () => {
     ]);
     expect(sales).toHaveLength(1);
     expect(sales[0].tracked).toBe(false);
+  });
+});
+
+describe("supplierName", () => {
+  it("merges grade variants into one supplier", () => {
+    for (const raw of ["SUMBER JAYA (CREAM)", "SUMBER JAYA(CREAM)", "SUMBER JAYA ( CREAM)", "SUMBER JAYA CREAM", "sumber jaya (jumbo)", " SUMBER  JAYA "]) {
+      expect(supplierName(raw)).toBe("SUMBER JAYA");
+    }
+    expect(supplierName("MAKMUR (CR")).toBe("MAKMUR");
+    expect(supplierName("KEBUN 2")).toBe("KEBUN 2");
+    expect(supplierName("Ibu Sari")).toBe("IBU SARI");
+  });
+  it("gives null for what isn't a supplier", () => {
+    for (const raw of ["STOCK FISIK AWAL", "STOCK SELISIH", "M", "", "  ", null, undefined]) {
+      expect(supplierName(raw)).toBeNull();
+    }
   });
 });
 

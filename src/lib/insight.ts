@@ -19,13 +19,12 @@ import type { ActivityLog } from "@/types/activityLog";
 import type { Delivery, DeliveryLine } from "@/types/deliveries";
 
 // ---- Thresholds. All placeholders until the owner confirms them. ----
-export const PECAH_LIMIT = 0.025;
-export const EGG_COVER_MIN_DAYS = 2;
 export const MATERIAL_RED_DAYS = 3;
 export const MATERIAL_AMBER_DAYS = 7;
 export const TURNOVER_RED_DAYS = 4.5;
 export const DOWN_RATIO = -0.2; // "Turun": orders down 20 % or more
 export const RETURN_RATE_RED = 0.15;
+export const RELIABILITY_MIN_LOGGED = 0.5; // share of fakturs in the delivery log before Terkirim / Ditolak mean anything
 export const COVER_WINDOW_DAYS = 28;
 // No return recorded this long before the latest business date: the log has
 // stopped (backfill on hold), so a quiet period is unknown, not zero returns.
@@ -363,6 +362,18 @@ export function kasTunaiCustomers(sales: KasSaleRow[]): KasCustomer[] {
 }
 
 // ---- Stock ----
+
+const SUPPLIER_GRADE = /\s+(CREAM|TONASE|JUMBO|SUPER|OMEGA)$/;
+const NOT_A_SUPPLIER = /^(STOCK\b|.$|$)/;
+
+// Masuk's Faktur/Pemasok is free text: "SUMBER JAYA (CREAM)", "MAKMUR (CR",
+// "STOCK FISIK AWAL". This keeps the supplier and drops the egg grade; opening
+// balances, stock adjustments and stray letters aren't suppliers, so they give null.
+// ponytail: pattern list, a real suppliers table replaces it if Pemasok comes back.
+export function supplierName(raw: string | null | undefined): string | null {
+  const name = (raw ?? "").toUpperCase().replace(/\(.*$/, "").trim().replace(SUPPLIER_GRADE, "").replace(/\s+/g, " ");
+  return NOT_A_SUPPLIER.test(name) ? null : name;
+}
 
 export interface Batch {
   id: string;
