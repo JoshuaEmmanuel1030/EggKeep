@@ -151,6 +151,7 @@ export interface DeliveryListItem {
   lines: DeliveryLineView[];
   lineSummary: LineSummary;
   requiresClaimRef: boolean;
+  hasReturns?: boolean; // a warehouse return on the PO's eggs, or a store-side line
 }
 
 // One export row = one delivery line (or one row for a faktur with none), in

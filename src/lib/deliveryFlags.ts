@@ -231,6 +231,7 @@ export function buildDeliveryItems(
   const items: DeliveryListItem[] = [];
   const seen = new Set<string>();
   let hiddenNoInvoice = 0;
+  const returned = new Set(returns.filter((r) => !r.voided_at).map((r) => r.outflow_id));
 
   // Stable order so "the second PO" is the later-recorded one.
   const ordered = [...pos].sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
@@ -261,6 +262,7 @@ export function buildDeliveryItems(
       lines: views,
       lineSummary,
       requiresClaimRef: needsRef,
+      hasReturns: lineSummary.lineCount > 0 || eggOutflowIdsOf(po).some((id) => returned.has(id)),
     });
   }
 
@@ -302,6 +304,7 @@ export interface DeliveryListFilters {
   unresolved?: boolean; // Masih ditanyakan
   kurang?: boolean; // has a Kurang line
   claim?: boolean; // Klaim: physical lines of requires_claim_ref buyers
+  hasReturns?: boolean; // Insight's "Lihat di Pengiriman" deep link
 }
 
 // Search matches invoice_ref or customer (case-insensitive). The chips are
@@ -316,7 +319,8 @@ export function filterDeliveryItems(items: DeliveryListItem[], filters: Delivery
     filters.needsClaimRef ||
     filters.unresolved ||
     filters.kurang ||
-    filters.claim
+    filters.claim ||
+    filters.hasReturns
   );
   return items.filter((it) => {
     if (q) {
@@ -332,7 +336,8 @@ export function filterDeliveryItems(items: DeliveryListItem[], filters: Delivery
       (!!filters.needsClaimRef && it.flags.needsClaimRef) ||
       (!!filters.unresolved && it.flags.unresolved) ||
       (!!filters.kurang && !it.poMissing && it.lineSummary.kurangPieces > 0) ||
-      (!!filters.claim && !it.poMissing && it.lineSummary.claimRowCount > 0)
+      (!!filters.claim && !it.poMissing && it.lineSummary.claimRowCount > 0) ||
+      (!!filters.hasReturns && !!it.hasReturns)
     );
   });
 }
