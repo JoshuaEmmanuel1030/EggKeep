@@ -200,6 +200,11 @@ export function StockInsight({ stockSummary, inflows, outflows, freshnessDaysByP
               </div>
             );
           })}
+          {data.counts.length > 0 && (
+            <p className="px-[18px] py-2.5 text-[12.5px] text-ek-mfg">
+              {s.varianceAsOf.replace("{date}", fmtShort(dataAsOf(data.counts.map((c) => c.countDate), today)))}
+            </p>
+          )}
         </div>
 
         <div className={cn(CARD, "mt-4")}>
