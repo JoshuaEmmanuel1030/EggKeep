@@ -369,7 +369,7 @@ const NOT_A_SUPPLIER = /^(STOCK\b|.$|$)/;
 // Masuk's Faktur/Pemasok is free text: "SUMBER JAYA (CREAM)", "MAKMUR (CR",
 // "STOCK FISIK AWAL". This keeps the supplier and drops the egg grade; opening
 // balances, stock adjustments and stray letters aren't suppliers, so they give null.
-// ponytail: pattern list for display only, replaced by however suppliers end up recorded.
+// ponytail: pattern list for display only, a suppliers table replaces it if the owner reopens that.
 export function supplierName(raw: string | null | undefined): string | null {
   const name = (raw ?? "").toUpperCase().replace(/\(.*$/, "").trim().replace(SUPPLIER_GRADE, "").replace(/\s+/g, " ");
   return NOT_A_SUPPLIER.test(name) ? null : name;
