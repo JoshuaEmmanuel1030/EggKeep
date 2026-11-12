@@ -80,7 +80,7 @@ describe("kasStockQty", () => {
     expect(isValidKasLine(line({ qty: "1.20" }), cm)).toBe(false);
     expect(kasStockQty(line({ product: "NEGERI BIASA", qty: "9,5", inputUnit: "kg" }), cm)).toBe(9.5);
     expect(kasStockQty(line({ product: "NEGERI BIASA", qty: "9.5", inputUnit: "kg" }), cm)).toBe(9.5);
-    expect(isValidKasLine(line({ product: "NEGERI BIASA", qty: "1.200,5", inputUnit: "kg" }), cm)).toBe(false);
+    expect(isValidKasLine(line({ product: "NEGERI BIASA", qty: "1,500.5", inputUnit: "kg" }), cm)).toBe(false);
     // The Kg switch means nothing on a butir product.
     expect(isValidKasLine(line({ qty: "2,5", inputUnit: "kg" }), cm)).toBe(false);
   });
@@ -90,6 +90,15 @@ describe("kasStockQty", () => {
     expect(isBrokenKasLine(line({ qty: "0" }), cm)).toBe(true);
     expect(isBrokenKasLine(line({ qty: " " }), cm)).toBe(false);
     expect(isBrokenKasLine(line({ qty: "5" }), cm)).toBe(false);
+  });
+  it("kg reads the thousands dot as the screens print it, the same as on Masuk", () => {
+    const kg = (qty: string) => kasStockQty(line({ product: "NEGERI BIASA", qty, inputUnit: "kg" }), cm);
+    expect(kg("1.500")).toBe(1500);
+    expect(kg("12.345,67")).toBe(12345.67);
+    expect(kg("1.200,5")).toBe(1200.5);
+    expect(isBrokenKasLine(line({ product: "NEGERI BIASA", qty: "12.34.567", inputUnit: "kg" }), cm)).toBe(true);
+    // A dot in butir is still thousands: 1550 butir is 100 kg.
+    expect(kasStockQty(line({ product: "NEGERI BIASA", qty: "1.550", inputUnit: "butir" }), cm)).toBe(100);
   });
 });
 

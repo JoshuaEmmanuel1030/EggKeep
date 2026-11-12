@@ -5,14 +5,14 @@ import { isSameDay, parseISO } from "date-fns";
 import type { ConversionMap, ItemType, OutflowEntry } from "@/types/inventory";
 import type { ActivityLog } from "@/types/activityLog";
 import type { RadialItem } from "@/components/RadialAddButton";
-import { parseCountInput } from "@/lib/stockCount";
+import { parseQtyInput } from "@/lib/stockCount";
 import { entryKind } from "@/lib/activityGrouping";
 import { getStockUnit, toStockUnits } from "@/lib/inventory";
 
 export interface KasLine {
   id: string;
   product: string;
-  qty: string; // as typed; see parseKasQty
+  qty: string; // as typed; see parseQtyInput
   inputUnit: "butir" | "kg";
 }
 
@@ -40,23 +40,12 @@ export function eggRingItems(eggProductNames: string[], itemTypes: Pick<ItemType
     });
 }
 
-// The screen prints counts in id-ID ("1.200 butir"), so a typed "1.000" is a
-// thousand, not 1. A count is a whole number: "2,5" butir is invalid (null).
-// kg takes one decimal separator, comma or dot ("9,5"); "1.200,5" is invalid.
-export function parseKasQty(raw: string, unit: "kg" | "butir"): number | null {
-  const s = (raw ?? "").trim();
-  if (unit === "butir") {
-    return /^\d+$/.test(s) || /^\d{1,3}(\.\d{3})+$/.test(s) ? Number(s.replace(/\./g, "")) : null;
-  }
-  return /^\d+([.,]\d+)?$/.test(s) ? parseCountInput(s) : null;
-}
-
 // Quantity in the product's NATIVE stock unit, the same rule as OutflowForm:
 // kg typed on a kg product passes through, butir typed on a kg product becomes
 // estimated kg (2 dp), a butir product takes the count as typed.
 export function kasStockQty(line: KasLine, conversionMap: ConversionMap): number {
   const unit = kasInputUnit(line, conversionMap);
-  return toStockUnits(line.product, parseKasQty(line.qty, unit) ?? 0, unit, conversionMap);
+  return toStockUnits(line.product, parseQtyInput(line.qty, unit) ?? 0, unit, conversionMap);
 }
 
 export const isValidKasLine = (line: KasLine, conversionMap: ConversionMap) =>

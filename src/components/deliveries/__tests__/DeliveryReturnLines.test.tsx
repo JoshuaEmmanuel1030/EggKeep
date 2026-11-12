@@ -320,6 +320,124 @@ describe("DeliveryReturnLines (Retur section)", () => {
     });
   });
 
+  describe("typed quantities", () => {
+    const qtyInput = () => screen.getByLabelText("Return qty (box)") as HTMLInputElement;
+    const QTY_INVALID = "Return qty: e.g. 2,5 or 1.500";
+    const WHOLE = "Egg counts must be whole numbers";
+
+    // Box and pak can be fractional by design (spec §6.5.1), so qty follows the kg rule.
+    it.each([
+      ["2,5", 2.5],
+      ["2.5", 2.5],
+      ["1500", 1500],
+      ["1.500", 1500],
+      ["1.200,5", 1200.5],
+    ])("store qty %j saves %d, even with Pecah blank", async (typed, want) => {
+      setup();
+      fireEvent.change(qtyInput(), { target: { value: typed } });
+      expect(qtyInput()).not.toHaveAttribute("aria-invalid");
+      fireEvent.click(saveButton());
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Saved"));
+      expect(upsertLineMock.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ quantity: want }));
+    });
+
+    it.each(["1.2.3", "1,500.5", "12.34.567", "1.500,5,5"])("store qty %j is flagged and can't be saved, even with Pecah blank", (typed) => {
+      setup();
+      fireEvent.change(qtyInput(), { target: { value: typed } });
+      expect(qtyInput()).toHaveAttribute("aria-invalid", "true");
+      expect(qtyInput().value).toBe(typed);
+      expect(screen.getByText(QTY_INVALID)).toBeInTheDocument();
+      expect(saveButton()).toBeDisabled();
+
+      fireEvent.change(qtyInput(), { target: { value: "7" } });
+      expect(qtyInput()).not.toHaveAttribute("aria-invalid");
+      expect(screen.queryByText(QTY_INVALID)).not.toBeInTheDocument();
+      expect(saveButton()).toBeEnabled();
+    });
+
+    it("a thousands dot in Eggs received is thousands, never 1 egg", async () => {
+      setup();
+      fireEvent.change(receivedInput(), { target: { value: "1.000" } });
+      expect(receivedInput()).not.toHaveAttribute("aria-invalid");
+      await saveToStock("0");
+      const lines = recordMock.mock.calls[0][0].lines;
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatchObject({ disposition: "restock", quantity: 64.52 }); // 1000 / 15.5
+    });
+
+    it("a thousands dot in Broken is thousands, never 1 egg", async () => {
+      setup();
+      await saveToStock("1.000");
+      const lines = recordMock.mock.calls[0][0].lines;
+      expect(lines.map((l) => [l.disposition, l.quantity])).toEqual([
+        ["restock", 16.77], // 260 OK
+        ["retakan", 64.52], // 1000 broken
+      ]);
+    });
+
+    it.each(["2,5", "1.5", "1,000", "1.500,5"])("Eggs received %j is flagged and blocks the save, even with Pecah blank", (typed) => {
+      setup();
+      fireEvent.change(receivedInput(), { target: { value: typed } });
+      expect(receivedInput()).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByText(WHOLE)).toBeInTheDocument();
+      expect(saveButton()).toBeDisabled();
+      fireEvent.click(saveButton());
+      expect(upsertLineMock.mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it.each(["2,5", "1.5", "1,000", "1.500,5"])("Broken %j is flagged, and Enter won't open the confirmation", (typed) => {
+      setup();
+      fireEvent.change(pecahInput(), { target: { value: typed } });
+      expect(pecahInput()).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByText(WHOLE)).toBeInTheDocument();
+      expect(saveButton()).toBeDisabled();
+
+      fireEvent.keyDown(pecahInput(), { key: "Enter" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("a saved 2.125 box reopens clean and saves back unchanged", async () => {
+      setup({ lines: [line({ quantity: 2.125, piecesPerUnit: 8 })] });
+      expect(qtyInput().value).toBe("2,125");
+      expect(qtyInput()).not.toHaveAttribute("aria-invalid");
+      expect(receivedInput().value).toBe("17"); // 2.125 × 8
+
+      fireEvent.click(saveButton());
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Saved"));
+      expect(upsertLineMock.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ quantity: 2.125 }));
+    });
+
+    it("a fractional prefill can't pass as thousands, and holds only the warehouse save", async () => {
+      // 0,125 box × 9 = 1.125 eggs: a count parser would read "1.125" as 1125.
+      setup({ lines: [line({ quantity: 0.125, piecesPerUnit: 9 })] });
+      expect(receivedInput().value).toBe("1,125");
+      expect(receivedInput()).not.toHaveAttribute("aria-invalid"); // not typed: not red yet
+      expect(saveButton()).toBeEnabled(); // the store side can still be saved
+
+      fireEvent.change(pecahInput(), { target: { value: "0" } });
+      expect(receivedInput()).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByText(WHOLE)).toBeInTheDocument();
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it("a locked warehouse side can't hold the store side", async () => {
+      setup({ rows: [returnRow({ quantity: 32.26 })] });
+      expect(screen.queryByRole("textbox", { name: "Eggs received" })).not.toBeInTheDocument();
+      fireEvent.change(qtyInput(), { target: { value: "8" } });
+      expect(saveButton()).toBeEnabled();
+    });
+
+    it("a non-physical reason can't be held by a warehouse number left behind", () => {
+      setup();
+      fireEvent.change(pecahInput(), { target: { value: "2,5" } });
+      expect(saveButton()).toBeDisabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Kurang" }));
+      expect(screen.queryByText(WHOLE)).not.toBeInTheDocument();
+      expect(saveButton()).toBeEnabled();
+    });
+  });
+
   it("prior non-voided returns lock the warehouse side; 'Add a second return' unlocks and prefills the rest", () => {
     setup({
       rows: [

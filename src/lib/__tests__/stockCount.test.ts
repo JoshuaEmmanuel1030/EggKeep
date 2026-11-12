@@ -5,7 +5,8 @@ import {
   resolveTolerance,
   computeVariance,
   totalOnHand,
-  parseCountInput,
+  parseQtyInput,
+  qtyInputText,
 } from "@/lib/stockCount";
 
 describe("stockCount locations", () => {
@@ -54,17 +55,63 @@ describe("totalOnHand", () => {
   });
 });
 
-describe("parseCountInput", () => {
-  it("parses plain integers and treats blanks as not-counted (null)", () => {
-    expect(parseCountInput("300")).toBe(300);
-    expect(parseCountInput("")).toBeNull();
-    expect(parseCountInput("   ")).toBeNull();
+describe("parseQtyInput", () => {
+  it.each(["kg", "butir", "pcs"] as const)("%s: blank is null, 0 is a number", (unit) => {
+    expect(parseQtyInput("", unit)).toBeNull();
+    expect(parseQtyInput("   ", unit)).toBeNull();
+    expect(parseQtyInput("0", unit)).toBe(0);
+    expect(parseQtyInput(" 300 ", unit)).toBe(300);
   });
-  it("accepts the Indonesian decimal comma for kg", () => {
-    expect(parseCountInput("120,5")).toBe(120.5);
+
+  it.each(["butir", "pcs"] as const)("%s: whole numbers, a dot is thousands", (unit) => {
+    expect(parseQtyInput("1.500", unit)).toBe(1500);
+    expect(parseQtyInput("1.000.000", unit)).toBe(1000000);
+    for (const bad of ["2,5", "1.5", "1.50", "1,500", "1.500,5", "12abc", "abc", "-5", "1 500", "1.5000"]) {
+      expect(parseQtyInput(bad, unit)).toBeNull();
+    }
   });
-  it("rejects negatives and non-numbers", () => {
-    expect(parseCountInput("-5")).toBeNull();
-    expect(parseCountInput("abc")).toBeNull();
+
+  // The owner's call (2026-11-09): kg reads as the screens print it.
+  it("kg: a dot before three digits groups thousands, a comma after them is the decimal", () => {
+    expect(parseQtyInput("1.500", "kg")).toBe(1500);
+    expect(parseQtyInput(" 1.500 ", "kg")).toBe(1500);
+    expect(parseQtyInput("12.345", "kg")).toBe(12345);
+    expect(parseQtyInput("120.500", "kg")).toBe(120500);
+    expect(parseQtyInput("1.500.000", "kg")).toBe(1500000);
+    expect(parseQtyInput("12.345,67", "kg")).toBe(12345.67);
+    expect(parseQtyInput("1.200,5", "kg")).toBe(1200.5);
+  });
+
+  it("kg: otherwise one decimal separator, comma or dot", () => {
+    expect(parseQtyInput("1500", "kg")).toBe(1500);
+    expect(parseQtyInput("52,89", "kg")).toBe(52.89);
+    expect(parseQtyInput("52.89", "kg")).toBe(52.89);
+    expect(parseQtyInput("1,500", "kg")).toBe(1.5); // a comma is always the decimal
+    expect(parseQtyInput("0.500", "kg")).toBe(0.5); // a leading zero can't be thousands
+    expect(parseQtyInput("1.5000", "kg")).toBe(1.5); // four digits: not a thousands group
+  });
+
+  it("kg: refuses anything else", () => {
+    for (const bad of ["1,500.5", "12.34.567", "1.500,5,5", "1.2.3", "12abc", "abc", "-5", "1 500", "1."]) {
+      expect(parseQtyInput(bad, "kg")).toBeNull();
+    }
+  });
+});
+
+describe("qtyInputText", () => {
+  it("is empty for no quantity", () => {
+    expect(qtyInputText(null)).toBe("");
+    expect(qtyInputText(undefined)).toBe("");
+  });
+  it("reads back as the same number, whatever kg was stored", () => {
+    for (const n of [0, 1500, 2.125, 12.345, 52.89, 1.5]) {
+      expect(parseQtyInput(qtyInputText(n), "kg")).toBe(n);
+    }
+    // Why the comma: as plain text, a stored 2.125 kg would read back as 2125.
+    expect(parseQtyInput(String(2.125), "kg")).toBe(2125);
+  });
+  it("a stored whole count reads back; a stored fraction doesn't pass as a count", () => {
+    expect(parseQtyInput(qtyInputText(1500), "butir")).toBe(1500);
+    expect(parseQtyInput(qtyInputText(1.5), "butir")).toBeNull();
   });
 });

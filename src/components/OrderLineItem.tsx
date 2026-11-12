@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +13,9 @@ import {
   BoxCapacityMap,
   LabelsPerPackMap,
   calculateLineMaterials,
+  isBrokenLooseLine,
 } from "@/lib/outflowCalculator";
-import { parseCountInput } from "@/lib/stockCount";
+import { parseQtyInput } from "@/lib/stockCount";
 import { groupSkusForBuyer } from "@/lib/buyerProfile";
 import { Trash2, ChevronsUpDown, Check, Tag, Egg, Package, Box, AlertTriangle, Calculator, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -69,19 +70,15 @@ export function OrderLineItem({
   const [skuOpen, setSkuOpen] = useState(false);
   const [eggOpen, setEggOpen] = useState(false);
 
-  // Raw text buffer for the loose-qty field so it accepts the Indonesian
-  // decimal comma (e.g. "52,89") and keeps a trailing separator while typing;
-  // the numeric value is parsed up to the parent. Re-syncs if looseQty is
-  // changed externally (e.g. a reset) rather than by our own keystroke.
-  const [looseQtyRaw, setLooseQtyRaw] = useState(
-    line.looseQty != null ? String(line.looseQty) : ""
-  );
-  useEffect(() => {
-    if ((parseCountInput(looseQtyRaw) ?? undefined) !== line.looseQty) {
-      setLooseQtyRaw(line.looseQty != null ? String(line.looseQty) : "");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [line.looseQty]);
+  // looseQty follows the typed text under the unit it's typed in, so changing
+  // the number, the unit or the egg all re-judge it. kg only on a weight-sold egg.
+  const updateLoose = (updates: Partial<OrderLine>) => {
+    const next = { ...line, ...updates };
+    const unit = conversionMap[next.eggProduct]?.unit === "kg" && next.looseUnit === "kg" ? "kg" : "butir";
+    onUpdate({ ...updates, looseQty: parseQtyInput(next.looseQtyText ?? "", unit) ?? undefined });
+  };
+  // Flag the number only once an egg is picked (typing qty first is normal).
+  const looseBroken = !!line.eggProduct && isBrokenLooseLine(line);
 
   // Calculate materials for this line. No order-level box mode: boxes come only
   // from Box SKUs (same call the builder makes).
@@ -279,6 +276,7 @@ export function OrderLineItem({
               packQty: undefined,
               eggProduct: undefined,
               looseQty: undefined,
+              looseQtyText: undefined,
               looseUnit: "butir"
             })}
           >
@@ -369,7 +367,7 @@ export function OrderLineItem({
                           key={name}
                           value={name}
                           onSelect={() => {
-                            onUpdate({ eggProduct: name });
+                            updateLoose({ eggProduct: name });
                             setEggOpen(false);
                           }}
                         >
@@ -395,13 +393,11 @@ export function OrderLineItem({
             <Input
               type="text"
               inputMode="decimal"
-              value={looseQtyRaw}
-              onChange={(e) => {
-                setLooseQtyRaw(e.target.value);
-                onUpdate({ looseQty: parseCountInput(e.target.value) ?? undefined });
-              }}
+              value={line.looseQtyText ?? ""}
+              onChange={(e) => updateLoose({ looseQtyText: e.target.value })}
+              aria-invalid={looseBroken || undefined}
               placeholder={t.outflow.enterQty}
-              className="h-10"
+              className={cn("h-10", looseBroken && "border-destructive focus-visible:ring-destructive")}
             />
           </div>
 
@@ -410,7 +406,7 @@ export function OrderLineItem({
             <Label className="text-xs">{t.common.unit}</Label>
             <Select
               value={line.looseUnit || "butir"}
-              onValueChange={(v) => onUpdate({ looseUnit: v as "butir" | "kg" })}
+              onValueChange={(v) => updateLoose({ looseUnit: v as "butir" | "kg" })}
             >
               <SelectTrigger className="h-10">
                 <SelectValue />

@@ -257,6 +257,11 @@ export function calculateLineMaterials(
   return null;
 }
 
+// A number typed on a loose line that won't be recorded (bad number, no egg, 0).
+// Blocks the order, so the line is never dropped silently next to valid ones.
+export const isBrokenLooseLine = (line: OrderLine) =>
+  line.lineType === "loose" && !!line.looseQtyText?.trim() && !(line.eggProduct && line.looseQty > 0);
+
 // Aggregate materials from multiple order lines - now accepts dynamic SKU list
 export function aggregateOrderMaterials(
   lines: OrderLine[],

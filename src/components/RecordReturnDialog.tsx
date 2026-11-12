@@ -24,6 +24,7 @@ import { useRecordReturn } from "@/hooks/useRecordReturn";
 import { usePriorReturns } from "@/hooks/usePriorReturns";
 import { enqueueReturn } from "@/lib/returnOutbox";
 import { remainingReturnable, nativeToPieces } from "@/lib/returnsCap";
+import { parseQtyInput, qtyInputText } from "@/lib/stockCount";
 import { buildReturnLines, buildSkuEggMap, type ReturnRowInput } from "@/lib/returnLines";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { ActivityLog } from "@/types/activityLog";
@@ -88,13 +89,6 @@ function makeId(): string {
   } catch {
     return `ret-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
-}
-
-// Parse a raw qty into a number (accepting comma decimals, id-locale friendly).
-// Non-numeric / empty -> 0 so it can be summed safely.
-function parseQty(raw: string): number {
-  const n = parseFloat((raw ?? "").replace(",", "."));
-  return isNaN(n) ? 0 : n;
 }
 
 export function RecordReturnDialog({
@@ -224,8 +218,14 @@ export function RecordReturnDialog({
     return row.pieces ? nativeToPieces(native, conversionMap[row.eggProduct]?.unit) : native;
   };
 
-  const unitLabel = (product: string): string =>
+  const unitLabel = (product: string): "kg" | "butir" =>
     conversionMap[product]?.unit === "kg" ? "kg" : "butir";
+
+  // Pack rows enter pieces; fallback rows enter the egg's native unit.
+  const entryUnit = (row: Row) => (row.pieces ? "butir" : unitLabel(row.eggProduct));
+  // Blank or unreadable -> 0 so it can be summed safely.
+  const bucketQty = (row: Row, raw: string) => parseQtyInput(raw, entryUnit(row)) ?? 0;
+  const isBrokenBucket = (row: Row, raw: string) => raw.trim() !== "" && parseQtyInput(raw, entryUnit(row)) == null;
 
   const bucketLabel = (key: ReturnDisposition): string =>
     key === "restock"
@@ -268,9 +268,9 @@ export function RecordReturnDialog({
     };
   }, [open, eggLogs]);
 
-  // Sum of a log's three buckets.
-  const lineSum = (state: LineState): number =>
-    parseQty(state.restock) + parseQty(state.retakan) + parseQty(state.writeoff);
+  // Sum of a row's three buckets.
+  const lineSum = (row: Row, state: LineState): number =>
+    bucketQty(row, state.restock) + bucketQty(row, state.retakan) + bucketQty(row, state.writeoff);
 
   // Rows mapping to the same egg product share that egg's returnable budget.
   const sameEggRows = (row: Row): Row[] =>
@@ -286,25 +286,27 @@ export function RecordReturnDialog({
     const cleaned = raw.replace(/[^0-9.,]/g, "");
     setLines((prev) => {
       const state = prev[row.key] ?? { ...EMPTY_LINE };
-      const otherBuckets = lineSum({ ...state, [key]: "" }); // this row's other two buckets
+      const otherBuckets = lineSum(row, { ...state, [key]: "" }); // this row's other two buckets
       // Pieces already claimed by OTHER rows mapping to the same egg.
       const otherRowsPieces = sameEggRows(row)
         .filter((r) => r.key !== row.key)
-        .reduce((sum, r) => sum + lineSum(prev[r.key] ?? EMPTY_LINE), 0);
-      const num = parseQty(cleaned);
+        .reduce((sum, r) => sum + lineSum(r, prev[r.key] ?? EMPTY_LINE), 0);
+      const num = bucketQty(row, cleaned);
       // Clamp so this bucket keeps the egg-group's TOTAL pieces within the cap.
       const room = Math.max(0, maxPieces - otherBuckets - otherRowsPieces);
-      const next = num > room ? String(room) : cleaned;
+      const next = num > room ? qtyInputText(room) : cleaned;
       return { ...prev, [row.key]: { ...state, [key]: next } };
     });
   };
 
-  const enteredLines = useMemo(
-    () => rows.filter((row) => lineSum(lines[row.key] ?? EMPTY_LINE) > 0),
-    [rows, lines]
+  const enteredLines = rows.filter((row) => lineSum(row, lines[row.key] ?? EMPTY_LINE) > 0);
+
+  // A number we can't read blocks the return, so it's never dropped beside valid buckets.
+  const hasBrokenBucket = rows.some((row) =>
+    BUCKETS.some(({ key }) => isBrokenBucket(row, (lines[row.key] ?? EMPTY_LINE)[key]))
   );
 
-  const canSubmit = enteredLines.length > 0 && !saving;
+  const canSubmit = enteredLines.length > 0 && !saving && !hasBrokenBucket;
 
   const handleConfirm = async () => {
     if (!canSubmit) return;
@@ -333,7 +335,11 @@ export function RecordReturnDialog({
         eggProduct: row.eggProduct,
         // Pack rows entered pieces; fallback rows are already native.
         inPieces: row.pieces,
-        buckets: { restock: parseQty(state.restock), retakan: parseQty(state.retakan), writeoff: parseQty(state.writeoff) },
+        buckets: {
+          restock: bucketQty(row, state.restock),
+          retakan: bucketQty(row, state.retakan),
+          writeoff: bucketQty(row, state.writeoff),
+        },
       };
     });
     const built = buildReturnLines({
@@ -411,18 +417,17 @@ export function RecordReturnDialog({
           <div className="space-y-3 py-2">
             {rows.map((row) => {
               const state = lines[row.key] ?? EMPTY_LINE;
-              // Pack rows enter pieces; fallback rows enter the egg's native unit.
-              const unit = row.pieces ? "butir" : unitLabel(row.eggProduct);
+              const unit = entryUnit(row);
               // Shared egg budget minus what OTHER rows of the same egg already claimed.
               const eggMax = remainingEntryForRow(row);
               const otherRowsSum = sameEggRows(row)
                 .filter((r) => r.key !== row.key)
-                .reduce((s, r) => s + lineSum(lines[r.key] ?? EMPTY_LINE), 0);
+                .reduce((s, r) => s + lineSum(r, lines[r.key] ?? EMPTY_LINE), 0);
               const max = Math.max(0, eggMax - otherRowsSum);
-              const sum = lineSum(state);
+              const sum = lineSum(row, state);
               const hasQty = sum > 0;
               const atMax = hasQty && sum >= max;
-              const hasRetakan = parseQty(state.retakan) > 0;
+              const hasRetakan = bucketQty(row, state.retakan) > 0;
 
               return (
                 <div
@@ -446,7 +451,8 @@ export function RecordReturnDialog({
                   <div className="grid grid-cols-3 gap-2">
                     {BUCKETS.map(({ key, icon: Icon, accent, focus }) => {
                       const val = state[key];
-                      const active = parseQty(val) > 0;
+                      const active = bucketQty(row, val) > 0;
+                      const broken = isBrokenBucket(row, val);
                       return (
                         <div key={key} className="space-y-1.5 min-w-0">
                           <Label
@@ -466,9 +472,11 @@ export function RecordReturnDialog({
                             value={val}
                             onChange={(e) => setBucket(row, key, e.target.value, eggMax)}
                             aria-describedby={`ret-sub-${row.key}`}
+                            aria-invalid={broken || undefined}
                             className={cn(
                               "h-11 text-base tabular-nums text-center transition-colors",
-                              active && focus
+                              active && focus,
+                              broken && "border-destructive focus-visible:ring-destructive"
                             )}
                           />
                         </div>
@@ -540,10 +548,16 @@ export function RecordReturnDialog({
 
         {eggLogs.length > 0 && (
           <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:gap-0">
-            {!canSubmit && !saving && (
-              <p className="text-xs text-muted-foreground sm:mr-auto sm:self-center">
-                {t.activity.returnNeedsQty}
+            {hasBrokenBucket ? (
+              <p role="alert" className="text-xs text-red-600 sm:mr-auto sm:self-center">
+                {t.inflow.invalidQty}
               </p>
+            ) : (
+              !canSubmit && !saving && (
+                <p className="text-xs text-muted-foreground sm:mr-auto sm:self-center">
+                  {t.activity.returnNeedsQty}
+                </p>
+              )
             )}
             <Button
               variant="outline"

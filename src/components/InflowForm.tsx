@@ -15,7 +15,7 @@ import {
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { convertToButir, getProductUnit, getStockUnit } from "@/lib/inventory";
-import { parseKasQty } from "@/lib/kasTunai";
+import { parseQtyInput } from "@/lib/stockCount";
 import { Box, Egg, Package, Tag, PackagePlus, Plus, Trash2, ChevronsUpDown, Check, Calculator, type LucideIcon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -60,26 +60,18 @@ const TB_ROW = "grid grid-cols-[28px_minmax(0,1fr)_140px_170px_44px] items-cente
 const BROKEN_INPUT =
   "border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/15 focus-visible:shadow-[0_0_0_3px_rgba(239,68,68,0.15)]";
 
-// kg read as the screens print it (owner's call, 2026-11-09): a dot before three
-// digits groups thousands, so "1.500" is 1.500 kg and "23.818,16" is 23818,16.
-// A leading zero can't be thousands ("0.500" is 0,5).
-const KG_GROUPED = /^[1-9]\d{0,2}(\.\d{3})+(,\d+)?$/;
-
 // Jumlah in the product's native unit (kg-native: the number IS the stock quantity).
-const parseItemQty = (item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap) => {
-  const raw = item.quantity.trim();
-  if (getStockUnit(item.product, category, conversionMap) !== "kg") return parseKasQty(raw, "butir");
-  return KG_GROUPED.test(raw) ? Number(raw.replace(/\./g, "").replace(",", ".")) : parseKasQty(raw, "kg");
-};
+const parseItemQty = (item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap) =>
+  parseQtyInput(item.quantity, getStockUnit(item.product, category, conversionMap));
 
 // A row counts only if handleSubmit will record it.
 const isValidItem = (item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap) =>
   !!item.product && (parseItemQty(item, category, conversionMap) ?? 0) > 0;
 
-// A number we can't read blocks the submit, so it's never dropped silently beside
-// valid rows. Not before a product is picked: typing the number first is normal.
+// Typed but won't be recorded (bad number, no product, 0): blocks the submit, so
+// it's never dropped silently beside valid rows. The same rule as isBrokenKasLine.
 const isBrokenItem = (item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap) =>
-  !!item.product && item.quantity.trim() !== "" && parseItemQty(item, category, conversionMap) == null;
+  item.quantity.trim() !== "" && !isValidItem(item, category, conversionMap);
 
 export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: InflowFormProps) {
   const { user } = useAuth();
@@ -162,13 +154,16 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
     (sum, category) => sum + categoryData[category].items.filter((i) => isValidItem(i, category, conversionMap)).length,
     0
   );
-  const hasBrokenItem = CATEGORIES.some((category) =>
-    categoryData[category].items.some((i) => isBrokenItem(i, category, conversionMap))
+  const brokenItems = CATEGORIES.flatMap((category) =>
+    categoryData[category].items.filter((i) => isBrokenItem(i, category, conversionMap))
   );
+  // Only a row with a product goes red, so that's the message that talks about red.
+  const brokenNote =
+    brokenItems.length === 0 ? null : brokenItems.some((i) => i.product) ? t.inflow.invalidQty : t.outflow.pickProductForQty;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (hasBrokenItem) return;
+    if (brokenNote) return;
 
     const entries: InflowEntry[] = [];
 
@@ -338,7 +333,7 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
           )}
         </div>
 
-        <InflowSummaryPanel date={date} groups={groups} submitting={submitting} hasBrokenItem={hasBrokenItem} />
+        <InflowSummaryPanel date={date} groups={groups} submitting={submitting} brokenNote={brokenNote} />
       </form>
     );
   }
@@ -392,8 +387,8 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
             categoryData[category].enabled ? <CategorySection key={category} {...sectionProps(category)} /> : null
           )}
 
-          {hasBrokenItem ? (
-            <p className="text-sm text-red-600">{t.inflow.invalidQty}</p>
+          {brokenNote ? (
+            <p role="alert" className="text-sm text-red-600">{brokenNote}</p>
           ) : (
             totalItemCount > 0 && (
               <div className="flex items-center gap-2 p-3 bg-accent/50 rounded-lg">
@@ -406,7 +401,7 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
           <Button
             type="submit"
             className="w-full h-12 text-base font-medium"
-            disabled={submitting || totalItemCount === 0 || hasBrokenItem}
+            disabled={submitting || totalItemCount === 0 || !!brokenNote}
           >
             <PackagePlus className="h-4 w-4 mr-2" />
             {submitting ? t.common.saving : t.inflow.addToInventory}
@@ -541,7 +536,8 @@ function TableItemRow({ item, index, category, productOptions, conversionMap, on
   const [open, setOpen] = useState(false);
 
   const quantityNum = parseItemQty(item, category, conversionMap) ?? 0;
-  const broken = isBrokenItem(item, category, conversionMap);
+  // Flag the number only once a product is picked (typing qty first is normal).
+  const broken = !!item.product && isBrokenItem(item, category, conversionMap);
   const unit = getStockUnit(item.product, category, conversionMap);
 
   return (
@@ -671,7 +667,8 @@ function ItemRow({ item, index, category, productOptions, conversionMap, onRemov
   const [open, setOpen] = useState(false);
 
   const quantityNum = parseItemQty(item, category, conversionMap) ?? 0;
-  const broken = isBrokenItem(item, category, conversionMap);
+  // Flag the number only once a product is picked (typing qty first is normal).
+  const broken = !!item.product && isBrokenItem(item, category, conversionMap);
   const showConversion = category === "egg" && item.product && quantityNum > 0;
   const convertedButir = showConversion ? convertToButir(item.product, quantityNum, conversionMap) : 0;
   const unit = category === "egg" && item.product ? getProductUnit(item.product, conversionMap) : "pcs";
