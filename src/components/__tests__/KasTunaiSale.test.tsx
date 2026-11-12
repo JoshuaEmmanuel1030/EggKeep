@@ -2,8 +2,10 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
+import { format, subDays } from "date-fns";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { KasTunaiSale } from "@/components/KasTunaiSale";
+import { kasDateLabel } from "@/lib/kasTunai";
 import { toast } from "@/hooks/use-toast";
 import { enqueueOutflowOrder, OUTFLOW_OUTBOX_KEY } from "@/lib/outflowOutbox";
 import type { InflowEntry, OutflowEntry } from "@/types/inventory";
@@ -128,6 +130,32 @@ describe("KasTunaiSale", () => {
     fireEvent.change(screen.getByLabelText("Jumlah (butir)"), { target: { value: "2,5" } });
     expect(screen.getByLabelText("Jumlah (butir)")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByRole("button", { name: /Catat Penjualan/ })).toBeDisabled();
+  });
+
+  it("the date link records a past date, and × goes back to today", async () => {
+    const onSubmit = vi.fn(async () => true);
+    renderKas(onSubmit);
+    const yesterday = format(subDays(new Date(), 1), "yyyy-MM-dd");
+
+    expect(screen.getByTitle("Ubah tanggal")).toHaveTextContent("hari ini");
+    expect(screen.queryByRole("button", { name: "Kembali ke hari ini" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Tanggal"), { target: { value: yesterday } });
+    expect(screen.getByTitle("Ubah tanggal")).toHaveTextContent(kasDateLabel(yesterday, "id-ID"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Kembali ke hari ini" }));
+    expect(screen.getByTitle("Ubah tanggal")).toHaveTextContent("hari ini");
+
+    fireEvent.change(screen.getByLabelText("Tanggal"), { target: { value: yesterday } });
+    fillKg("1");
+    fireEvent.click(screen.getByRole("button", { name: /Catat Penjualan/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const [entries, , metadata] = onSubmit.mock.calls[0] as unknown as [{ date: string }[], string, { outflowDate: string }];
+    expect(entries[0].date).toBe(yesterday);
+    expect(metadata.outflowDate).toBe(yesterday);
+
+    // A recorded sale puts the link back on today.
+    await waitFor(() => expect(screen.getByTitle("Ubah tanggal")).toHaveTextContent("hari ini"));
   });
 
   // ── Radial quick-add on Tambah telur, bin on every line ──────────────────────
