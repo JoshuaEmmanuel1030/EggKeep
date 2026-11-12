@@ -430,6 +430,7 @@ export const id = {
     failedToSave: 'Gagal menyimpan',
     inflowNotSaved: 'Barang masuk tidak tersimpan. Silakan coba lagi.',
     pleaseAddOneItem: 'Tambahkan minimal satu item dengan nilai valid',
+    invalidQty: 'Perbaiki jumlah bertanda merah. Butir/pcs: bilangan bulat, mis. 1.500. Kg: tanpa titik ribuan, mis. 1500 atau 52,89.',
     subtitle: 'Barang masuk',
     summary: 'Ringkasan',
     off: 'Off',

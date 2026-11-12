@@ -182,6 +182,149 @@ describe.each([
   });
 });
 
+// The screens print id-ID ("1.500 butir"), so Jumlah has to read it back that way.
+describe.each([
+  ["phone", false],
+  ["tablet", true],
+])("InflowForm Jumlah (%s)", (_layout, tablet) => {
+  const renderForm = () => {
+    const onSubmit = vi.fn(async () => true);
+    render(form(onSubmit, tablet));
+    return onSubmit;
+  };
+  const qtyInput = (row: number) => screen.getAllByPlaceholderText("Masukkan jml")[row];
+  const addRow = () => fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
+
+  it.each([
+    // butir and pcs: whole numbers, the dot groups thousands.
+    ["Telur", "KAMPUNG BIASA", "1.500", 1500],
+    ["Telur", "KAMPUNG BIASA", "12.500", 12500],
+    ["Telur", "KAMPUNG BIASA", "1.500.000", 1500000],
+    ["Telur", "KAMPUNG BIASA", " 1500 ", 1500],
+    ["Telur", "PUYUH BARU", "1.500", 1500], // no conversion: butir
+    ["Kemasan", "MIKA 10", "1.500", 1500],
+    // kg: one decimal separator, either one.
+    ["Telur", "NEGERI OMEGA", "1500", 1500],
+    ["Telur", "NEGERI OMEGA", "52,89", 52.89],
+    ["Telur", "NEGERI OMEGA", "52.89", 52.89],
+    ["Telur", "NEGERI OMEGA", "1,5", 1.5],
+    ["Telur", "NEGERI OMEGA", "1,500", 1.5], // a comma is always the decimal
+    ["Telur", "NEGERI OMEGA", "0.500", 0.5], // a leading zero can't be thousands
+  ])("%s %s: %j records %d", async (category, product, typed, want) => {
+    const onSubmit = renderForm();
+    toggle(category);
+    pickProduct(0, product);
+    typeQty(0, typed);
+    expect(qtyInput(0)).not.toHaveAttribute("aria-invalid");
+
+    const [entries] = await submitted(onSubmit);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ product, quantity: want, quantityInButir: want, remainingButir: want });
+  });
+
+  it.each([
+    ["Telur", "KAMPUNG BIASA", "2,5"],
+    ["Telur", "KAMPUNG BIASA", "1.5"],
+    ["Telur", "KAMPUNG BIASA", "12abc"],
+    ["Telur", "KAMPUNG BIASA", "1.500,5"],
+    ["Telur", "KAMPUNG BIASA", "1,500"],
+    ["Telur", "KAMPUNG BIASA", "1 500"],
+    ["Telur", "KAMPUNG BIASA", "-5"],
+    ["Kemasan", "MIKA 10", "2,5"],
+    ["Telur", "NEGERI OMEGA", "12abc"],
+    ["Telur", "NEGERI OMEGA", "1.200,5"],
+    ["Telur", "NEGERI OMEGA", "1.500.000"],
+    ["Telur", "NEGERI OMEGA", "-5"],
+    // 1.500 kg or 1,5 kg: refused rather than picked, a factor of 1.000 apart.
+    ["Telur", "NEGERI OMEGA", "1.500"],
+    ["Telur", "NEGERI OMEGA", " 1.500 "],
+    ["Telur", "NEGERI OMEGA", "23.842"],
+  ])("%s %s: %j is flagged and blocks the valid row beside it", async (category, product, typed) => {
+    const onSubmit = renderForm();
+    toggle(category);
+    pickProduct(0, product);
+    typeQty(0, typed);
+    addRow();
+    pickProduct(1, product);
+    typeQty(1, "10");
+
+    expect(qtyInput(0)).toHaveAttribute("aria-invalid", "true");
+    expect(qtyInput(1)).not.toHaveAttribute("aria-invalid");
+    expect(submitButton()).toBeDisabled();
+    expect(screen.getByText(/Perbaiki jumlah bertanda merah/)).toBeInTheDocument();
+    expect(screen.queryByText("siap ditambahkan")).not.toBeInTheDocument();
+
+    fireEvent.submit(submitButton().closest("form") as HTMLFormElement);
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    typeQty(0, "5");
+    expect(qtyInput(0)).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByText(/Perbaiki jumlah bertanda merah/)).not.toBeInTheDocument();
+    expect(screen.getByText("siap ditambahkan")).toBeInTheDocument();
+    const [entries] = await submitted(onSubmit);
+    expect(entries.map((e) => e.quantity)).toEqual([5, 10]);
+  });
+
+  it("a flagged number alone doesn't count as an item", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "KAMPUNG BIASA");
+    typeQty(0, "12abc");
+    expect(screen.queryByText("siap ditambahkan")).not.toBeInTheDocument();
+    expect(submitButton()).toBeDisabled();
+  });
+
+  it("judges the number by the picked product's unit, and not before one is picked", () => {
+    renderForm();
+    toggle("Telur");
+    typeQty(0, "2,5"); // typing the number first is normal
+    expect(qtyInput(0)).not.toHaveAttribute("aria-invalid");
+
+    pickProduct(0, "NEGERI OMEGA");
+    expect(qtyInput(0)).not.toHaveAttribute("aria-invalid");
+
+    pickProduct(0, "KAMPUNG BIASA");
+    expect(qtyInput(0)).toHaveAttribute("aria-invalid", "true");
+
+    pickProduct(0, "NEGERI OMEGA");
+    expect(qtyInput(0)).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("blank isn't flagged", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "KAMPUNG BIASA");
+    typeQty(0, "   ");
+    expect(qtyInput(0)).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByText(/Perbaiki jumlah bertanda merah/)).not.toBeInTheDocument();
+  });
+
+  it("switching the category off takes its flagged row with it", async () => {
+    const onSubmit = renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    typeQty(0, "10");
+    toggle("Kotak");
+    pickProduct(1, "BOX OSAVE");
+    typeQty(1, "2,5");
+    expect(submitButton()).toBeDisabled();
+
+    toggle("Kotak");
+    const [entries] = await submitted(onSubmit);
+    expect(entries.map((e) => e.product)).toEqual(["NEGERI OMEGA"]);
+  });
+
+  it("shows no conversion line for a number it won't record", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    typeQty(0, "12");
+    expect(screen.getByText(/ = /)).toBeInTheDocument();
+    typeQty(0, "12abc");
+    expect(screen.queryByText(/ = /)).not.toBeInTheDocument();
+  });
+});
+
 describe("InflowForm tablet layout", () => {
   const renderTablet = (onSubmit = vi.fn(async () => true)) => render(form(onSubmit, true));
   const card = (name: string) => screen.getByRole("checkbox", { name: new RegExp(name) });
@@ -234,6 +377,21 @@ describe("InflowForm tablet layout", () => {
     // Nothing in the stock summary yet: starts from 0, in pcs.
     expect(within(panel).getByText("+500 pcs")).toBeInTheDocument();
     expect(panel).toHaveTextContent("Stok 0 → 500 pcs");
+  });
+
+  it("Ringkasan reads a thousands dot as thousands and leaves a flagged row out", () => {
+    renderTablet();
+    toggle("Telur");
+    pickProduct(0, "KAMPUNG BIASA");
+    typeQty(0, "1.500");
+    const panel = screen.getByText("Ringkasan").closest("aside") as HTMLElement;
+    expect(within(panel).getByText("+1.500 butir")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Stok 2.000 → 3.500 butir");
+    expect(card("Telur")).toHaveTextContent("1 item");
+
+    typeQty(0, "2,5");
+    expect(panel).not.toHaveTextContent("butir");
+    expect(card("Telur")).toHaveTextContent("0 item");
   });
 
   it("shows the empty states: nothing enabled, and a category with no rows", () => {
@@ -326,5 +484,13 @@ describe("InflowForm phone layout", () => {
     typeQty(0, "1500");
     expect(screen.getByText(/butir$/)).toHaveTextContent(/1500 pcs = 1[.,]500 butir/);
     expect(screen.queryByRole("heading", { name: "Ringkasan" })).not.toBeInTheDocument();
+  });
+
+  it("reads a thousands dot as thousands on the conversion line", () => {
+    render(form(vi.fn(), false));
+    toggle("Telur");
+    pickProduct(0, "KAMPUNG BIASA");
+    typeQty(0, "1.500");
+    expect(screen.getByText(/butir$/)).toHaveTextContent(/1500 pcs = 1[.,]500 butir/);
   });
 });

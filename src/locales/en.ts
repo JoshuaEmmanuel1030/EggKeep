@@ -431,6 +431,7 @@ export const en = {
     failedToSave: 'Failed to save',
     inflowNotSaved: 'Inflow not saved. Please try again.',
     pleaseAddOneItem: 'Please add at least one item with valid values',
+    invalidQty: 'Fix the quantities marked in red. Butir/pcs: whole numbers, e.g. 1.500. Kg: no thousands dot, e.g. 1500 or 52,89.',
     subtitle: 'Incoming goods',
     summary: 'Summary',
     off: 'Off',
