@@ -16,11 +16,12 @@ export type ReconJenis =
   | "return_retakan"
   | "return_writeoff"
   | "retur_batal" // compensating outflow of a voided return: negative retur
+  | "penyesuaian" // Penyesuaian Stok Fisik: signed, never Masuk or Keluar
   | "stock_count";
 
 export const RECON_JENIS: ReconJenis[] = [
   "inflow", "outflow_po", "outflow_tunai",
-  "return_restock", "return_retakan", "return_writeoff", "retur_batal", "stock_count",
+  "return_restock", "return_retakan", "return_writeoff", "retur_batal", "penyesuaian", "stock_count",
 ];
 
 // §8 flag tokens. The views set all but `faktur-ganda`, which depends on the
@@ -31,7 +32,7 @@ export const RECON_FLAGS = [
 ] as const;
 export const FLAG_FAKTUR_GANDA = "faktur-ganda";
 
-export const RECON_SCHEMA_VERSION = 2;
+export const RECON_SCHEMA_VERSION = 3;
 
 /** One row of v_recon_ledger. */
 export interface ReconLedgerRow {
@@ -50,6 +51,8 @@ export interface ReconLedgerRow {
   keluar_tunai: number | null;
   retur: number | null;
   qty: number | null;
+  /** Penyesuaian Stok Fisik, signed: + in, - out. Null on every other row. */
+  penyesuaian: number | null;
   pembeli_pemasok: string | null;
   flags: string[];
   dibuat_wib: string; // yyyy-mm-ddThh:mm:ss (WIB wall clock, no offset)
@@ -75,6 +78,7 @@ export interface ReconDailyRow {
   keluar_po: number;
   keluar_tunai: number;
   retur: number;
+  penyesuaian: number;
   stok_akhir: number;
   hitung_fisik: number | null;
   selisih_fisik: number | null;
@@ -215,7 +219,8 @@ export function buildReconSheets(data: ReconData, opts: ReconOptions, now: Date 
     columns: [
       col("TGL", "date", 12), col("Item", "text", 28), col("Unit", "text", 7),
       col("Stok Awal", "qty", 13), col("Masuk", "qty", 12), col("Keluar PO", "qty", 12),
-      col("Keluar Tunai", "qty", 13), col("Retur Restock", "qty", 14), col("Stok Akhir", "qty", 13),
+      col("Keluar Tunai", "qty", 13), col("Retur Restock", "qty", 14), col("Penyesuaian", "qty", 13),
+      col("Stok Akhir", "qty", 13),
       col("Hitung Fisik", "qty", 13), col("Selisih Fisik", "qty", 13), col("Catatan", "text", 24),
     ],
     rows: daily.map((d, i) => ({
@@ -223,7 +228,7 @@ export function buildReconSheets(data: ReconData, opts: ReconOptions, now: Date 
       groupStart: i === 0 || daily[i - 1].tanggal !== d.tanggal,
       cells: [
         excelDate(d.tanggal), d.item, d.unit,
-        d.stok_awal, d.masuk, d.keluar_po, d.keluar_tunai, d.retur, d.stok_akhir,
+        d.stok_awal, d.masuk, d.keluar_po, d.keluar_tunai, d.retur, d.penyesuaian, d.stok_akhir,
         d.hitung_fisik, d.selisih_fisik,
         catatan(dayFlags.get(`${d.tanggal}\u0000${d.nama_katalog}`) ?? []),
       ],
@@ -236,14 +241,14 @@ export function buildReconSheets(data: ReconData, opts: ReconOptions, now: Date 
     columns: [
       col("Tanggal", "date", 12), col("No. Faktur", "text", 14), col("Item", "text", 28), col("Unit", "text", 7),
       col("Masuk", "qty", 12), col("Keluar PO", "qty", 12), col("Keluar Tunai", "qty", 13), col("Retur", "qty", 12),
-      col("Pembeli / Pemasok", "text", 22), col("Jenis", "text", 16), col("Catatan", "text", 24),
+      col("Penyesuaian", "qty", 13), col("Pembeli / Pemasok", "text", 22), col("Jenis", "text", 16), col("Catatan", "text", 24),
       col("Dibuat", "datetime", 17), col("ID", "text", 38),
     ],
     rows: ledger.map((r) => ({
       unit: r.unit,
       cells: [
         excelDate(r.tanggal), r.no_faktur, r.item, r.unit,
-        r.masuk, r.keluar_po, r.keluar_tunai, r.retur,
+        r.masuk, r.keluar_po, r.keluar_tunai, r.retur, r.penyesuaian,
         r.pembeli_pemasok, r.jenis, catatan(flagsOf(r)),
         excelDateTime(r.dibuat_wib), r.id,
       ],
@@ -299,13 +304,14 @@ export function buildReconSheets(data: ReconData, opts: ReconOptions, now: Date 
   };
 
   // --- Ringkasan ----------------------------------------------------------
-  const perProduct = new Map<string, { first: ReconDailyRow; last: ReconDailyRow; masuk: number; po: number; tunai: number; retur: number }>();
+  const perProduct = new Map<string, { first: ReconDailyRow; last: ReconDailyRow; masuk: number; po: number; tunai: number; retur: number; adj: number }>();
   for (const d of daily) {
     const cur = perProduct.get(d.nama_katalog);
-    if (!cur) perProduct.set(d.nama_katalog, { first: d, last: d, masuk: d.masuk, po: d.keluar_po, tunai: d.keluar_tunai, retur: d.retur });
+    if (!cur) perProduct.set(d.nama_katalog, { first: d, last: d, masuk: d.masuk, po: d.keluar_po, tunai: d.keluar_tunai, retur: d.retur, adj: d.penyesuaian ?? 0 });
     else {
       cur.last = d;
       cur.masuk += d.masuk; cur.po += d.keluar_po; cur.tunai += d.keluar_tunai; cur.retur += d.retur;
+      cur.adj += d.penyesuaian ?? 0;
     }
   }
   const flagCounts = new Map<string, number>();
@@ -329,13 +335,13 @@ export function buildReconSheets(data: ReconData, opts: ReconOptions, now: Date 
     columns: [
       col("Item", "text", 28), col("Unit", "text", 7), col("Stok Awal Periode", "qty", 17),
       col("Total Masuk", "qty", 13), col("Total Keluar PO", "qty", 15), col("Total Keluar Tunai", "qty", 17),
-      col("Total Retur Restock", "qty", 18), col("Stok Akhir Periode", "qty", 17),
+      col("Total Retur Restock", "qty", 18), col("Total Penyesuaian", "qty", 17), col("Stok Akhir Periode", "qty", 17),
     ],
     rows: [...perProduct.values()]
       .sort((a, b) => byProduct(a.first, b.first))
       .map((p) => ({
         unit: p.first.unit,
-        cells: [p.first.item, p.first.unit, p.first.stok_awal, p.masuk, p.po, p.tunai, p.retur, p.last.stok_akhir],
+        cells: [p.first.item, p.first.unit, p.first.stok_awal, p.masuk, p.po, p.tunai, p.retur, p.adj, p.last.stok_akhir],
       })),
   };
 

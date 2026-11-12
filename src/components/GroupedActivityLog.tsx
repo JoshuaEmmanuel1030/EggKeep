@@ -1329,9 +1329,11 @@ function ManualOutflowEntry({
   const canEditEntry = isEditable(log);
   const hoursRemaining = getEditWindowHours(log.created_at);
   const isVoided = log.voided_at != null;
-  const canReturn = !isVoided && log.category === "egg" && log.action_type === "outflow";
+  // A Penyesuaian Stok Fisik line is only ever voided (server refuses IS_ADJUSTMENT).
+  const isAdjustment = log.metadata?.orderType === "stock_adjustment";
+  const canReturn = !isVoided && !isAdjustment && log.category === "egg" && log.action_type === "outflow";
   const editTarget: EditTarget = { kind: "manual", log };
-  const canCorrectEntry = edit.canEditOrder(editTarget);
+  const canCorrectEntry = !isAdjustment && edit.canEditOrder(editTarget);
 
   return (
     <EntryCard tone="outflow" isSynced={log.isSynced} isVoided={isVoided}>
@@ -1478,7 +1480,8 @@ function ChronologicalEntry({ log, onEditClick, isEditable, getEditWindowHours, 
   const isInflow = log.action_type === "inflow";
   const isQuickOutflow = log.metadata?.orderType === "quick_outflow";
   const tone: Tone = isInflow ? "inflow" : isQuickOutflow ? "quick" : "outflow";
-  const canReturn = !isVoided && !isInflow && log.category === "egg";
+  const isAdjustment = log.metadata?.orderType === "stock_adjustment";
+  const canReturn = !isVoided && !isInflow && !isAdjustment && log.category === "egg";
 
   return (
     <EntryCard tone={tone} isSynced={log.isSynced} isVoided={isVoided}>

@@ -59,6 +59,12 @@ The column names are legacy — do NOT "fix" them and do NOT convert kg↔butir 
 - `void_return` voids a save group (same outflow_id, sku_code, created_at) as a compensating outflow (`outflows.void_return_id`) through `record_order_outflows`; `void_outflow` restores per batch by `ded − restocks (all) + compensating deductions`; `record_return` caps each batch at that same room. Business readers filter `returns.voided_at is null`; `void_outflow` / `reconcile_inventory` / `recalculate_inventory_fifo` must not. Do not run `recalculate_inventory_fifo` once voids exist.
 - Shared return-entry rules: `src/lib/returnLines.ts` (used by `RecordReturnDialog` and `DeliveryReturnLines`); O/R/H sums: `src/lib/returnsSummary.ts`.
 
+## Penyesuaian Stok Fisik (admin stock reset)
+- Spec: `docs/superpowers/specs/2026-11-12-stok-fisik-penyesuaian-design.md`. Migrations `20261112000000_stock_adjustments.sql` (RPCs), `20261112000001_recon_penyesuaian.sql` (recon views) and `20261112000002_stock_adjustment_guards.sql` (`correct_order` restated + `returns` trigger: an adjustment line is void-only, `IS_ADJUSTMENT`); RPC tests `supabase/tests/stock_adjustment.sql` (empty branch/local stack only).
+- Stok Fisik reads counts with `parseQtyInput` (a count now resets stock; "12.000" must never save as 12).
+- Button on Stok Fisik (today, admin, saved JS count): `stock_count_adjustment_preview()` → dialog → `apply_stock_count_adjustment(p_expected)`. Target = JS + Loaded of today's `stock_counts`, against stock at yesterday's close; + is an inflow, − goes through `record_order_outflows`, clamped to on-hand.
+- Rows it writes carry `inflows/outflows.stock_adjustment_id` and `invoice_supplier = 'PENYESUAIAN STOK FISIK'`. They are stock but never a receipt or sale: business readers (velocity, trends, sales, recon) must skip them; recon reports them as jenis `penyesuaian` in a signed `penyesuaian` column. Adjustment rows count as book at count time, so a re-press is a no-op and voiding a line in Activity brings its delta back.
+
 ## UUID migration (in progress — see docs/uuid-migration/PLAN.md)
 - Stage A APPLIED (2026-07-07): `item_type_id` on inflows/outflows, `egg/packaging_item_type_id` on pack_skus, FK-validated, resolver triggers auto-fill ids on name-only inserts.
 - Names are STILL the operational key until Stage C. Until then: renaming catalog items does NOT cascade to `pack_skus` name pointers (SQL pass required) and box names must equal the `BoxModeType` union — do not rename boxes.

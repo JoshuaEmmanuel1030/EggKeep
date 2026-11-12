@@ -1,7 +1,8 @@
 import { InventoryCategory } from "./inventory";
 
 export interface ActivityLogMetadata {
-  orderType?: 'quick_outflow' | 'manual';
+  // 'stock_adjustment': written server-side by apply_stock_count_adjustment (void only).
+  orderType?: 'quick_outflow' | 'manual' | 'stock_adjustment';
   buyerName?: string;
   // Purchase-order DC (distribution center): id + name snapshot at order time.
   dcId?: string;

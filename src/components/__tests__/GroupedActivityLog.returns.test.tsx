@@ -154,3 +154,32 @@ describe("GroupedActivityLog — returns annotation", () => {
     expect(screen.getByText("164O")).toBeInTheDocument();
   });
 });
+
+// Penyesuaian Stok Fisik: an adjustment line can only be voided. A return against it
+// would put stock above the count (the server refuses IS_ADJUSTMENT too).
+describe("GroupedActivityLog — Penyesuaian Stok Fisik lines", () => {
+  const manual = (id: string, orderType?: "stock_adjustment"): ActivityLog => ({
+    id, user_id: "u1", action_type: "outflow", category: "egg",
+    product: "PUYUH", quantity_butir: 500,
+    recorded_at: "2026-11-12T02:00:00.000Z", created_at: "2026-11-12T02:00:00.000Z",
+    client_id: `c-${id}`,
+    invoice_supplier: orderType ? "PENYESUAIAN STOK FISIK" : "warung",
+    metadata: { relatedEntryId: `outflow-${id}`, ...(orderType ? { orderType } : {}) },
+  });
+
+  it.each(["grouped", "chronological"] as const)("%s view: no Record return on an adjustment line", (viewMode) => {
+    render(
+      <LanguageProvider>
+        <GroupedActivityLog logs={[manual("adj", "stock_adjustment")]} viewMode={viewMode} />
+      </LanguageProvider>
+    );
+    expect(screen.queryByRole("button", { name: /Record return/i })).not.toBeInTheDocument();
+    cleanup();
+    render(
+      <LanguageProvider>
+        <GroupedActivityLog logs={[manual("cash")]} viewMode={viewMode} />
+      </LanguageProvider>
+    );
+    expect(screen.getByRole("button", { name: /Record return/i })).toBeInTheDocument();
+  });
+});

@@ -75,8 +75,8 @@ Six tabs, this order. Column order is fixed; do not append columns in the middle
 
 ### 5.1 `Ringkasan`
 Metadata block (not a table):
-- Periode, Dibuat (timestamp WIB), Versi skema (`2` since Phase 2; was `1`), Jumlah transaksi, Catatan (count of flagged rows by flag type).
-- Table: per product, `Item | Unit | Stok Awal Periode | Total Masuk | Total Keluar PO | Total Keluar Tunai | Total Retur Restock | Stok Akhir Periode`. Stok Akhir must equal the last day's Stok Akhir in `Harian`.
+- Periode, Dibuat (timestamp WIB), Versi skema (`3` since Penyesuaian Stok Fisik, 2026-11-12; `2` since Phase 2; was `1`), Jumlah transaksi, Catatan (count of flagged rows by flag type).
+- Table: per product, `Item | Unit | Stok Awal Periode | Total Masuk | Total Keluar PO | Total Keluar Tunai | Total Retur Restock | Total Penyesuaian | Stok Akhir Periode`. Stok Akhir must equal the last day's Stok Akhir in `Harian`.
 
 ### 5.2 `Harian` — daily roll, mirrors Final Check
 One row per product per calendar day in the range, including days with no movement.
@@ -91,10 +91,11 @@ One row per product per calendar day in the range, including days with no moveme
 | F | `Keluar PO` | number | Σ outflows that day with an order/buyer ref |
 | G | `Keluar Tunai` | number | Σ outflows that day from Kas Tunai / manual path |
 | H | `Retur Restock` | number | Σ returns with `disposition = restock` by `return_date` |
-| I | `Stok Akhir` | number | = D + E − F − G + H |
-| J | `Hitung Fisik` | number or blank | latest stock count for that product on that date, if any |
-| K | `Selisih Fisik` | number or blank | = J − I when J present |
-| L | `Catatan` | text | flags (§8), comma-separated |
+| I | `Penyesuaian` | number | (schema 3) Σ Penyesuaian Stok Fisik that day, signed: + added, − removed. Never part of E or G. |
+| J | `Stok Akhir` | number | = D + E − F − G + H + I |
+| K | `Hitung Fisik` | number or blank | latest stock count for that product on that date, if any |
+| L | `Selisih Fisik` | number or blank | = K − J when K present |
+| M | `Catatan` | text | flags (§8), comma-separated |
 
 Rows grouped by date, products in the fixed order of §7. Date rows separated by a thin border, no merged cells, no blank spacer rows (the sheet's blank rows break formulas).
 
@@ -111,13 +112,14 @@ One row per stock movement. Signs are always positive; direction is carried by t
 | F | `Keluar PO` | PO outflow qty, else blank |
 | G | `Keluar Tunai` | cash outflow qty, else blank |
 | H | `Retur` | restock return qty, else blank |
-| I | `Pembeli / Pemasok` | buyer or supplier name if known |
-| J | `Jenis` | `inflow` / `outflow_po` / `outflow_tunai` / `return_restock` / `return_retakan` / `return_writeoff` / `stock_count` |
-| K | `Catatan` | flags (§8) |
-| L | `Dibuat` | `created_at` in WIB, `dd/mm/yyyy HH:mm` |
-| M | `ID` | source row id |
+| I | `Penyesuaian` | (schema 3) Penyesuaian Stok Fisik qty, signed (+ added, − removed), else blank |
+| J | `Pembeli / Pemasok` | buyer or supplier name if known (`PENYESUAIAN STOK FISIK` on adjustments) |
+| K | `Jenis` | `inflow` / `outflow_po` / `outflow_tunai` / `return_restock` / `return_retakan` / `return_writeoff` / `retur_batal` / `penyesuaian` / `stock_count` |
+| L | `Catatan` | flags (§8) |
+| M | `Dibuat` | `created_at` in WIB, `dd/mm/yyyy HH:mm` |
+| N | `ID` | source row id |
 
-Sorted by Tanggal, then Item, then Dibuat. `return_retakan` rows show qty in `Masuk` on the RETAKAN child item; `return_writeoff` rows show qty in no numeric column (informational only).
+Sorted by Tanggal, then Item, then Dibuat. `penyesuaian` rows are the stock rows written by the Stok Fisik adjustment button (`stock_adjustment_id` set; spec `docs/superpowers/specs/2026-11-12-stok-fisik-penyesuaian-design.md`); the only signed column. `return_retakan` rows show qty in `Masuk` on the RETAKAN child item; `return_writeoff` rows show qty in no numeric column (informational only).
 
 ### 5.4 `Faktur` — invoice-level, for ticking against P3
 One row per (order, product).

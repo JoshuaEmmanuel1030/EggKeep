@@ -44,6 +44,8 @@ export interface InflowEntry {
   invoiceSupplier?: string;
   voidedAt?: string;
   voidReason?: string;
+  /** Set on rows written by the Penyesuaian Stok Fisik button: stock, but not a receipt. */
+  stockAdjustmentId?: string;
 }
 
 export interface OutflowEntry {
@@ -56,6 +58,8 @@ export interface OutflowEntry {
   invoiceSupplier?: string;
   voidedAt?: string;
   voidReason?: string;
+  /** Set on rows written by the Penyesuaian Stok Fisik button: stock, but not a sale. */
+  stockAdjustmentId?: string;
 }
 
 export interface BatchDetail {

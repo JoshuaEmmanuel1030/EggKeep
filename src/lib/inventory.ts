@@ -205,7 +205,8 @@ export function averageDailyOutflow(
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() - windowDays);
   const total = outflows
-    .filter((o) => o.product === product && !o.voidedAt && parseISO(o.date) >= cutoff)
+    // A Penyesuaian Stok Fisik deduction is a count reset, not a sale.
+    .filter((o) => o.product === product && !o.voidedAt && !o.stockAdjustmentId && parseISO(o.date) >= cutoff)
     .reduce((sum, o) => sum + o.quantityInButir, 0);
   return total / windowDays;
 }

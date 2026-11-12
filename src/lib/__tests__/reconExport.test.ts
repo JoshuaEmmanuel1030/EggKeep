@@ -26,7 +26,7 @@ function row(p: P, jenis: ReconLedgerRow["jenis"], tanggal: string, over: Partia
   seq += 1;
   return {
     jenis, tanggal, no_faktur: null, ...p,
-    masuk: null, keluar_po: null, keluar_tunai: null, retur: null, qty: null,
+    masuk: null, keluar_po: null, keluar_tunai: null, retur: null, qty: null, penyesuaian: null,
     pembeli_pemasok: null, flags: [], dibuat_wib: `${tanggal}T10:00:00`, voided: false,
     id: `row-${seq}`, outflow_id: null, return_id: null, disposisi: null, tanggal_faktur_asal: null,
     ...over,
@@ -58,15 +58,16 @@ function roll(rows: ReconLedgerRow[], days: string[]): ReconDailyRow[] {
     let bal = 0;
     for (const d of days) {
       const today = live.filter((r) => r.nama_katalog === p.nama_katalog && r.tanggal === d);
-      const sum = (k: "masuk" | "keluar_po" | "keluar_tunai" | "retur") => today.reduce((s, r) => s + (r[k] ?? 0), 0);
+      const sum = (k: "masuk" | "keluar_po" | "keluar_tunai" | "retur" | "penyesuaian") => today.reduce((s, r) => s + (r[k] ?? 0), 0);
       const masuk = sum("masuk"), keluar_po = sum("keluar_po"), keluar_tunai = sum("keluar_tunai"), retur = sum("retur");
+      const penyesuaian = sum("penyesuaian");
       const stok_awal = bal;
-      bal = bal + masuk - keluar_po - keluar_tunai + retur;
+      bal = bal + masuk - keluar_po - keluar_tunai + retur + penyesuaian;
       const count = rows.find((r) => r.jenis === "stock_count" && r.nama_katalog === p.nama_katalog && r.tanggal === d);
       out.push({
         tanggal: d, item: p.item, nama_katalog: p.nama_katalog!, unit: p.unit, urutan: p.urutan,
         is_retakan: p.is_retakan, tanpa_label: p.tanpa_label,
-        stok_awal, masuk, keluar_po, keluar_tunai, retur, stok_akhir: bal,
+        stok_awal, masuk, keluar_po, keluar_tunai, retur, penyesuaian, stok_akhir: bal,
         hitung_fisik: count?.qty ?? null, selisih_fisik: count ? count.qty! - bal : null, catatan: null,
       });
     }
@@ -106,10 +107,10 @@ describe("buildReconSheets — structure (§5, §9)", () => {
   it("has the six tabs in order with the fixed headers", () => {
     expect(sheets.map((s) => s.name)).toEqual(["Ringkasan", "Harian", "Transaksi", "Faktur", "Retur", "Katalog"]);
     expect(sheet(sheets, "Harian").columns.map((c) => c.header)).toEqual([
-      "TGL", "Item", "Unit", "Stok Awal", "Masuk", "Keluar PO", "Keluar Tunai", "Retur Restock", "Stok Akhir", "Hitung Fisik", "Selisih Fisik", "Catatan",
+      "TGL", "Item", "Unit", "Stok Awal", "Masuk", "Keluar PO", "Keluar Tunai", "Retur Restock", "Penyesuaian", "Stok Akhir", "Hitung Fisik", "Selisih Fisik", "Catatan",
     ]);
     expect(sheet(sheets, "Transaksi").columns.map((c) => c.header)).toEqual([
-      "Tanggal", "No. Faktur", "Item", "Unit", "Masuk", "Keluar PO", "Keluar Tunai", "Retur", "Pembeli / Pemasok", "Jenis", "Catatan", "Dibuat", "ID",
+      "Tanggal", "No. Faktur", "Item", "Unit", "Masuk", "Keluar PO", "Keluar Tunai", "Retur", "Penyesuaian", "Pembeli / Pemasok", "Jenis", "Catatan", "Dibuat", "ID",
     ]);
     expect(sheet(sheets, "Faktur").columns.map((c) => c.header)).toEqual([
       "Tanggal", "No. Faktur", "Pembeli", "Item", "Unit", "Qty", "Qty Butir Setara", "Retur", "Netto", "Catatan", "Outflow ID",
@@ -124,7 +125,7 @@ describe("buildReconSheets — structure (§5, §9)", () => {
     for (const r of t) {
       expect(r["Tanggal"]).toBeInstanceOf(Date);
       expect(r["Dibuat"]).toBeInstanceOf(Date);
-      for (const k of ["Masuk", "Keluar PO", "Keluar Tunai", "Retur"]) {
+      for (const k of ["Masuk", "Keluar PO", "Keluar Tunai", "Retur", "Penyesuaian"]) {
         if (r[k] != null) expect(typeof r[k]).toBe("number");
       }
     }
@@ -191,7 +192,7 @@ describe("buildReconSheets — §11 acceptance criteria", () => {
   });
 
   it("3. Σ Transaksi by day and type reproduces every Harian cell", () => {
-    const cols: [string, string][] = [["Masuk", "Masuk"], ["Keluar PO", "Keluar PO"], ["Keluar Tunai", "Keluar Tunai"], ["Retur", "Retur Restock"]];
+    const cols: [string, string][] = [["Masuk", "Masuk"], ["Keluar PO", "Keluar PO"], ["Keluar Tunai", "Keluar Tunai"], ["Retur", "Retur Restock"], ["Penyesuaian", "Penyesuaian"]];
     for (const h of harian) {
       const rows = transaksi.filter((r) => r["Item"] === h["Item"] && (r["Tanggal"] as Date).getTime() === (h["TGL"] as Date).getTime());
       for (const [tCol, hCol] of cols) {
@@ -281,7 +282,7 @@ describe("buildReconSheets — flags, voids, Faktur, Retur, Katalog", () => {
     const meta = Object.fromEntries(sheet(sheets, "Ringkasan").meta!);
     expect(meta["Periode"]).toBe("29/09/2026 – 30/09/2026");
     expect(meta["Dibuat"]).toBe("29/10/2026 10:04 WIB");
-    expect(meta["Versi skema"]).toBe(2);
+    expect(meta["Versi skema"]).toBe(3);
     expect(meta["Produk tanpa label"]).toBe(0);
   });
 
@@ -294,5 +295,55 @@ describe("buildReconSheets — flags, voids, Faktur, Retur, Katalog", () => {
     expect(t[2]["Is RETAKAN"]).toBe("YA");
     expect(t[3]["Box capacities (JSON)"]).toBe('{"N10O":18}');
     expect(k.extra!.rows.map((r) => r.cells)).toEqual([["KP6", "KAMPUNG MERAH", 6], ["N10O", "NEGERI OMEGA", 10]]);
+  });
+});
+
+describe("buildReconSheets — Penyesuaian Stok Fisik", () => {
+  // A count reset: NEGERI loses 3 kg, KAMPUNG MERAH gains 10 butir on 30/09.
+  const l = [
+    ...ledger(),
+    row(NEGERI, "penyesuaian", "2026-09-30", { penyesuaian: -3, qty: 3, pembeli_pemasok: "PENYESUAIAN STOK FISIK", id: "adj-out" }),
+    row(MERAH, "penyesuaian", "2026-09-30", { penyesuaian: 10, qty: 10, pembeli_pemasok: "PENYESUAIAN STOK FISIK", id: "adj-in" }),
+  ];
+  const d: ReconData = { ...data(), ledger: l, daily: roll(l, DAYS) };
+  const sheets = buildReconSheets(d, opts, NOW);
+  const harian = table(sheet(sheets, "Harian"));
+  const transaksi = table(sheet(sheets, "Transaksi"));
+  const ringkasan = table(sheet(sheets, "Ringkasan"));
+  const on30 = (rows: Rec[], item: string, dateCol: string) =>
+    rows.find((r) => r["Item"] === item && sameDay(r[dateCol] as Date, "2026-09-30"))!;
+
+  it("is its own column, never Masuk or Keluar Tunai", () => {
+    const out = transaksi.find((r) => r["ID"] === "adj-out")!;
+    expect(out["Jenis"]).toBe("penyesuaian");
+    expect(out["Penyesuaian"]).toBe(-3);
+    expect(out["Keluar Tunai"]).toBeNull();
+    expect(out["Masuk"]).toBeNull();
+    expect(transaksi.find((r) => r["ID"] === "adj-in")!["Penyesuaian"]).toBe(10);
+    const negeri = on30(harian, "Telur Negeri", "TGL");
+    expect(negeri["Penyesuaian"]).toBe(-3);
+    expect(negeri["Keluar Tunai"]).toBe(5);
+    expect(on30(harian, "Telur Kampung Merah", "TGL")["Penyesuaian"]).toBe(10);
+  });
+
+  it("moves Stok Akhir and adds up in Ringkasan", () => {
+    const by = Object.fromEntries(ringkasan.map((r) => [r["Item"], r]));
+    expect(sheet(sheets, "Ringkasan").columns.map((c) => c.header)).toEqual([
+      "Item", "Unit", "Stok Awal Periode", "Total Masuk", "Total Keluar PO", "Total Keluar Tunai",
+      "Total Retur Restock", "Total Penyesuaian", "Stok Akhir Periode",
+    ]);
+    expect(by["Telur Negeri"]["Total Penyesuaian"]).toBe(-3);
+    expect(by["Telur Negeri"]["Stok Akhir Periode"]).toBe(54.75);
+    expect(by["Telur Kampung Merah"]["Stok Akhir Periode"]).toBe(710);
+  });
+
+  it("Σ Transaksi still reproduces every Harian cell", () => {
+    const cols = ["Masuk", "Keluar PO", "Keluar Tunai", "Penyesuaian"];
+    for (const h of harian) {
+      const rows = transaksi.filter((r) => r["Item"] === h["Item"] && (r["Tanggal"] as Date).getTime() === (h["TGL"] as Date).getTime());
+      for (const c of cols) {
+        expect(rows.reduce((s, r) => s + ((r[c] as number) ?? 0), 0)).toBeCloseTo(h[c] as number, 6);
+      }
+    }
   });
 });

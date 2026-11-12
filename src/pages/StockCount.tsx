@@ -22,6 +22,8 @@ import { useItemTypes } from "@/hooks/useItemTypes";
 import { useInventorySync } from "@/hooks/useInventorySync";
 import { useStockCounts } from "@/hooks/useStockCounts";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { useUserRole } from "@/hooks/useUserRole";
+import { StockAdjustmentDialog } from "@/components/StockAdjustmentDialog";
 import { useIsTabletLandscape } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateStockSummary, getStockUnit } from "@/lib/inventory";
@@ -48,14 +50,18 @@ export default function StockCount() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { itemTypes, conversionMap } = useItemTypes();
-  const { inflows } = useInventorySync();
+  const { inflows, refetch: refetchInventory } = useInventorySync();
   const { pendingCount, isOnline } = useOfflineSync();
+  const { isAdmin } = useUserRole();
   const isTablet = useIsTabletLandscape();
 
   const [countDate, setCountDate] = useState<string>(todayStr());
   const isToday = countDate === todayStr();
   const { records, saveCounts, deleteCounts } = useStockCounts(countDate);
   const [draft, setDraft] = useState<Draft>({});
+  // The draft as last loaded from saved rows: the adjust button works off saved counts only.
+  const [savedDraft, setSavedDraft] = useState<Draft>({});
+  const [adjustOpen, setAdjustOpen] = useState(false);
   const [lines, setLines] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -90,8 +96,15 @@ export default function StockCount() {
       for (const r of recs) next[`${r.itemTypeId}:${r.location}`] = qtyInputText(r.quantity);
     }
     setDraft(next);
+    setSavedDraft(next);
     setLines(seeded);
   }, [countDate, records, eggs]);
+
+  // Blank and absent are the same "not counted"; anything else unsaved blocks the adjust button.
+  const filled = (d: Draft) =>
+    JSON.stringify(Object.entries(d).filter(([, v]) => v.trim() !== "").sort());
+  const unsaved = filled(draft) !== filled(savedDraft);
+  const hasJsCount = records.some((r) => r.location === "js_warehouse");
 
   // Previous count's accuracy, for the trend chip (uses that count's stored
   // system_qty snapshot). Hidden until there is a prior count to compare to.
@@ -480,6 +493,24 @@ export default function StockCount() {
                 {t.stockCount.save}
               </Button>
             )}
+
+            {/* Penyesuaian Stok Fisik: admin-only reset of the book to today's saved count. */}
+            {isToday && isAdmin && hasJsCount && (
+              <div className="mt-6 rounded-xl border border-destructive/40 p-3">
+                <Button
+                  variant="destructive"
+                  className="w-full h-11"
+                  disabled={unsaved || saving}
+                  onClick={() => setAdjustOpen(true)}
+                >
+                  {t.stockCount.adjustButton}
+                </Button>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  {unsaved ? t.stockCount.adjustSaveFirst : t.stockCount.adjustHint}
+                </p>
+              </div>
+            )}
+            <StockAdjustmentDialog open={adjustOpen} onOpenChange={setAdjustOpen} onApplied={refetchInventory} />
 
             <p className="text-[11px] text-muted-foreground text-center mt-3">{t.stockCount.footNote}</p>
           </>
