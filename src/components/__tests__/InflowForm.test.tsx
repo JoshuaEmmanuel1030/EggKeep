@@ -203,7 +203,14 @@ describe.each([
     ["Telur", "KAMPUNG BIASA", " 1500 ", 1500],
     ["Telur", "PUYUH BARU", "1.500", 1500], // no conversion: butir
     ["Kemasan", "MIKA 10", "1.500", 1500],
-    // kg: one decimal separator, either one.
+    // kg: id-ID as the screens print it, so a dot before three digits groups thousands.
+    ["Telur", "NEGERI OMEGA", "1.500", 1500],
+    ["Telur", "NEGERI OMEGA", " 1.500 ", 1500],
+    ["Telur", "NEGERI OMEGA", "23.842", 23842],
+    ["Telur", "NEGERI OMEGA", "1.500.000", 1500000],
+    ["Telur", "NEGERI OMEGA", "23.818,16", 23818.16],
+    ["Telur", "NEGERI OMEGA", "1.200,5", 1200.5],
+    // ...otherwise one decimal separator, either one.
     ["Telur", "NEGERI OMEGA", "1500", 1500],
     ["Telur", "NEGERI OMEGA", "52,89", 52.89],
     ["Telur", "NEGERI OMEGA", "52.89", 52.89],
@@ -232,13 +239,10 @@ describe.each([
     ["Telur", "KAMPUNG BIASA", "-5"],
     ["Kemasan", "MIKA 10", "2,5"],
     ["Telur", "NEGERI OMEGA", "12abc"],
-    ["Telur", "NEGERI OMEGA", "1.200,5"],
-    ["Telur", "NEGERI OMEGA", "1.500.000"],
     ["Telur", "NEGERI OMEGA", "-5"],
-    // 1.500 kg or 1,5 kg: refused rather than picked, a factor of 1.000 apart.
-    ["Telur", "NEGERI OMEGA", "1.500"],
-    ["Telur", "NEGERI OMEGA", " 1.500 "],
-    ["Telur", "NEGERI OMEGA", "23.842"],
+    ["Telur", "NEGERI OMEGA", "1,500.5"], // en-US grouping
+    ["Telur", "NEGERI OMEGA", "12.34.567"],
+    ["Telur", "NEGERI OMEGA", "1.500,5,5"],
   ])("%s %s: %j is flagged and blocks the valid row beside it", async (category, product, typed) => {
     const onSubmit = renderForm();
     toggle(category);
@@ -392,6 +396,11 @@ describe("InflowForm tablet layout", () => {
     typeQty(0, "2,5");
     expect(panel).not.toHaveTextContent("butir");
     expect(card("Telur")).toHaveTextContent("0 item");
+
+    pickProduct(0, "NEGERI OMEGA");
+    typeQty(0, "1.500");
+    expect(within(panel).getByText("+1.500 kg")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Stok 186 → 1.686 kg");
   });
 
   it("shows the empty states: nothing enabled, and a category with no rows", () => {

@@ -60,14 +60,16 @@ const TB_ROW = "grid grid-cols-[28px_minmax(0,1fr)_140px_170px_44px] items-cente
 const BROKEN_INPUT =
   "border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/15 focus-visible:shadow-[0_0_0_3px_rgba(239,68,68,0.15)]";
 
-// kg "1.500" is 1.500 kg as the screens print it, 1,5 kg to parseKasQty: a factor
-// of 1.000, so refuse it rather than pick. "1500" and "1,5" both still work.
-const AMBIGUOUS_KG = /^[1-9]\d{0,2}\.\d{3}$/;
+// kg read as the screens print it (owner's call, 2026-11-09): a dot before three
+// digits groups thousands, so "1.500" is 1.500 kg and "23.818,16" is 23818,16.
+// A leading zero can't be thousands ("0.500" is 0,5).
+const KG_GROUPED = /^[1-9]\d{0,2}(\.\d{3})+(,\d+)?$/;
 
 // Jumlah in the product's native unit (kg-native: the number IS the stock quantity).
 const parseItemQty = (item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap) => {
-  const unit = getStockUnit(item.product, category, conversionMap) === "kg" ? "kg" : "butir";
-  return unit === "kg" && AMBIGUOUS_KG.test(item.quantity.trim()) ? null : parseKasQty(item.quantity, unit);
+  const raw = item.quantity.trim();
+  if (getStockUnit(item.product, category, conversionMap) !== "kg") return parseKasQty(raw, "butir");
+  return KG_GROUPED.test(raw) ? Number(raw.replace(/\./g, "").replace(",", ".")) : parseKasQty(raw, "kg");
 };
 
 // A row counts only if handleSubmit will record it.
