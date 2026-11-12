@@ -343,4 +343,122 @@ describe("RecordReturnDialog", () => {
     const { lines } = recordReturnMock.mock.calls[0]![0];
     expect(lines).toEqual([expect.objectContaining({ skuCode: "N30B", quantity: 2 })]);
   });
+
+  describe("typed quantities", () => {
+    const log = (product: string, qty: number): ActivityLog => ({
+      id: "1", user_id: "u1", action_type: "outflow", category: "egg", product, quantity_butir: qty,
+      recorded_at: "2026-10-05T07:21:00.000Z", created_at: "2026-10-05T07:21:00.000Z", client_id: "c",
+    });
+    // Pack rows are typed in pieces; a row with no pack line takes the native unit.
+    const piecesKg = () => renderDialog({ eggLogs: [log("NEGERI BIASA", 100)], orderLines: [{ skuCode: "N30B", packQty: 50 }] });
+    const piecesButir = () => renderDialog({ eggLogs: [log("KAMPUNG BIASA", 10000)], orderLines: [{ skuCode: "KP10B", packQty: 800 }] });
+    const nativeKg = () => renderDialog({ eggLogs: [log("NEGERI BIASA", 5000)] });
+    const nativeButir = () => renderDialog({ eggLogs: [log("KAMPUNG BIASA", 10000)] });
+    const confirm = () => screen.getByRole("button", { name: /record return/i });
+    const type = (input: HTMLInputElement, value: string) => fireEvent.change(input, { target: { value } });
+    const recorded = async () => {
+      fireEvent.click(confirm());
+      await vi.waitFor(() => expect(recordReturnMock).toHaveBeenCalledTimes(1));
+      return recordReturnMock.mock.calls[0]![0].lines;
+    };
+
+    it.each([
+      ["pieces on a kg egg", "1.550", 100, piecesKg], // 1550 pieces / 15.5
+      ["pieces on a butir egg", "1.500", 1500, piecesButir],
+      ["native butir", "1.500", 1500, nativeButir],
+      ["native kg", "1500", 1500, nativeKg],
+      ["native kg", "52,89", 52.89, nativeKg],
+      ["native kg", "52.89", 52.89, nativeKg],
+      // kg reads as the screens print it: a dot before three digits groups thousands.
+      ["native kg", "1.500", 1500, nativeKg],
+      ["native kg", "1.200,5", 1200.5, nativeKg],
+    ] as const)("%s reads %j as %d", async (_name, typed, want, setup) => {
+      setup();
+      const ok = (await screen.findAllByLabelText(/ok/i))[0] as HTMLInputElement;
+      type(ok, typed);
+      expect(ok).not.toHaveAttribute("aria-invalid");
+      expect(ok.value).toBe(typed);
+      expect((await recorded())[0]).toMatchObject({ disposition: "restock", quantity: want });
+    });
+
+    it.each([
+      ["pieces", "2,5", piecesKg],
+      ["pieces", "1.5", piecesKg],
+      ["pieces", "1,500", piecesKg],
+      ["pieces", "1.500,5", piecesKg],
+      ["native butir", "2,5", nativeButir],
+      ["native butir", "1.5", nativeButir],
+      ["native kg", "1,500.5", nativeKg], // en-US grouping
+      ["native kg", "12.34.567", nativeKg],
+      ["native kg", "1.500,5,5", nativeKg],
+    ] as const)("%s: %j is flagged and blocks the good bucket beside it", async (_name, typed, setup) => {
+      setup();
+      const ok = (await screen.findAllByLabelText(/ok/i))[0] as HTMLInputElement;
+      const hancur = writeoffInput();
+      type(hancur, "5");
+      type(ok, typed);
+
+      expect(ok).toHaveAttribute("aria-invalid", "true");
+      expect(hancur).not.toHaveAttribute("aria-invalid");
+      expect(ok.value).toBe(typed); // what was typed stays, so it can be fixed
+      expect(screen.getByRole("alert")).toHaveTextContent("Fix the quantities marked in red");
+      expect(confirm()).toBeDisabled();
+      fireEvent.click(confirm());
+      expect(recordReturnMock).not.toHaveBeenCalled();
+
+      type(ok, "10");
+      expect(ok).not.toHaveAttribute("aria-invalid");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect((await recorded()).map((l) => l.disposition)).toEqual(["restock", "writeoff"]);
+    });
+
+    it("a flagged number alone leaves nothing to confirm", async () => {
+      piecesKg();
+      const ok = (await screen.findAllByLabelText(/ok/i))[0] as HTMLInputElement;
+      type(ok, "2,5");
+      expect(confirm()).toBeDisabled();
+      expect(screen.queryByText(/of .* butir sold/i)).not.toBeInTheDocument();
+    });
+
+    it("the cap reads the thousands dot too: 1.600 pieces clamps to the 1550 left", async () => {
+      piecesKg();
+      const ok = (await screen.findAllByLabelText(/ok/i))[0] as HTMLInputElement;
+      type(ok, "1.600");
+      expect(ok.value).toBe("1550");
+      expect(ok).not.toHaveAttribute("aria-invalid");
+    });
+
+    it("the cap reads a kg thousands dot too: 12.345 kg clamps to the 5000 sold", async () => {
+      nativeKg();
+      const ok = (await screen.findAllByLabelText(/ok/i))[0] as HTMLInputElement;
+      type(ok, "12.345");
+      expect(ok.value).toBe("5000");
+      expect(ok).not.toHaveAttribute("aria-invalid");
+    });
+
+    it("clamping to a fractional kg stays readable instead of reading as thousands", async () => {
+      renderDialog({ eggLogs: [log("NEGERI BIASA", 2.125)] });
+      const ok = (await screen.findAllByLabelText(/ok/i))[0] as HTMLInputElement;
+      type(ok, "999");
+      expect(ok.value).toBe("2,125");
+      expect(ok).not.toHaveAttribute("aria-invalid");
+      expect((await recorded())[0]).toMatchObject({ quantity: 2.125 });
+    });
+
+    it("0 in a bucket is nothing to return, not a bad number", async () => {
+      nativeButir();
+      type(restockInput(), "12");
+      type(retakanInput(), "0");
+      expect(retakanInput()).not.toHaveAttribute("aria-invalid");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect((await recorded()).map((l) => [l.disposition, l.quantity])).toEqual([["restock", 12]]);
+    });
+
+    it("letters never reach the number: 12abc shows and records 12", async () => {
+      nativeButir();
+      type(restockInput(), "12abc");
+      expect(restockInput().value).toBe("12");
+      expect((await recorded())[0]).toMatchObject({ quantity: 12 });
+    });
+  });
 });

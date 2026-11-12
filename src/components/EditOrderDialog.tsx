@@ -29,7 +29,7 @@ import { useCorrectOrder, type CorrectedLogPayload } from "@/hooks/useCorrectOrd
 import { aggregateOrderMaterials, calculateLineMaterials } from "@/lib/outflowCalculator";
 import { buildOrderEntries, buildOrderMetadata, toOutflowLogPayloads, type OrderPayloadInput } from "@/lib/orderPayload";
 import { editMinutesLeft } from "@/lib/orderCorrection";
-import { parseCountInput } from "@/lib/stockCount";
+import { parseQtyInput, qtyInputText } from "@/lib/stockCount";
 import { useStockUnitLabel, type BuyerOrder } from "@/components/GroupedActivityLog";
 import type { ActivityLog } from "@/types/activityLog";
 import type { OutflowEntry } from "@/types/inventory";
@@ -69,11 +69,10 @@ interface Form {
 
 const dayOf = (iso: string) => format(parseISO(iso), "yyyy-MM-dd");
 const origQty = (line: OrderLine) => (line.lineType === "pack" ? line.packQty : line.looseQty);
-// Empty, zero or negative is never valid; fractions only where the unit allows (kg).
-const badQty = (raw: string, decimal: boolean) => {
-  const n = parseCountInput(raw);
-  return n === null || n <= 0 || (!decimal && !Number.isInteger(n));
-};
+// Fractions only where the unit allows (kg); packs, butir and pcs are whole counts.
+const parseQty = (raw: string, decimal: boolean) => parseQtyInput(raw, decimal ? "kg" : "butir");
+// Empty, zero or negative is never valid.
+const badQty = (raw: string, decimal: boolean) => (parseQty(raw, decimal) ?? 0) <= 0;
 const withIds = <T,>(p: T) => ({ ...p, id: crypto.randomUUID(), client_id: crypto.randomUUID() });
 
 // What the order actually deducted: its live rows, as calculator aggregates.
@@ -104,7 +103,7 @@ function initialForm(order: BuyerOrder | null, cashLog: ActivityLog | null, cash
         const line: OrderLine = l.skuCode
           ? { id: key, lineType: "pack", skuCode: l.skuCode, packQty: l.packQty, labelSelection: l.labelSelection }
           : { id: key, lineType: "loose", eggProduct: l.eggProduct, looseQty: l.looseQty, looseUnit: l.looseUnit };
-        return { key, line, qty: String(origQty(line) ?? "") };
+        return { key, line, qty: qtyInputText(origQty(line)) };
       });
     return {
       invoice: order.invoiceRef ?? "",
@@ -119,7 +118,7 @@ function initialForm(order: BuyerOrder | null, cashLog: ActivityLog | null, cash
     date: cashLog.metadata?.outflowDate ?? cashDate ?? dayOf(cashLog.recorded_at),
     dcId: "",
     rows: [],
-    qty: String(cashLog.quantity_butir),
+    qty: qtyInputText(cashLog.quantity_butir),
   };
 }
 
@@ -195,26 +194,29 @@ function EditOrderForm({ open, onOpenChange, target, onSaved }: EditOrderDialogP
     return conversionMap[line.eggProduct]?.unit === "kg" && logged === line.looseQty ? "kg" : "butir";
   };
   const decimalRow = (line: OrderLine) => line.lineType === "loose" && looseUnitOf(line) === "kg";
+  // A Cash entry's quantity is in the product's stock unit.
+  const cashDecimal = !!cashLog && unitLabel(cashLog.product, cashLog.category) === "kg";
 
   // Purchase Order: the lines with their new quantities, and what they deduct.
-  const toLines = (rows: EditRow[]): OrderLine[] =>
-    rows.map(({ line, qty }) => {
-      const n = parseCountInput(qty) ?? undefined;
-      return line.lineType === "pack"
-        ? { ...line, packQty: n }
-        : { ...line, looseQty: n, looseUnit: looseUnitOf(line) };
-    });
-  const editedLines = toLines(form.rows);
+  const editedLines = form.rows.map(({ line, qty }): OrderLine => {
+    const n = parseQty(qty, decimalRow(line)) ?? undefined;
+    return line.lineType === "pack"
+      ? { ...line, packQty: n }
+      : { ...line, looseQty: n, looseUnit: looseUnitOf(line) };
+  });
   const calc = (lines: OrderLine[]) =>
     aggregateOrderMaterials(lines, null, true, skus, conversionMap, boxCapacityMap, labelsPerPackMap);
   const linesChanged =
-    form.rows.length !== init.rows.length || form.rows.some(({ line, qty }) => parseCountInput(qty) !== origQty(line));
+    form.rows.length !== init.rows.length || form.rows.some(({ line, qty }) => parseQty(qty, decimalRow(line)) !== origQty(line));
   // Unchanged lines resend exactly what the order deducted (its rows). Lines
   // are only re-derived when today's rules reproduce those rows: not for orders
   // from the old order-level box mode, labels a line didn't keep, or a catalog
   // change since entry. Otherwise quantities are locked (invoice/DC/date only).
+  // Judged on the recorded numbers, not their text: a 1,5 butir an old bundle
+  // saved fails today's parser, and that row has to stay open to be corrected.
   const recorded = order ? recordedAggregates(liveLogs) : null;
-  const linesEditable = !!order && sameAggregates(calc(toLines(init.rows)), recorded);
+  const recordedLines = init.rows.map(({ line }) => (line.lineType === "pack" ? line : { ...line, looseUnit: looseUnitOf(line) }));
+  const linesEditable = !!order && sameAggregates(calc(recordedLines), recorded);
 
   const buyer = order ? buyers.find((b) => b.name === order.buyerName) : undefined;
   const buyerDcs = dcsForBuyer(buyer?.id);
@@ -238,7 +240,7 @@ function EditOrderForm({ open, onOpenChange, target, onSaved }: EditOrderDialogP
   const materials = payloadInput ? buildOrderEntries(payloadInput, "", () => "") : [];
 
   const validationError = (): string | null => {
-    const sameQty = (a: string, b: string) => parseCountInput(a) === parseCountInput(b);
+    const sameQty = (a: string, b: string) => parseQty(a, cashDecimal) === parseQty(b, cashDecimal);
     if (order) {
       if (form.rows.some(({ line, qty }) => badQty(qty, decimalRow(line)))) return t.activity.editErrQty;
       // Quantities typed before the catalog changed under us: never re-derive.
@@ -248,7 +250,7 @@ function EditOrderForm({ open, onOpenChange, target, onSaved }: EditOrderDialogP
         editedLines.some((l) => !calculateLineMaterials(l, null, true, skus, conversionMap, boxCapacityMap, labelsPerPackMap));
       if (unresolved) return t.outflow.boxSkuNoCapacity;
       if (buyerDcs.length > 0 && !form.dcId) return t.outflow.dcRequired;
-    } else if (badQty(form.qty, true)) {
+    } else if (badQty(form.qty, cashDecimal)) {
       return t.activity.editErrQty;
     }
     const changed =
@@ -282,7 +284,7 @@ function EditOrderForm({ open, onOpenChange, target, onSaved }: EditOrderDialogP
           id: crypto.randomUUID(),
           date: form.date,
           product: cashLog.product,
-          quantityInButir: parseCountInput(form.qty),
+          quantityInButir: parseQty(form.qty, cashDecimal),
           category: cashLog.category,
           invoiceSupplier: form.invoice.trim() || undefined,
           createdAt: now,
@@ -340,7 +342,7 @@ function EditOrderForm({ open, onOpenChange, target, onSaved }: EditOrderDialogP
             <div className="space-y-1.5">
               <Label htmlFor="edit-qty">{t.activity.quantity}</Label>
               <div className="flex items-center gap-2">
-                {qtyInput("edit-qty", t.activity.quantity, form.qty, true, (qty) => patch({ qty }))}
+                {qtyInput("edit-qty", t.activity.quantity, form.qty, cashDecimal, (qty) => patch({ qty }))}
                 <span className="text-sm text-muted-foreground">{unitLabel(cashLog.product, cashLog.category)}</span>
               </div>
             </div>

@@ -16,6 +16,7 @@ export interface OrderLine {
   packQty?: number;        // For pack lines
   eggProduct?: string;     // For loose egg lines
   looseQty?: number;       // For loose egg lines
+  looseQtyText?: string;   // looseQty as typed, so a bad number stays on screen to fix. Never stored.
   looseUnit?: 'butir' | 'kg';
   boxModeOverride?: BoxModeType;  // Set by resolveBoxLine for Box SKU lines
   labelSelection?: string | null;  // Paused feature placeholder

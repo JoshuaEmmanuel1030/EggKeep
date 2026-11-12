@@ -21,6 +21,7 @@ import { formatDateId, RETURN_REASON_LABEL_ID } from "@/lib/deliveryExport";
 import { expectedExpiry, resolveShelfLife } from "@/lib/expiryRules";
 import { buildReturnLines, buildSkuEggMap, piecesPerUnit, returnErrorCode, type SkuEgg } from "@/lib/returnLines";
 import { NEGERI_PIECES_PER_KG, nativeToPieces, remainingReturnable } from "@/lib/returnsCap";
+import { parseQtyInput, qtyInputText } from "@/lib/stockCount";
 import type { OutflowReturns } from "@/lib/returnsSummary";
 import { returnCode } from "@/lib/activityGrouping";
 import { cn } from "@/lib/utils";
@@ -29,11 +30,14 @@ import type { ReturnDisposition } from "@/types/returns";
 
 // Four chips cover 105 of October's 117 item rows; "Lainnya…" opens the full list.
 const CHIP_REASONS = ["pecah", "ditolak", "tukar_guling", "kurang"];
+const BROKEN_INPUT = "border-destructive focus-visible:ring-destructive";
 
-const parseNum = (raw: string): number => {
-  const n = parseFloat((raw ?? "").replace(",", "."));
-  return isNaN(n) ? 0 : n;
-};
+// A store qty can be fractional (2,5 box), so it follows the kg rule: "1.500" is
+// 1500, "1.200,5" is 1200,5. The warehouse side counts whole eggs.
+const parseStoreQty = (raw: string) => parseQtyInput(raw, "kg");
+const parseEggCount = (raw: string) => parseQtyInput(raw, "butir");
+// Something typed that can't be read. Blank is fine: it means not filled in yet.
+const isBroken = (raw: string, parse: (raw: string) => number | null) => raw.trim() !== "" && parse(raw) == null;
 
 function newId(): string {
   try {
@@ -276,14 +280,14 @@ function LineRow(props: LineRowProps) {
   const priorReturns = view?.returns ?? null;
 
   // Store side.
-  const [qty, setQty] = useState(line.quantity ? String(line.quantity) : "");
+  const [qty, setQty] = useState(line.quantity ? qtyInputText(line.quantity) : "");
   const [reason, setReason] = useState(line.reason);
   const [note, setNote] = useState(line.note ?? "");
   const [claimRef, setClaimRef] = useState(line.claimRef ?? "");
   const [expiry, setExpiry] = useState(line.expectedExpiry ?? "");
   useEffect(() => {
     if (isDraft) return;
-    setQty(line.quantity ? String(line.quantity) : "");
+    setQty(line.quantity ? qtyInputText(line.quantity) : "");
     setReason(line.reason);
     setNote(line.note ?? "");
     setClaimRef(line.claimRef ?? "");
@@ -309,16 +313,22 @@ function LineRow(props: LineRowProps) {
     if (!frozen) idsRef.current = null;
   }, [returnsSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const quantity = parseNum(qty);
+  const quantity = parseStoreQty(qty) ?? 0;
+  const qtyBroken = isBroken(qty, parseStoreQty);
   const linePieces = quantity * line.piecesPerUnit;
   const physical = lineHasPhysicalReturn({ reason });
   const priorSkuPieces = priorReturns ? priorReturns.okPieces + priorReturns.pecahPieces : 0;
   const locked = !!priorReturns && !secondReturn;
   const receivedDefault = Math.max(0, linePieces - priorSkuPieces);
-  const receivedValue = receivedTouched ? received : String(receivedDefault);
-  const receivedN = parseNum(receivedValue);
-  const pecahN = parseNum(pecah);
-  const warehouseFilled = physical && pecah.trim() !== "" && !locked;
+  const receivedValue = receivedTouched ? received : qtyInputText(receivedDefault);
+  const receivedN = parseEggCount(receivedValue) ?? 0;
+  const pecahN = parseEggCount(pecah) ?? 0;
+  const warehouseOpen = physical && !locked; // its inputs are on screen
+  const warehouseFilled = warehouseOpen && pecah.trim() !== "";
+  // A fractional prefill (2,5 pak × 15) isn't a typing error: it only holds the
+  // warehouse save, and the store side can still be saved without it.
+  const receivedBroken = warehouseOpen && (receivedTouched || warehouseFilled) && isBroken(receivedValue, parseEggCount);
+  const pecahBroken = warehouseOpen && isBroken(pecah, parseEggCount);
   const okN = receivedN - pecahN;
 
   // The egg outflow row this SKU's eggs came off, and its cap (§6.2.4, §6.5.3).
@@ -346,6 +356,9 @@ function LineRow(props: LineRowProps) {
   );
 
   const block: string | null = (() => {
+    // Before the warehouse check: Pecah blank saves the store side, bad number and all.
+    if (qtyBroken) return r.qtyInvalid;
+    if (receivedBroken || pecahBroken) return r.notInteger;
     if (!warehouseFilled) return null;
     if (!reason) return r.noReason;
     if (quantity <= 0) return r.qtyZero;
@@ -353,7 +366,6 @@ function LineRow(props: LineRowProps) {
     if (!skuOption) return r.poNotMatch;
     if (!outflowId) return r.noOutflow;
     if (typeof navigator !== "undefined" && !navigator.onLine && !frozen) return r.offline;
-    if (!Number.isInteger(receivedN) || !Number.isInteger(pecahN)) return r.notInteger;
     if (receivedN < 1) return r.receivedMin;
     if (pecahN > receivedN) return r.pecahOverReceived;
     if (receivedN + priorSkuPieces > linePieces)
@@ -554,7 +566,8 @@ function LineRow(props: LineRowProps) {
           <Input
             id={`qty-${line.id}`}
             inputMode="decimal"
-            className="h-11"
+            aria-invalid={qtyBroken || undefined}
+            className={cn("h-11", qtyBroken && BROKEN_INPUT)}
             value={qty}
             disabled={disabledAll}
             onChange={(e) => setQty(e.target.value.replace(/[^0-9.,]/g, ""))}
@@ -665,7 +678,8 @@ function LineRow(props: LineRowProps) {
                   <Input
                     id={`recv-${line.id}`}
                     inputMode="numeric"
-                    className="h-11"
+                    aria-invalid={receivedBroken || undefined}
+                    className={cn("h-11", receivedBroken && BROKEN_INPUT)}
                     value={receivedValue}
                     disabled={warehouseDisabled}
                     onChange={(e) => {
@@ -679,7 +693,8 @@ function LineRow(props: LineRowProps) {
                   <Input
                     id={`pecah-${line.id}`}
                     inputMode="numeric"
-                    className="h-11"
+                    aria-invalid={pecahBroken || undefined}
+                    className={cn("h-11", pecahBroken && BROKEN_INPUT)}
                     value={pecah}
                     disabled={warehouseDisabled}
                     onChange={(e) => setPecah(e.target.value.replace(/[^0-9.,]/g, ""))}

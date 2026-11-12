@@ -27,12 +27,12 @@ interface InflowSummaryPanelProps {
   date: string;
   groups: InflowSummaryGroup[]; // enabled categories only
   submitting: boolean;
-  hasBrokenItem: boolean; // a typed Jumlah we can't read: blocks the submit
+  brokenNote: string | null; // a typed Jumlah that won't be recorded: why the submit is blocked
 }
 
 // Tablet Masuk right panel: the Ringkasan plus the pinned submit button. Sits
 // inside InflowForm's <form>, so the button submits it.
-export function InflowSummaryPanel({ date, groups, submitting, hasBrokenItem }: InflowSummaryPanelProps) {
+export function InflowSummaryPanel({ date, groups, submitting, brokenNote }: InflowSummaryPanelProps) {
   const { t, language } = useLanguage();
   const locale = language === "id" ? "id-ID" : "en-US";
   const nf = (n: number) => n.toLocaleString(locale);
@@ -89,8 +89,8 @@ export function InflowSummaryPanel({ date, groups, submitting, hasBrokenItem }: 
       </div>
 
       <div className="flex flex-col gap-2.5 border-t border-ek-border px-[18px] pb-4 pt-3.5">
-        {hasBrokenItem ? (
-          <div className="text-[13.5px] leading-[1.35] text-red-600">{t.inflow.invalidQty}</div>
+        {brokenNote ? (
+          <div role="alert" className="text-[13.5px] leading-[1.35] text-red-600">{brokenNote}</div>
         ) : validCount > 0 ? (
           <div className="flex items-center gap-2 text-sm text-ek-mfg">
             <b className="rounded-full bg-ek-muted px-2.5 py-[3px] text-[13px] font-semibold text-ek-fg">
@@ -103,7 +103,7 @@ export function InflowSummaryPanel({ date, groups, submitting, hasBrokenItem }: 
         )}
         <Button
           type="submit"
-          disabled={submitting || validCount === 0 || hasBrokenItem}
+          disabled={submitting || validCount === 0 || !!brokenNote}
           className="h-[54px] w-full gap-2 rounded-[13px] bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700 disabled:opacity-[.45] [&_svg]:size-[18px]"
         >
           <PackagePlus aria-hidden />

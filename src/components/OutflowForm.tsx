@@ -15,8 +15,7 @@ import {
   ConversionMap,
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
-import { parseCountInput } from "@/lib/stockCount";
-import { eggRingItems } from "@/lib/kasTunai";
+import { eggRingItems, isBrokenKasLine, isValidKasLine, kasStockQty, type KasLine } from "@/lib/kasTunai";
 import { PHONE_HOLD_MS } from "@/lib/radial";
 import { RadialAddButton, revealPickedRow, type RadialItem } from "./RadialAddButton";
 import { PackageMinus, Plus, Trash2, ChevronsUpDown, Check, AlertCircle } from "lucide-react";
@@ -45,6 +44,16 @@ interface CategoryData {
 }
 
 const CATEGORIES: InventoryCategory[] = ["egg", "box", "label", "packaging"];
+
+// A row follows Kas Tunai's rules: kg typed only on a weight-sold egg, whole
+// counts otherwise. The conversion map is keyed by name alone, so box, label and
+// packaging rows rely on none of them sharing a kg egg's exact name (none does).
+const kasLine = (item: CategoryItem): KasLine => ({
+  id: item.id,
+  product: item.product,
+  qty: item.quantity,
+  inputUnit: item.inputUnit || "butir",
+});
 
 export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
   const { user } = useAuth();
@@ -156,12 +165,11 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
       .reduce((sum, i) => sum + i.remainingButir, 0);
   };
 
-  const totalItemCount = useMemo(() => {
-    return Object.values(categoryData).reduce(
-      (sum, cat) => sum + (cat.enabled ? cat.items.filter((i) => i.product && i.quantity).length : 0),
-      0
-    );
-  }, [categoryData]);
+  // A switched-off category has no items (toggleCategory clears them).
+  const allItems = CATEGORIES.flatMap((category) => categoryData[category].items);
+  const totalItemCount = allItems.filter((i) => isValidKasLine(kasLine(i), conversionMap)).length;
+  // Typed but won't be recorded: blocks the submit, so it's never dropped beside valid rows.
+  const brokenItems = allItems.filter((i) => isBrokenKasLine(kasLine(i), conversionMap));
 
   const hasOverstock = useMemo(() => {
     for (const category of CATEGORIES) {
@@ -170,15 +178,8 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
 
       for (const item of data.items) {
         if (!item.product || !item.quantity) continue;
-        // Compare in the product's native stock unit (kg for weight-sold eggs):
-        // a butir entry on a kg product converts to estimated kg first.
-        let qty = parseCountInput(item.quantity) ?? 0;
-        if (category === "egg" && item.inputUnit !== "kg") {
-          const config = conversionMap[item.product];
-          if (config && config.unit === "kg" && config.eggs_per_unit > 0) {
-            qty = Math.round((qty / config.eggs_per_unit) * 100) / 100;
-          }
-        }
+        // Compare in the product's native stock unit (kg for weight-sold eggs).
+        const qty = kasStockQty(kasLine(item), conversionMap);
         const available = getAvailableStock(category, item.product);
         if (qty > available + 1e-9) return true;
       }
@@ -188,6 +189,7 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (brokenItems.length > 0) return; // Enter in a field gets here past the disabled button
 
     if (hasOverstock) {
       toast({
@@ -205,27 +207,14 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
       if (!data.enabled) continue;
 
       for (const item of data.items) {
-        if (!item.product || !item.quantity) continue;
-
-        const quantityNum = parseCountInput(item.quantity);
-        if (quantityNum == null || quantityNum <= 0) continue;
-
-        // kg-native: deduct in the product's stock unit. kg input on a kg
-        // product passes through exactly; a butir entry on a kg product
-        // converts to estimated kg.
-        let quantityInButir = quantityNum;
-        if (category === "egg" && item.inputUnit !== "kg") {
-          const config = conversionMap[item.product];
-          if (config && config.unit === "kg" && config.eggs_per_unit > 0) {
-            quantityInButir = Math.round((quantityNum / config.eggs_per_unit) * 100) / 100;
-          }
-        }
+        const line = kasLine(item);
+        if (!isValidKasLine(line, conversionMap)) continue;
 
         entries.push({
           id: crypto.randomUUID(),
           date,
           product: item.product,
-          quantityInButir,
+          quantityInButir: kasStockQty(line, conversionMap), // the product's native stock unit
           createdAt: new Date().toISOString(),
           category,
           invoiceSupplier: item.invoiceSupplier || undefined,
@@ -338,18 +327,24 @@ export function OutflowForm({ inflows, onSubmit }: OutflowFormProps) {
             );
           })}
 
-          {totalItemCount > 0 && (
-            <div className="flex items-center gap-2 p-3 bg-accent/50 rounded-lg">
-              <Badge variant="secondary">{totalItemCount} {t.common.items}</Badge>
-              <span className="text-sm text-muted-foreground">{t.common.readyToRemove}</span>
-            </div>
+          {brokenItems.length > 0 ? (
+            <p role="alert" className="text-sm text-red-600">
+              {brokenItems.some((i) => i.product) ? t.inflow.invalidQty : t.outflow.pickProductForQty}
+            </p>
+          ) : (
+            totalItemCount > 0 && (
+              <div className="flex items-center gap-2 p-3 bg-accent/50 rounded-lg">
+                <Badge variant="secondary">{totalItemCount} {t.common.items}</Badge>
+                <span className="text-sm text-muted-foreground">{t.common.readyToRemove}</span>
+              </div>
+            )
           )}
 
           <Button
             type="submit"
             variant="destructive"
             className="w-full h-12 text-base font-medium"
-            disabled={submitting || totalItemCount === 0 || hasOverstock}
+            disabled={submitting || totalItemCount === 0 || hasOverstock || brokenItems.length > 0}
           >
             <PackageMinus className="h-4 w-4 mr-2" />
             {submitting ? t.common.saving : t.outflow.removeFromInventory}
@@ -470,16 +465,10 @@ function OutflowItemRow({
   const factor = conversionMap[item.product]?.eggs_per_unit || 0;
 
   // Quantity in the product's NATIVE stock unit (kg for weight-sold eggs).
-  const getQuantityInStock = () => {
-    const qty = parseCountInput(item.quantity) ?? 0;
-    if (isKgProduct && inputUnit !== "kg" && factor > 0) {
-      return Math.round((qty / factor) * 100) / 100; // butir entry -> estimated kg
-    }
-    return qty;
-  };
-
-  const quantityInStock = getQuantityInStock();
+  const quantityInStock = kasStockQty(kasLine(item), conversionMap);
   const isOverstock = item.product && quantityInStock > availableStock + 1e-9;
+  // Flag the number only once a product is picked (typing qty first is normal).
+  const broken = !!item.product && isBrokenKasLine(kasLine(item), conversionMap);
   const stockUnit = category !== "egg" ? "pcs" : isKgProduct ? "kg" : "butir";
   const displayUnit = category === "egg" ? (isKgProduct && inputUnit === "kg" ? "kg" : "butir") : "pcs";
 
@@ -552,8 +541,9 @@ function OutflowItemRow({
             inputMode="decimal"
             value={item.quantity}
             onChange={(e) => onUpdate("quantity", e.target.value)}
+            aria-invalid={broken || undefined}
             placeholder={t.outflow.enterQty}
-            className={cn("h-10", isOverstock && "border-destructive focus-visible:ring-destructive")}
+            className={cn("h-10", (isOverstock || broken) && "border-destructive focus-visible:ring-destructive")}
           />
         </div>
 
@@ -583,10 +573,10 @@ function OutflowItemRow({
           <span className={cn("text-xs font-medium", inputUnit === "kg" && "text-primary")}>
             Kg
           </span>
-          {item.quantity && (
+          {item.quantity && !broken && (
             <span className="text-xs text-muted-foreground ml-2">
               {inputUnit === "kg"
-                ? `≈ ${Math.round((parseCountInput(item.quantity) ?? 0) * factor).toLocaleString()} butir`
+                ? `≈ ${Math.round(quantityInStock * factor).toLocaleString()} butir`
                 : `≈ ${quantityInStock.toLocaleString()} kg deducted`}
             </span>
           )}

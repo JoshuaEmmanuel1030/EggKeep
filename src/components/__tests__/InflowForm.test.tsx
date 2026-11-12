@@ -102,7 +102,7 @@ describe.each([
     ]);
   });
 
-  it("drops rows that aren't valid and categories switched off", async () => {
+  it("drops rows with no number and categories switched off", async () => {
     const onSubmit = vi.fn(async () => true);
     renderForm(onSubmit);
 
@@ -110,10 +110,8 @@ describe.each([
     pickProduct(0, "NEGERI OMEGA");
     typeQty(0, "10");
     fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
-    pickProduct(1, "KAMPUNG BIASA");
-    typeQty(1, "0"); // zero
-    fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
-    typeQty(2, "7"); // no product
+    pickProduct(1, "KAMPUNG BIASA"); // a product, no number
+    fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]); // an untouched row
 
     toggle("Kotak");
     pickProduct(3, "BOX OSAVE");
@@ -206,9 +204,9 @@ describe.each([
     // kg: id-ID as the screens print it, so a dot before three digits groups thousands.
     ["Telur", "NEGERI OMEGA", "1.500", 1500],
     ["Telur", "NEGERI OMEGA", " 1.500 ", 1500],
-    ["Telur", "NEGERI OMEGA", "23.842", 23842],
+    ["Telur", "NEGERI OMEGA", "12.345", 12345],
     ["Telur", "NEGERI OMEGA", "1.500.000", 1500000],
-    ["Telur", "NEGERI OMEGA", "23.818,16", 23818.16],
+    ["Telur", "NEGERI OMEGA", "12.345,67", 12345.67],
     ["Telur", "NEGERI OMEGA", "1.200,5", 1200.5],
     // ...otherwise one decimal separator, either one.
     ["Telur", "NEGERI OMEGA", "1500", 1500],
@@ -243,6 +241,11 @@ describe.each([
     ["Telur", "NEGERI OMEGA", "1,500.5"], // en-US grouping
     ["Telur", "NEGERI OMEGA", "12.34.567"],
     ["Telur", "NEGERI OMEGA", "1.500,5,5"],
+    // Readable but won't be recorded: 0 is never dropped silently either.
+    ["Telur", "KAMPUNG BIASA", "0"],
+    ["Telur", "NEGERI OMEGA", "0"],
+    ["Telur", "NEGERI OMEGA", "0,0"],
+    ["Kemasan", "MIKA 10", "0"],
   ])("%s %s: %j is flagged and blocks the valid row beside it", async (category, product, typed) => {
     const onSubmit = renderForm();
     toggle(category);
@@ -294,12 +297,61 @@ describe.each([
     expect(qtyInput(0)).not.toHaveAttribute("aria-invalid");
   });
 
+  it("a number typed before the product isn't red, but can't be dropped beside a valid row", async () => {
+    const onSubmit = renderForm();
+    toggle("Telur");
+    typeQty(0, "5");
+    addRow();
+    pickProduct(1, "KAMPUNG BIASA");
+    typeQty(1, "10");
+
+    expect(qtyInput(0)).not.toHaveAttribute("aria-invalid");
+    expect(submitButton()).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Pilih produknya/);
+    expect(screen.queryByText("siap ditambahkan")).not.toBeInTheDocument();
+
+    // Enter in a field submits the form without touching the button.
+    fireEvent.submit(submitButton().closest("form") as HTMLFormElement);
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    pickProduct(0, "KAMPUNG BIASA");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const [entries] = await submitted(onSubmit);
+    expect(entries.map((e) => e.quantity)).toEqual([5, 10]);
+  });
+
+  it("clearing a number with no product lets the valid row through", async () => {
+    const onSubmit = renderForm();
+    toggle("Telur");
+    typeQty(0, "5");
+    addRow();
+    pickProduct(1, "KAMPUNG BIASA");
+    typeQty(1, "10");
+    expect(submitButton()).toBeDisabled();
+
+    typeQty(0, "");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const [entries] = await submitted(onSubmit);
+    expect(entries.map((e) => e.quantity)).toEqual([10]);
+  });
+
+  it("a red row wins over a missing product: the message names what's marked", () => {
+    renderForm();
+    toggle("Telur");
+    typeQty(0, "5");
+    addRow();
+    pickProduct(1, "KAMPUNG BIASA");
+    typeQty(1, "2,5");
+    expect(screen.getByRole("alert")).toHaveTextContent(/Perbaiki jumlah bertanda merah/);
+  });
+
   it("blank isn't flagged", () => {
     renderForm();
     toggle("Telur");
     pickProduct(0, "KAMPUNG BIASA");
     typeQty(0, "   ");
     expect(qtyInput(0)).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByText(/Perbaiki jumlah bertanda merah/)).not.toBeInTheDocument();
   });
 
@@ -344,7 +396,8 @@ describe("InflowForm tablet layout", () => {
     expect(card("Telur")).toHaveTextContent("0 item");
 
     pickProduct(0, "NEGERI OMEGA");
-    typeQty(0, "0"); // typed, but handleSubmit would drop it
+    typeQty(0, "0"); // typed, but it can't be recorded
+    expect(screen.getByLabelText("Jumlah (kg)")).toHaveAttribute("aria-invalid", "true");
     expect(card("Telur")).toHaveTextContent("0 item");
     expect(submitButton()).toBeDisabled();
 

@@ -28,6 +28,7 @@ import {
   PackSKU,
   aggregateOrderMaterials,
   calculateLineMaterials,
+  isBrokenLooseLine,
   validateStockAgainstInventory,
 } from "@/lib/outflowCalculator";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -664,9 +665,17 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit, tablet }:
     />
   );
 
+  // A loose line that won't be recorded holds Submit All too: submitting clears the form, line included.
+  const brokenLines = lines.filter(isBrokenLooseLine);
+  const brokenNote = brokenLines.length > 0 && (
+    <p role="alert" className="text-sm text-red-600">
+      {brokenLines.some((l) => l.eggProduct) ? t.inflow.invalidQty : t.outflow.pickProductForQty}
+    </p>
+  );
+
   const summaryAggregates = orderQueue.length > 0 ? totalAggregates : aggregates;
-  const canQueue = hasValidLines && !!selectedBuyer;
-  const canSubmit = !submitting && (hasValidLines || orderQueue.length > 0);
+  const canQueue = hasValidLines && !!selectedBuyer && brokenLines.length === 0;
+  const canSubmit = !submitting && brokenLines.length === 0 && (hasValidLines || orderQueue.length > 0);
   const submitLabel = submitting
     ? t.outflow.recording
     : orderQueue.length > 0
@@ -793,6 +802,7 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit, tablet }:
             </div>
 
             <div className="flex flex-col gap-2.5 border-t border-ek-border px-[18px] pb-4 pt-3.5">
+              {brokenNote}
               <Button
                 type="button"
                 variant="outline"
@@ -938,6 +948,8 @@ export function QuickOutflowBuilder({ stockSummary, inflows, onSubmit, tablet }:
             </div>
 
             <Separator />
+
+            {brokenNote}
 
             {/* Action buttons */}
             <div className="flex flex-col sm:flex-row gap-3">

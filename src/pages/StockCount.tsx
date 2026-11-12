@@ -30,7 +30,8 @@ import {
   StockLocation,
   resolveTolerance,
   computeVariance,
-  parseCountInput,
+  parseQtyInput,
+  qtyInputText,
 } from "@/lib/stockCount";
 import { StockCountSaveEntry } from "@/types/stockCount";
 
@@ -86,7 +87,7 @@ export default function StockCount() {
       const recs = records.filter((r) => r.itemTypeId === it.id);
       if (recs.length === 0) continue;
       seeded.push(it.id);
-      for (const r of recs) next[`${r.itemTypeId}:${r.location}`] = String(r.quantity);
+      for (const r of recs) next[`${r.itemTypeId}:${r.location}`] = qtyInputText(r.quantity);
     }
     setDraft(next);
     setLines(seeded);
@@ -121,8 +122,17 @@ export default function StockCount() {
     return () => { active = false; };
   }, [countDate, records]);
 
+  const draftText = (itemTypeId: string, loc: StockLocation) => draft[`${itemTypeId}:${loc}`] ?? "";
+
+  // In the product's stock unit. null = nothing readable; 0 is a real count.
   const draftValue = (itemTypeId: string, loc: StockLocation): number | null =>
-    parseCountInput(draft[`${itemTypeId}:${loc}`] ?? "");
+    parseQtyInput(draftText(itemTypeId, loc), getStockUnit(eggById[itemTypeId]?.name, "egg", conversionMap));
+
+  // Blank means not counted, and saving it clears a saved count. A bad number must
+  // never pass for blank. A past date is read-only: nothing there can be fixed.
+  const isBrokenCount = (itemTypeId: string, loc: StockLocation) =>
+    isToday && draftText(itemTypeId, loc).trim() !== "" && draftValue(itemTypeId, loc) == null;
+  const hasBrokenCount = lines.some((id) => STOCK_LOCATIONS.some((loc) => isBrokenCount(id, loc)));
 
   const setDraftValue = (itemTypeId: string, loc: StockLocation, v: string) =>
     setDraft((prev) => ({ ...prev, [`${itemTypeId}:${loc}`]: v }));
@@ -385,8 +395,9 @@ export default function StockCount() {
                         disabled={!isToday}
                         value={draft[`${id}:${loc}`] ?? ""}
                         onChange={(e) => setDraftValue(id, loc, e.target.value)}
+                        aria-invalid={isBrokenCount(id, loc) || undefined}
                         placeholder="—"
-                        className="w-full h-12 bg-transparent text-center text-[13px] font-semibold tabular-nums outline-none focus:bg-primary/5 placeholder:text-muted-foreground/50 disabled:cursor-default"
+                        className="w-full h-12 bg-transparent text-center text-[13px] font-semibold tabular-nums outline-none focus:bg-primary/5 placeholder:text-muted-foreground/50 disabled:cursor-default aria-[invalid=true]:border aria-[invalid=true]:border-destructive aria-[invalid=true]:text-destructive"
                       />
                     </div>
                   ))}
@@ -460,8 +471,12 @@ export default function StockCount() {
               </div>
             )}
 
+            {hasBrokenCount && (
+              <p role="alert" className="mt-3 text-sm text-red-600">{t.inflow.invalidQty}</p>
+            )}
+
             {isToday && lines.length > 0 && (
-              <Button className="w-full mt-3 h-12" onClick={handleSave} disabled={saving}>
+              <Button className="w-full mt-3 h-12" onClick={handleSave} disabled={saving || hasBrokenCount}>
                 {t.stockCount.save}
               </Button>
             )}
