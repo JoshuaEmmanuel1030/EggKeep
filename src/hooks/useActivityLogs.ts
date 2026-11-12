@@ -4,7 +4,33 @@ import { ActivityLog } from "@/types/activityLog";
 import { InventoryCategory } from "@/types/inventory";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { fetchAllRows } from "@/hooks/usePurchaseOrders";
 import { useOfflineSync } from "./useOfflineSync";
+import type { Tables } from "@/integrations/supabase/types";
+
+type ActivityLogRow = Tables<"activity_logs">;
+
+const mapLog = (row: ActivityLogRow): ActivityLog => ({
+  id: row.id,
+  user_id: row.user_id,
+  action_type: row.action_type as 'inflow' | 'outflow',
+  product: row.product,
+  quantity_butir: Number(row.quantity_butir),
+  quantity_original: row.quantity_original ? Number(row.quantity_original) : undefined,
+  recorded_at: row.recorded_at,
+  synced_at: row.synced_at,
+  created_at: row.created_at,
+  client_id: row.client_id,
+  category: (row.category as InventoryCategory) || 'egg',
+  invoice_supplier: row.invoice_supplier || undefined,
+  user_email: row.user_email || undefined,
+  metadata: row.metadata as ActivityLog['metadata'],
+  voided_at: row.voided_at || undefined,
+  void_reason: row.void_reason || undefined,
+  original_log_id: row.original_log_id || undefined,
+  corrected_by_log_id: row.corrected_by_log_id || undefined,
+  isSynced: true,
+});
 
 export function useActivityLogs() {
   const { user } = useAuth();
@@ -20,36 +46,15 @@ export function useActivityLogs() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("activity_logs")
-        .select("*")
-        .order("recorded_at", { ascending: false });
+      // Paged past PostgREST's 1000-row cap. id breaks recorded_at ties (one order's
+      // rows share a timestamp) so a row can't be skipped or repeated between pages.
+      const rows = await fetchAllRows((from, to) =>
+        supabase.from("activity_logs").select("*").order("recorded_at", { ascending: false }).order("id").range(from, to)
+      );
+      // Newest first, so a row saved while paging pushes others onto the next page.
+      const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
 
-      if (error) throw error;
-
-      const mappedLogs: ActivityLog[] = (data || []).map((row) => ({
-        id: row.id,
-        user_id: row.user_id,
-        action_type: row.action_type as 'inflow' | 'outflow',
-        product: row.product,
-        quantity_butir: Number(row.quantity_butir),
-        quantity_original: row.quantity_original ? Number(row.quantity_original) : undefined,
-        recorded_at: row.recorded_at,
-        synced_at: row.synced_at,
-        created_at: row.created_at,
-        client_id: row.client_id,
-        category: (row.category as InventoryCategory) || 'egg',
-        invoice_supplier: row.invoice_supplier || undefined,
-        user_email: row.user_email || undefined,
-        metadata: row.metadata as ActivityLog['metadata'],
-        voided_at: (row as any).voided_at || undefined,
-        void_reason: (row as any).void_reason || undefined,
-        original_log_id: (row as any).original_log_id || undefined,
-        corrected_by_log_id: (row as any).corrected_by_log_id || undefined,
-        isSynced: true,
-      }));
-
-      setLogs(mappedLogs);
+      setLogs(uniqueRows.map(mapLog));
     } catch (error) {
       console.error("Error fetching activity logs:", error);
       toast({
@@ -75,30 +80,6 @@ export function useActivityLogs() {
   useEffect(() => {
     if (!user) return;
 
-    const mapLogFromPayload = (row: any): ActivityLog => ({
-      id: row.id,
-      user_id: row.user_id,
-      action_type: row.action_type,
-      product: row.product,
-      quantity_butir: Number(row.quantity_butir),
-      quantity_original: row.quantity_original
-        ? Number(row.quantity_original)
-        : undefined,
-      recorded_at: row.recorded_at,
-      synced_at: row.synced_at,
-      created_at: row.created_at,
-      client_id: row.client_id,
-      category: (row.category as InventoryCategory) || 'egg',
-      invoice_supplier: row.invoice_supplier || undefined,
-      user_email: row.user_email || undefined,
-      metadata: row.metadata as ActivityLog['metadata'],
-      voided_at: row.voided_at || undefined,
-      void_reason: row.void_reason || undefined,
-      original_log_id: row.original_log_id || undefined,
-      corrected_by_log_id: row.corrected_by_log_id || undefined,
-      isSynced: true,
-    });
-
     const channel = supabase
       .channel("activity-logs-changes")
       .on(
@@ -109,7 +90,7 @@ export function useActivityLogs() {
           table: "activity_logs",
         },
         (payload) => {
-          const newLog = mapLogFromPayload(payload.new);
+          const newLog = mapLog(payload.new as ActivityLogRow);
           setLogs((prev) => {
             // Avoid duplicates
             if (prev.some((l) => l.id === newLog.id)) return prev;
@@ -125,7 +106,7 @@ export function useActivityLogs() {
           table: "activity_logs",
         },
         (payload) => {
-          const updatedLog = mapLogFromPayload(payload.new);
+          const updatedLog = mapLog(payload.new as ActivityLogRow);
           setLogs((prev) =>
             prev.map((log) => (log.id === updatedLog.id ? updatedLog : log))
           );

@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { InflowEntry, OutflowEntry, InventoryCategory } from "@/types/inventory";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { fetchAllRows } from "@/hooks/usePurchaseOrders";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { captureError } from "@/lib/monitoring";
 import { OutflowSubmitResult } from "@/lib/outflowOutbox";
@@ -20,15 +21,18 @@ export function useInventorySync() {
     try {
       // Exclude voided rows so a voided inflow drops out of stock immediately and
       // is never used as a FIFO source for new outflows.
-      const [inflowResult, outflowResult] = await Promise.all([
-        supabase.from("inflows").select("*").is("voided_at", null).order("created_at", { ascending: true }),
-        supabase.from("outflows").select("*").is("voided_at", null).order("created_at", { ascending: true }),
+      // Paged past PostgREST's 1000-row cap. id breaks created_at ties (one order's
+      // rows share a timestamp) so a row can't be skipped or repeated between pages.
+      const [inflowRows, outflowRows] = await Promise.all([
+        fetchAllRows((from, to) =>
+          supabase.from("inflows").select("*").is("voided_at", null).order("created_at", { ascending: true }).order("id").range(from, to)
+        ),
+        fetchAllRows((from, to) =>
+          supabase.from("outflows").select("*").is("voided_at", null).order("created_at", { ascending: true }).order("id").range(from, to)
+        ),
       ]);
 
-      if (inflowResult.error) throw inflowResult.error;
-      if (outflowResult.error) throw outflowResult.error;
-
-      const mappedInflows: InflowEntry[] = (inflowResult.data || []).map((row) => ({
+      const mappedInflows: InflowEntry[] = inflowRows.map((row) => ({
         id: row.id,
         date: row.date,
         product: row.product,
@@ -41,7 +45,7 @@ export function useInventorySync() {
         invoiceSupplier: row.invoice_supplier || undefined,
       }));
 
-      const mappedOutflows: OutflowEntry[] = (outflowResult.data || []).map((row) => ({
+      const mappedOutflows: OutflowEntry[] = outflowRows.map((row) => ({
         id: row.id,
         date: row.date,
         product: row.product,
