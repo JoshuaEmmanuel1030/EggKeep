@@ -25,6 +25,31 @@ function clampLimit(limit: unknown): number {
   return Math.min(n, MAX_LIMIT);
 }
 
+// PostgREST answers at most 1000 rows per request, whatever .limit() asks for, so a
+// read that needs every matching row pages with .range(). `page` must order by a
+// unique key (created_at then id) or rows repeat/skip across pages. Mirrors
+// fetchAllRows in src/hooks/usePurchaseOrders.ts (Edge Functions can't import src/).
+const PAGE = 1000;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchAll<T = Record<string, any>>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) return rows;
+  }
+}
+
+// Calendar days a rolling window really covers: from its earliest row through today.
+// Live data starts 2026-09-30, so a "3 month" window can hold far fewer days.
+export function spanDays(dates: string[], today: string): number {
+  const first = dates.reduce((m, d) => (d < m ? d : m), today);
+  return ageInDays(first, today) + 1;
+}
+
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 // The business runs on WIB (Asia/Jakarta, UTC+7, no DST) but the edge runtime
@@ -181,28 +206,28 @@ async function countOrdersTool(
   // "orders for Sep 5" means the date the order is FOR. 'entered' = recorded_at.
   const dateField = args.date_field === "entered" ? "entered" : "labelled";
 
-  let query = supabase
-    .from("activity_logs")
-    .select("recorded_at, metadata, voided_at, action_type")
-    .eq("action_type", "outflow")
-    .is("voided_at", null);
+  const data = await fetchAll((from, to) => {
+    let query = supabase
+      .from("activity_logs")
+      .select("recorded_at, metadata, voided_at, action_type")
+      .eq("action_type", "outflow")
+      .is("voided_at", null);
 
-  if (dateField === "entered") {
-    query = query
-      .gte("recorded_at", `${range.from}T00:00:00${WIB_OFFSET}`)
-      .lte("recorded_at", `${range.to}T23:59:59.999${WIB_OFFSET}`);
-  } else {
-    // Filter on the business date stored in metadata.outflowDate (text YYYY-MM-DD).
-    query = query
-      .gte("metadata->>outflowDate", range.from)
-      .lte("metadata->>outflowDate", range.to);
-  }
-
-  const { data, error } = await query.limit(2000);
-  if (error) return { error: error.message };
+    if (dateField === "entered") {
+      query = query
+        .gte("recorded_at", `${range.from}T00:00:00${WIB_OFFSET}`)
+        .lte("recorded_at", `${range.to}T23:59:59.999${WIB_OFFSET}`);
+    } else {
+      // Filter on the business date stored in metadata.outflowDate (text YYYY-MM-DD).
+      query = query
+        .gte("metadata->>outflowDate", range.from)
+        .lte("metadata->>outflowDate", range.to);
+    }
+    return query.order("created_at").order("id").range(from, to);
+  });
 
   const rows: (OrderRow & { day: string })[] = [];
-  for (const r of data ?? []) {
+  for (const r of data) {
     const md = r.metadata ?? {};
     if (md.orderType !== "quick_outflow") continue;
     if (buyer && md.buyerName !== buyer) continue;
@@ -232,9 +257,11 @@ async function listTransactionsTool(
   const limit = clampLimit(args.limit);
   const table = args.action_type === "inflow" ? "inflows" : "outflows";
 
+  // The row list is capped for payload size; the exact count tells the model how
+  // many rows matched, so it never reports the cap as the number of movements.
   let q = supabase
     .from(table)
-    .select("date, product, quantity_butir, category, invoice_supplier, voided_at")
+    .select("date, product, quantity_butir, category, invoice_supplier, voided_at", { count: "exact" })
     .gte("date", range.from)
     .lte("date", range.to)
     .is("voided_at", null)
@@ -243,13 +270,14 @@ async function listTransactionsTool(
   if (typeof args.product === "string") q = q.eq("product", args.product);
   if (typeof args.category === "string") q = q.eq("category", args.category);
 
-  const { data, error } = await q;
+  const { data, error, count } = await q;
   if (error) return { error: error.message };
 
   return {
     range,
     action_type: args.action_type === "inflow" ? "inflow" : "outflow",
-    count: data?.length ?? 0,
+    total: count ?? data?.length ?? 0,
+    shown: data?.length ?? 0,
     rows: (data ?? []).map((r: Record<string, unknown>) => ({
       date: r.date,
       product: r.product,
@@ -275,18 +303,19 @@ async function sumMovementsTool(
   }
   // Buyer grouping needs metadata → use activity_logs; else the raw table.
   if (groupBy === "buyer") {
-    const { data, error } = await supabase
-      .from("activity_logs")
-      .select("product, quantity_butir, category, metadata, voided_at, action_type")
-      .eq("action_type", args.action_type)
-      .gte("recorded_at", `${range.from}T00:00:00${WIB_OFFSET}`)
-      .lte("recorded_at", `${range.to}T23:59:59.999${WIB_OFFSET}`)
-      .is("voided_at", null)
-      .limit(5000);
-    if (error) return { error: error.message };
+    const data = await fetchAll((from, to) => {
+      let q = supabase
+        .from("activity_logs")
+        .select("product, quantity_butir, category, metadata, voided_at, action_type")
+        .eq("action_type", args.action_type)
+        .gte("recorded_at", `${range.from}T00:00:00${WIB_OFFSET}`)
+        .lte("recorded_at", `${range.to}T23:59:59.999${WIB_OFFSET}`)
+        .is("voided_at", null);
+      if (typeof args.product === "string") q = q.eq("product", args.product);
+      return q.order("created_at").order("id").range(from, to);
+    });
     const acc: Record<string, number> = {};
-    for (const r of data ?? []) {
-      if (typeof args.product === "string" && r.product !== args.product) continue;
+    for (const r of data) {
       const buyer = r.metadata?.buyerName ?? "(unknown)";
       acc[buyer] = (acc[buyer] ?? 0) + Number(r.quantity_butir);
     }
@@ -294,20 +323,20 @@ async function sumMovementsTool(
   }
 
   const table = args.action_type === "inflow" ? "inflows" : "outflows";
-  let q = supabase
-    .from(table)
-    .select("date, product, quantity_butir, category, voided_at")
-    .gte("date", range.from)
-    .lte("date", range.to)
-    .is("voided_at", null)
-    .limit(5000);
-  if (typeof args.product === "string") q = q.eq("product", args.product);
-  const { data, error } = await q;
-  if (error) return { error: error.message };
+  const data = await fetchAll((from, to) => {
+    let q = supabase
+      .from(table)
+      .select("date, product, quantity_butir, category, voided_at")
+      .gte("date", range.from)
+      .lte("date", range.to)
+      .is("voided_at", null);
+    if (typeof args.product === "string") q = q.eq("product", args.product);
+    return q.order("created_at").order("id").range(from, to);
+  });
 
   const acc: Record<string, number> = {};
   const unitOf: Record<string, string> = {};
-  for (const r of data ?? []) {
+  for (const r of data) {
     const key = groupBy === "day" ? String(r.date) : String(r.product);
     acc[key] = (acc[key] ?? 0) + Number(r.quantity_butir);
     if (groupBy === "product") unitOf[key] = unit(r.product, r.category);
@@ -329,30 +358,32 @@ async function getReturnsTool(
   const range = resolveRange(args);
   if ("error" in range) return range;
 
-  let q = supabase
-    .from("returns")
-    .select("return_date, product, category, quantity, disposition, buyer_name, reason")
-    .gte("return_date", range.from)
-    .lte("return_date", range.to)
-    .is("voided_at", null)
-    .order("return_date", { ascending: false })
-    .limit(MAX_LIMIT);
-  if (typeof args.product === "string") q = q.eq("product", args.product);
-  if (args.disposition === "restock" || args.disposition === "retakan" || args.disposition === "writeoff") {
-    q = q.eq("disposition", args.disposition);
-  }
-  const { data, error } = await q;
-  if (error) return { error: error.message };
+  // Totals need every row; only the listed rows are capped (newest first).
+  const data = await fetchAll((from, to) => {
+    let q = supabase
+      .from("returns")
+      .select("return_date, product, category, quantity, disposition, buyer_name, reason")
+      .gte("return_date", range.from)
+      .lte("return_date", range.to)
+      .is("voided_at", null);
+    if (typeof args.product === "string") q = q.eq("product", args.product);
+    if (args.disposition === "restock" || args.disposition === "retakan" || args.disposition === "writeoff") {
+      q = q.eq("disposition", args.disposition);
+    }
+    return q.order("created_at").order("id").range(from, to);
+  });
 
   const totals: Record<string, number> = { restock: 0, retakan: 0, writeoff: 0 };
-  for (const r of data ?? []) {
+  for (const r of data) {
     totals[r.disposition] = (totals[r.disposition] ?? 0) + Number(r.quantity);
   }
+  const shown = [...data].sort((a, b) => String(b.return_date).localeCompare(String(a.return_date))).slice(0, MAX_LIMIT);
   return {
     range,
-    count: data?.length ?? 0,
+    count: data.length,
+    shown: shown.length,
     totalsByDisposition: totals,
-    rows: (data ?? []).map((r: Record<string, unknown>) => ({
+    rows: shown.map((r: Record<string, unknown>) => ({
       date: r.return_date,
       product: r.product,
       quantity: Number(r.quantity),
@@ -368,23 +399,22 @@ async function getStockTool(
   args: Record<string, unknown>,
   { supabase, unit, freshnessDays }: { supabase: SupabaseClient; unit: UnitFn; freshnessDays: number },
 ) {
-  let q = supabase
-    .from("inflows")
-    .select("product, remaining_butir, date, category, invoice_supplier")
-    .gt("remaining_butir", 0)
-    .is("voided_at", null)
-    .order("date", { ascending: true })
-    .limit(500);
-  if (typeof args.product === "string") q = q.eq("product", args.product);
-  const { data, error } = await q;
-  if (error) return { error: error.message };
+  const data = await fetchAll((from, to) => {
+    let q = supabase
+      .from("inflows")
+      .select("product, remaining_butir, date, category, invoice_supplier")
+      .gt("remaining_butir", 0)
+      .is("voided_at", null);
+    if (typeof args.product === "string") q = q.eq("product", args.product);
+    return q.order("date").order("created_at").order("id").range(from, to);
+  });
 
   const today = wibDay();
   const byProduct: Record<string, {
     product: string; category: string; unit: string;
     total: number; atRisk: number; batches: { date: string; qty: number; daysOld: number; atRisk: boolean; supplier: string | null }[];
   }> = {};
-  for (const r of data ?? []) {
+  for (const r of data) {
     const daysOld = ageInDays(r.date, today);
     const atRisk = r.category === "egg" && daysOld > freshnessDays;
     if (!byProduct[r.product]) {

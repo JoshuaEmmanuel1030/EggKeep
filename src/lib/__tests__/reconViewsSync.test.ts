@@ -9,12 +9,16 @@ import { FLAG_FAKTUR_GANDA, RECON_FLAGS, RECON_JENIS } from "@/lib/reconExport";
 // The §7 product map, the movement kinds and the §8 flag tokens must agree
 // between the two or the export silently mislabels rows. The SQL is parsed
 // from the migration files, so the migrations stay the single source of truth:
-// v_recon_products from 20261029000000, v_recon_ledger as restated by Phase 2.
+// v_recon_products from 20261029000000, v_recon_ledger as last restated by
+// 20261112000001 (Penyesuaian Stok Fisik).
 const read = (name: string) =>
   readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${name}`, import.meta.url)), "utf8");
 const sql = read("20261029000000_recon_views.sql");
-const phase2 = read("20261103000000_delivery_lines_void_return.sql");
-const ledgerSql = phase2.slice(phase2.indexOf("create or replace view public.v_recon_ledger"));
+const latest = read("20261112000001_recon_penyesuaian.sql");
+const ledgerSql = latest.slice(
+  latest.indexOf("create or replace view public.v_recon_ledger"),
+  latest.indexOf("create or replace view public.v_recon_daily"),
+);
 
 const labels = [...sql.matchAll(/\('([A-Z ]+)',\s*'([^']+)',\s*(\d+)\)/g)].map((m) => ({
   product: m[1], item: m[2], order: Number(m[3]),
@@ -37,7 +41,7 @@ describe("recon views <-> app (drift guard)", () => {
     for (const j of literal) expect(ledgerSql).toContain(`'${j}'`);
     expect(ledgerSql).toContain("'return_' || r.disposition");
     expect(ledgerSql).toContain("r.disposition in ('restock', 'writeoff')");
-    const found = [...ledgerSql.matchAll(/'(inflow|outflow_[a-z]+|return_[a-z]+|retur_batal|stock_count)'/g)].map((m) => m[1]);
+    const found = [...ledgerSql.matchAll(/'(inflow|outflow_[a-z]+|return_[a-z]+|retur_batal|penyesuaian|stock_count)'/g)].map((m) => m[1]);
     for (const j of found) expect(RECON_JENIS).toContain(j);
   });
 

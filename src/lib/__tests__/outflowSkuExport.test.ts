@@ -65,6 +65,17 @@ describe("buildSkuBomRows", () => {
     expect(rows[0].eggUnit).toBe("butir");
   });
 
+  it("leaves out Penyesuaian Stok Fisik lines: a count reset is not an order", () => {
+    const adj: ActivityLog[] = [{
+      id: "adj", user_id: "u", action_type: "outflow", product: "PUYUH",
+      quantity_butir: 5000, category: "egg", recorded_at: "2026-11-12T01:00:00.000Z",
+      created_at: "2026-11-12T01:00:00.000Z", client_id: "server:stock_adjustment",
+      invoice_supplier: "PENYESUAIAN STOK FISIK",
+      metadata: { orderType: "stock_adjustment", relatedEntryId: "o-adj" },
+    }];
+    expect(buildSkuBomRows([...orderLogs(), ...adj], skus, conversionMap, boxCapacityMap, labelsPerPackMap)).toHaveLength(1);
+  });
+
   it("legacy rows of one manual sale carry their own void flag", () => {
     const common = {
       user_id: "u", action_type: "outflow" as const, category: "egg" as const,

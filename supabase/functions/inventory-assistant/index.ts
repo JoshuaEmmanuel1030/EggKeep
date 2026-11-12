@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 import { CONVERSION_DICT, EGGS_PER_TRAY } from "./conversions.ts";
-import { toolDefinitions, runTool, wibDay, ageInDays } from "./tools.ts";
+import { toolDefinitions, runTool, wibDay, ageInDays, fetchAll, spanDays } from "./tools.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,40 +54,44 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Only fetch active batches (remaining > 0) to keep payload small
-    const { data: inflows, error: inflowsError } = await supabase
+    // Every read below that feeds a total is paged (fetchAll) and skips voided rows:
+    // PostgREST caps each response at 1000 rows, and voided rows are not stock or sales.
+    // Active batches only (remaining > 0) to keep payload small.
+    const inflows = await fetchAll((from, to) => supabase
       .from('inflows')
-      .select('id, product, quantity_butir, quantity_original, remaining_butir, date, category, invoice_supplier, created_at')
+      .select('product, quantity_butir, remaining_butir, date, category, invoice_supplier')
       .gt('remaining_butir', 0)
-      .order('date', { ascending: true })
-      .limit(500);
-
-    if (inflowsError) {
-      console.error('Error fetching inflows:', inflowsError);
+      .is('voided_at', null)
+      .order('date').order('created_at').order('id')
+      .range(from, to)
+    ).catch((e) => {
+      console.error('Error fetching inflows:', e);
       throw new Error('Failed to fetch inventory data');
-    }
+    });
 
-    // Only last 3 months of outflows needed for velocity/average calculations
+    // Last 3 months of movements for the monthly averages and velocity.
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - 3);
-
-    const { data: outflows, error: outflowsError } = await supabase
-      .from('outflows')
-      .select('id, product, quantity_butir, date, category, invoice_supplier, created_at')
+    const windowRows = (table: 'inflows' | 'outflows') => fetchAll((from, to) => supabase
+      .from(table)
+      .select('product, quantity_butir, date, category')
       .gte('date', cutoff.toISOString().slice(0, 10))
-      .order('date', { ascending: false })
-      .limit(500);
-
-    if (outflowsError) {
-      console.error('Error fetching outflows:', outflowsError);
-      throw new Error('Failed to fetch outflow data');
-    }
+      .is('voided_at', null)
+      .order('created_at').order('id')
+      .range(from, to)
+    ).catch((e) => {
+      console.error(`Error fetching ${table}:`, e);
+      throw new Error('Failed to fetch movement data');
+    });
+    const windowInflows = await windowRows('inflows');
+    const outflows = await windowRows('outflows');
 
     const { data: activityLogs, error: logsError } = await supabase
       .from('activity_logs')
       .select('action_type, product, quantity_butir, quantity_original, recorded_at, category, invoice_supplier, user_email')
+      .is('voided_at', null)
       .order('recorded_at', { ascending: false })
-      .limit(20);
+      .limit(20); // deliberate: the prompt shows only the last 20 entries
 
     if (logsError) {
       console.error('Error fetching activity logs:', logsError);
@@ -199,19 +203,23 @@ serve(async (req) => {
       }
     }
 
-    // Calculate monthly averages (last 3 months — outflows already filtered to this window)
-    
+    // Monthly averages and velocity over the 3-month window, divided by the days it
+    // really holds (live data starts 2026-09-30), not a fixed 90.
+    const windowDays = spanDays([...windowInflows, ...outflows].map((r) => r.date), today);
     const monthlyInflows: Record<string, number[]> = {};
     const monthlyOutflows: Record<string, number[]> = {};
-    
-    for (const inflow of inflows || []) {
+    const categoryOf: Record<string, string> = {};
+
+    for (const inflow of windowInflows) {
       if (!monthlyInflows[inflow.product]) monthlyInflows[inflow.product] = [];
-      monthlyInflows[inflow.product].push(inflow.quantity_butir);
+      monthlyInflows[inflow.product].push(Number(inflow.quantity_butir));
+      categoryOf[inflow.product] = inflow.category;
     }
 
-    for (const outflow of outflows || []) {
+    for (const outflow of outflows) {
       if (!monthlyOutflows[outflow.product]) monthlyOutflows[outflow.product] = [];
-      monthlyOutflows[outflow.product].push(outflow.quantity_butir);
+      monthlyOutflows[outflow.product].push(Number(outflow.quantity_butir));
+      categoryOf[outflow.product] = outflow.category;
     }
 
     // Build comprehensive inventory context (all quantities in the product's
@@ -250,23 +258,23 @@ serve(async (req) => {
     inventoryContext += `\nTOTAL EGGS AT RISK: ~${totalAtRiskButirEquivalent.toLocaleString()} butir (estimated butir-equivalent across kg and count eggs)\n`;
 
     // Monthly averages context (native stock units per product)
-    let monthlyContext = "\nMONTHLY AVERAGES (Last 3 months, in each product's stock unit):\n";
-    for (const [product, quantities] of Object.entries(monthlyInflows)) {
-      const avgIn = Math.round(quantities.reduce((a, b) => a + b, 0) / 3);
-      const outQuantities = monthlyOutflows[product] || [];
-      const avgOut = outQuantities.length > 0 ? Math.round(outQuantities.reduce((a, b) => a + b, 0) / 3) : 0;
-      const unit = stockUnit(product, inventorySummary[product]?.category ?? (conversionMap[product] ? 'egg' : ''));
+    const perMonth = (qs: number[] = []) => Math.round(qs.reduce((a, b) => a + b, 0) / windowDays * 30);
+    let monthlyContext = `\nMONTHLY AVERAGES (per 30 days, over the last ${windowDays} days of data, in each product's stock unit):\n`;
+    for (const product of new Set([...Object.keys(monthlyInflows), ...Object.keys(monthlyOutflows)])) {
+      const avgIn = perMonth(monthlyInflows[product]);
+      const avgOut = perMonth(monthlyOutflows[product]);
+      const unit = stockUnit(product, categoryOf[product]);
       monthlyContext += `- ${product}: Avg Inflow ~${avgIn.toLocaleString()} ${unit}/month, Avg Outflow ~${avgOut.toLocaleString()} ${unit}/month\n`;
     }
 
     // Stock velocity (days of stock remaining) — native units cancel out, so
     // the day counts are correct regardless of kg vs butir vs pcs.
-    let velocityContext = "\nSTOCK VELOCITY (Days until depleted at current rate):\n";
+    let velocityContext = `\nSTOCK VELOCITY (Days until depleted at the average daily outflow of the last ${windowDays} days):\n`;
     for (const [product, data] of Object.entries(inventorySummary)) {
       if (data.remaining > 0) {
         const outQuantities = monthlyOutflows[product] || [];
         if (outQuantities.length > 0) {
-          const avgDailyOut = outQuantities.reduce((a, b) => a + b, 0) / 90; // 90 days = 3 months
+          const avgDailyOut = outQuantities.reduce((a, b) => a + b, 0) / windowDays;
           const daysRemaining = avgDailyOut > 0 ? Math.round(data.remaining / avgDailyOut) : Infinity;
           velocityContext += `- ${product}: ~${daysRemaining === Infinity ? 'No outflow data' : `${daysRemaining} days`}\n`;
         }

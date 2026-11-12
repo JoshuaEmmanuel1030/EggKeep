@@ -43,6 +43,7 @@ export function useInventorySync() {
         createdAt: row.created_at,
         category: (row.category as InventoryCategory) || 'egg',
         invoiceSupplier: row.invoice_supplier || undefined,
+        stockAdjustmentId: row.stock_adjustment_id ?? undefined,
       }));
 
       const mappedOutflows: OutflowEntry[] = outflowRows.map((row) => ({
@@ -53,6 +54,7 @@ export function useInventorySync() {
         createdAt: row.created_at,
         category: (row.category as InventoryCategory) || 'egg',
         invoiceSupplier: row.invoice_supplier || undefined,
+        stockAdjustmentId: row.stock_adjustment_id ?? undefined,
       }));
 
       setInflows(mappedInflows);

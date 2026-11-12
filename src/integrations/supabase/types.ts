@@ -309,6 +309,7 @@ export type Database = {
           quantity_butir: number
           quantity_original: number
           remaining_butir: number
+          stock_adjustment_id: string | null
           user_id: string
           void_reason: string | null
           voided_at: string | null
@@ -324,6 +325,7 @@ export type Database = {
           quantity_butir: number
           quantity_original: number
           remaining_butir: number
+          stock_adjustment_id?: string | null
           user_id: string
           void_reason?: string | null
           voided_at?: string | null
@@ -339,6 +341,7 @@ export type Database = {
           quantity_butir?: number
           quantity_original?: number
           remaining_butir?: number
+          stock_adjustment_id?: string | null
           user_id?: string
           void_reason?: string | null
           voided_at?: string | null
@@ -408,6 +411,7 @@ export type Database = {
           item_type_id: string | null
           product: string
           quantity_butir: number
+          stock_adjustment_id: string | null
           user_id: string
           void_reason: string | null
           voided_at: string | null
@@ -421,6 +425,7 @@ export type Database = {
           item_type_id?: string | null
           product: string
           quantity_butir: number
+          stock_adjustment_id?: string | null
           user_id: string
           void_reason?: string | null
           voided_at?: string | null
@@ -434,6 +439,7 @@ export type Database = {
           item_type_id?: string | null
           product?: string
           quantity_butir?: number
+          stock_adjustment_id?: string | null
           user_id?: string
           void_reason?: string | null
           voided_at?: string | null
@@ -845,6 +851,7 @@ export type Database = {
           keluar_tunai: number | null
           masuk: number | null
           nama_katalog: string | null
+          penyesuaian: number | null
           retur: number | null
           selisih_fisik: number | null
           stok_akhir: number | null
@@ -874,6 +881,7 @@ export type Database = {
           outflow_id: string | null
           pembeli_pemasok: string | null
           qty: number | null
+          penyesuaian: number | null
           retur: number | null
           return_id: string | null
           tanggal: string | null

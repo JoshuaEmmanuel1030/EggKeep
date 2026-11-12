@@ -32,6 +32,14 @@ describe("averageDailyOutflow", () => {
     expect(averageDailyOutflow(outflows, "KAMPUNG BIASA", 14, NOW)).toBeCloseTo(50);
   });
 
+  it("ignores Penyesuaian Stok Fisik rows — a count reset is not a sale", () => {
+    const outflows = [
+      outflow({ date: daysBefore(2), quantityInButir: 140 }),
+      outflow({ date: daysBefore(1), quantityInButir: 5000, stockAdjustmentId: "adj-1" }),
+    ];
+    expect(averageDailyOutflow(outflows, "KAMPUNG BIASA", 14, NOW)).toBeCloseTo(10);
+  });
+
   it("excludes outflows older than the window", () => {
     const outflows = [
       outflow({ date: daysBefore(3), quantityInButir: 140 }),
