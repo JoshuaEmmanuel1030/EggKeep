@@ -252,17 +252,27 @@ export function InventoryDashboard({
     const result: Record<string, { level: number[]; inTotal: number; outTotal: number }> = {};
     for (const p of focusList) {
       const current = eggMetrics.get(p)?.stock ?? 0;
+      // ▲/▼ totals are real receipts and sales; a Penyesuaian Stok Fisik row is
+      // neither, but it still moves the level line (dailyAdj).
       const dailyIn = dayKeys.map((key) =>
         inflows
-          .filter((i) => i.category === "egg" && !i.voidedAt && i.product === p && i.date === key)
+          .filter((i) => i.category === "egg" && !i.voidedAt && !i.stockAdjustmentId && i.product === p && i.date === key)
           .reduce((sum, i) => sum + i.quantityInButir, 0)
       );
       const dailyOut = dayKeys.map((key) =>
         outflows
-          .filter((o) => o.category === "egg" && !o.voidedAt && o.product === p && o.date === key)
+          .filter((o) => o.category === "egg" && !o.voidedAt && !o.stockAdjustmentId && o.product === p && o.date === key)
           .reduce((sum, o) => sum + o.quantityInButir, 0)
       );
-      const net = dailyIn.map((v, i) => v - dailyOut[i]);
+      const dailyAdj = dayKeys.map((key) =>
+        inflows
+          .filter((i) => i.category === "egg" && !i.voidedAt && !!i.stockAdjustmentId && i.product === p && i.date === key)
+          .reduce((sum, i) => sum + i.quantityInButir, 0) -
+        outflows
+          .filter((o) => o.category === "egg" && !o.voidedAt && !!o.stockAdjustmentId && o.product === p && o.date === key)
+          .reduce((sum, o) => sum + o.quantityInButir, 0)
+      );
+      const net = dailyIn.map((v, i) => v - dailyOut[i] + dailyAdj[i]);
       const level = new Array<number>(dayKeys.length);
       level[level.length - 1] = current;
       for (let i = level.length - 1; i > 0; i--) {
@@ -317,17 +327,18 @@ export function InventoryDashboard({
       dayKeys.push(format(d, "yyyy-MM-dd"));
     }
     const equiv = (product: string, qty: number) => butirEquivalent(product, qty, conversionMap);
+    // Flow trend: a Penyesuaian Stok Fisik row is a count reset, not a receipt or sale.
     const dailyNet = dayKeys.map((key) => {
       const inflow = inflows
-        .filter((i) => i.category === "egg" && !i.voidedAt && i.date === key)
+        .filter((i) => i.category === "egg" && !i.voidedAt && !i.stockAdjustmentId && i.date === key)
         .reduce((sum, i) => sum + equiv(i.product, i.quantityInButir), 0);
       const outflow = outflows
-        .filter((o) => o.category === "egg" && !o.voidedAt && o.date === key)
+        .filter((o) => o.category === "egg" && !o.voidedAt && !o.stockAdjustmentId && o.date === key)
         .reduce((sum, o) => sum + equiv(o.product, o.quantityInButir), 0);
       return inflow - outflow;
     });
     const weeklyOut = outflows
-      .filter((o) => o.category === "egg" && !o.voidedAt && dayKeys.includes(o.date))
+      .filter((o) => o.category === "egg" && !o.voidedAt && !o.stockAdjustmentId && dayKeys.includes(o.date))
       .reduce((sum, o) => sum + equiv(o.product, o.quantityInButir), 0);
     let running = 0;
     const cumulative = dailyNet.map((n) => (running += n));

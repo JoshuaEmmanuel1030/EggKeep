@@ -73,9 +73,10 @@ export function InventoryTrendLineChart({ inflows, outflows }: InventoryTrendLin
       ? outflows.filter((o) => parseISO(o.date) >= startDate!)
       : outflows;
 
-    // Then filter by category
-    const filteredInflows = periodFilteredInflows.filter((i) => i.category === selectedCategory);
-    const filteredOutflows = periodFilteredOutflows.filter((o) => o.category === selectedCategory);
+    // Then filter by category. A Penyesuaian Stok Fisik row is a count reset, not a
+    // receipt or a sale, so it stays off the in/out trend.
+    const filteredInflows = periodFilteredInflows.filter((i) => i.category === selectedCategory && !i.stockAdjustmentId);
+    const filteredOutflows = periodFilteredOutflows.filter((o) => o.category === selectedCategory && !o.stockAdjustmentId);
 
     // Get all unique dates
     const allDates = new Set<string>();

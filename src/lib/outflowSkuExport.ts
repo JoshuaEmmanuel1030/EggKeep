@@ -76,6 +76,8 @@ export function buildSkuBomRows(
   const groups = new Map<string, ActivityLog[]>();
   for (const log of logs) {
     if (log.action_type !== "outflow") continue;
+    // A Penyesuaian Stok Fisik line is a count reset, not an order.
+    if (log.metadata?.orderType === "stock_adjustment") continue;
     const key = orderBucketKey({
       buyerName: log.metadata?.buyerName,
       orderLines: log.metadata?.orderLines,
