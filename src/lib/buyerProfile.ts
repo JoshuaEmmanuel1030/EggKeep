@@ -128,10 +128,11 @@ const toTypical = (perDay: Map<string, number[]>): TypicalLine[] =>
 
 // Typical order on a weekday: same-date orders (several stores/DCs) are summed
 // first, then the median is taken over the days the SKU / egg appeared.
-export function typicalDay(orders: PurchaseOrderRow[], today: string, weekday: number): TypicalDay {
+// weekday null: every order day in the window, whatever its weekday.
+export function typicalDay(orders: PurchaseOrderRow[], today: string, weekday: number | null): TypicalDay {
   const days = new Map<string, PurchaseOrderRow[]>();
   for (const o of windowOrders(orders, today)) {
-    if (weekdayOf(o.outflowDate) === weekday) days.set(o.outflowDate, [...(days.get(o.outflowDate) ?? []), o]);
+    if (weekday === null || weekdayOf(o.outflowDate) === weekday) days.set(o.outflowDate, [...(days.get(o.outflowDate) ?? []), o]);
   }
   const skus = new Map<string, number[]>();
   const eggs = new Map<string, number[]>();

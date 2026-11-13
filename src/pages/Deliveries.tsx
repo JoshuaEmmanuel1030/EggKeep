@@ -34,6 +34,7 @@ type Chips = {
   unresolved: boolean;
   kurang: boolean;
   claim: boolean;
+  hasReturns: boolean;
 };
 const NO_CHIPS: Chips = {
   notLogged: false,
@@ -44,11 +45,13 @@ const NO_CHIPS: Chips = {
   unresolved: false,
   kurang: false,
   claim: false,
+  hasReturns: false,
 };
 
 // /deliveries — Log Pengiriman & Retur, Phase 1: one row per PO / faktur with
 // its delivery status and faktur-balik state; detail on tap. Deep link:
-// /deliveries?invoice=<ref> (the order cards on Activities use it).
+// /deliveries?invoice=<ref> (the order cards on Activities use it);
+// ?buyer=<name>&returns=1&from=<date> (Insight's "Lihat di Pengiriman").
 export default function Deliveries() {
   const { t, language } = useLanguage();
   const navigate = useNavigate();
@@ -59,9 +62,12 @@ export default function Deliveries() {
   const locale = language === "id" ? "id-ID" : "en-US";
 
   const today = localToday();
-  const [range, setRange] = useState<DateRange>({ from: addDays(today, -(DEFAULT_RANGE_DAYS - 1)), to: today });
-  const [search, setSearch] = useState("");
-  const [chips, setChips] = useState<Chips>(NO_CHIPS);
+  const [range, setRange] = useState<DateRange>(() => {
+    const from = searchParams.get("from");
+    return { from: from && /^\d{4}-\d{2}-\d{2}$/.test(from) && from <= today ? from : addDays(today, -(DEFAULT_RANGE_DAYS - 1)), to: today };
+  });
+  const [search, setSearch] = useState(() => searchParams.get("buyer") ?? "");
+  const [chips, setChips] = useState<Chips>(() => ({ ...NO_CHIPS, hasReturns: searchParams.get("returns") === "1" }));
   const { data, isLoading, isError, refetch } = useDeliveries(range);
 
   // Badge deep link (?open=1): the "Faktur belum balik" chip on and the range
@@ -128,6 +134,7 @@ export default function Deliveries() {
       unresolved: items.filter((i) => i.flags.unresolved).length,
       kurang: kurangPiecesOf(live),
       claimFaktur: live.filter((i) => i.lineSummary.claimRowCount > 0).length,
+      withReturns: items.filter((i) => i.hasReturns).length,
     };
   }, [items]);
   const rt = t.deliveries.retur;
@@ -142,6 +149,7 @@ export default function Deliveries() {
     ["unresolved", rt.chipUnresolved.replace("{n}", nf(counts.unresolved))],
     ["kurang", rt.chipKurang.replace("{p}", nf(counts.kurang))],
     ["claim", rt.chipClaim.replace("{n}", nf(counts.claimFaktur))],
+    ["hasReturns", t.insight.hasReturnsChip.replace("{n}", nf(counts.withReturns))],
   ];
   // Phase 2 chips stay hidden while their count is 0 (unless switched on), so the
   // row doesn't fill with "· 0" chips on a phone.
@@ -151,6 +159,8 @@ export default function Deliveries() {
     unresolved: counts.unresolved,
     kurang: counts.kurang,
     claim: counts.claimFaktur,
+    // Only reachable from Insight's deep link: shown while on, never offered otherwise.
+    hasReturns: 0,
   };
   const shownChips = chipDefs.filter(([key]) => chips[key] || chipCount[key] === undefined || chipCount[key]! > 0);
 

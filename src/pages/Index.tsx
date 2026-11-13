@@ -26,6 +26,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { calculateStockSummary } from "@/lib/inventory";
 import { PackagePlus, PackageMinus, LayoutDashboard, Library, History, BarChart2, Users } from "lucide-react";
 import { InfosPage } from "@/components/InfosPage";
+import { InsightPage } from "@/components/InsightPage";
 import { InventoryAssistant } from "@/components/InventoryAssistant";
 import { Badge } from "@/components/ui/badge";
 
@@ -195,14 +196,31 @@ const Index = () => {
         </div>
       </TabsContent>
 
-      <TabsContent value="infos" className={pane} {...paneA11y}>
-        <div className="max-w-4xl mx-auto">
-          <InfosPage
+      {/* Tablet: Insight owns the height, its lists and profile scroll on their own. */}
+      <TabsContent
+        value="infos"
+        className={isTablet ? "m-0 min-h-0 flex-1 flex-col data-[state=active]:flex" : pane}
+        {...paneA11y}
+      >
+        {isTablet ? (
+          <InsightPage
             stockSummary={stockSummary}
             inflows={inflows}
             outflows={outflows}
+            logs={logs}
+            freshnessDaysByProduct={freshnessDaysByProduct}
+            loading={loading}
+            logsLoading={logsLoading}
           />
-        </div>
+        ) : (
+          <div className="max-w-4xl mx-auto">
+            <InfosPage
+              stockSummary={stockSummary}
+              inflows={inflows}
+              outflows={outflows}
+            />
+          </div>
+        )}
       </TabsContent>
 
       {/* data-[state=active]:flex, not flex: a display utility would beat the
