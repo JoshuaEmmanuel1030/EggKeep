@@ -63,10 +63,11 @@ export function StockInsight({ stockSummary, inflows, outflows, freshnessDaysByP
     const names = new Set(eggs.map((e) => e.name));
     return inflows
       .filter((b) => b.remainingButir > 0 && names.has(b.product))
-      .map((b) => ({ id: b.id, product: b.product, date: b.date, remaining: b.remainingButir, supplier: supplierName(b.invoiceSupplier) ?? undefined }));
+      // A Penyesuaian Stok Fisik batch is stock, but it has no supplier.
+      .map((b) => ({ id: b.id, product: b.product, date: b.date, remaining: b.remainingButir, supplier: b.stockAdjustmentId ? undefined : supplierName(b.invoiceSupplier) ?? undefined }));
   }, [inflows, eggs]);
   const ages = useMemo(() => fifoAges(data.deductions, outflows, inflows), [data.deductions, outflows, inflows]);
-  const asOf = useMemo(() => dataAsOf(outflows.filter((o) => o.category === "egg").map((o) => o.date), today), [outflows, today]);
+  const asOf = useMemo(() => dataAsOf(outflows.filter((o) => o.category === "egg" && !o.stockAdjustmentId).map((o) => o.date), today), [outflows, today]);
 
   const rows = useMemo(
     () =>

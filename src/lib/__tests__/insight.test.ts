@@ -306,13 +306,14 @@ describe("Kas Tunai", () => {
     expect(sales[0].eggTotals).toEqual([{ product: "KAMPUNG BIASA", quantity: 30 }, { product: "NEGERI BIASA", quantity: 2.5 }]);
   });
 
-  it("leaves out POs, voided rows, materials, inflows and stock corrections", () => {
+  it("leaves out POs, voided rows, materials, inflows, stock corrections and stock-count resets", () => {
     const sales = kasSalesFromLogs([
       log({ metadata: { orderType: "quick_outflow", buyerName: "Osave" } }),
       log({ voided_at: "2026-11-04T04:00:00Z" }),
       log({ category: "packaging" }),
       log({ action_type: "inflow" }),
       log({ invoice_supplier: "CORRECTION" }),
+      log({ invoice_supplier: "PENYESUAIAN STOK FISIK", metadata: { orderType: "stock_adjustment" } }),
       log({ invoice_supplier: "INV-TEST-1" }),
     ]);
     expect(sales).toHaveLength(1);
@@ -379,6 +380,7 @@ describe("turnoverDays", () => {
     { id: "o2", date: "2026-10-25", product: "P" }, // before i2: back-dated
     { id: "o3", date: "2026-11-02", product: "Q" },
     { id: "o4", date: "2026-08-01", product: "P" }, // out of period
+    { id: "o5", date: "2026-11-02", product: "P", stockAdjustmentId: "adj" }, // count reset, not a sale
   ];
   const ages = fifoAges(
     [
@@ -387,6 +389,7 @@ describe("turnoverDays", () => {
       { outflow_id: "o2", inflow_id: "i2", quantity_deducted: 99 }, // -5: unknown
       { outflow_id: "o3", inflow_id: "i1", quantity_deducted: 5 },
       { outflow_id: "voided", inflow_id: "i1", quantity_deducted: 500 },
+      { outflow_id: "o5", inflow_id: "i1", quantity_deducted: 500 },
     ],
     outflows,
     inflows

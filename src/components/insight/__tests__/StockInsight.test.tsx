@@ -72,4 +72,24 @@ describe("Stok tab", () => {
     expect(screen.queryByText("PUYUH (RETAKAN)")).not.toBeInTheDocument();
     expect(screen.getAllByText(/· TST$/).length).toBeGreaterThan(0);
   });
+
+  it("never shows a Penyesuaian Stok Fisik batch as a supplier", () => {
+    const adjusted = { ...inflow("PUYUH", 100), id: "adj", invoiceSupplier: "PENYESUAIAN STOK FISIK", stockAdjustmentId: "a1" } as InflowEntry;
+    render(
+      <LanguageProvider>
+        <StockInsight
+          stockSummary={[{ product: "PUYUH", category: "egg", totalStock: 100 } as StockSummary]}
+          inflows={[adjusted]}
+          outflows={[]}
+          freshnessDaysByProduct={{}}
+          data={EMPTY}
+          returnCov={{ start: "2020-01-01", staleSince: null }}
+          days={28}
+          periodLabel="4 minggu"
+          control={null}
+        />
+      </LanguageProvider>
+    );
+    expect(screen.queryByText(/PENYESUAIAN/)).not.toBeInTheDocument();
+  });
 });

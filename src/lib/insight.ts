@@ -311,6 +311,8 @@ export function kasSalesFromLogs(logs: ActivityLog[]): KasSaleRow[] {
   const sales = new Map<string, KasSaleRow>();
   for (const log of logs) {
     if (entryKind(log) !== "manual" || log.category !== "egg" || log.voided_at) continue;
+    // A Penyesuaian Stok Fisik line is a count reset, not a sale.
+    if (log.metadata?.orderType === "stock_adjustment") continue;
     if ((log.invoice_supplier ?? "").trim().toUpperCase() === "CORRECTION") continue;
     const saleId = log.metadata?.saleId ?? log.id;
     let sale = sales.get(saleId);
@@ -426,7 +428,7 @@ export interface FifoAge {
 // voided outflow or batch drops out here.
 export function fifoAges(
   deductions: { outflow_id: string; inflow_id: string; quantity_deducted: number }[],
-  outflows: { id: string; date: string; product: string; category?: string }[],
+  outflows: { id: string; date: string; product: string; category?: string; stockAdjustmentId?: string }[],
   inflows: { id: string; date: string }[]
 ): FifoAge[] {
   const out = new Map(outflows.map((o) => [o.id, o]));
@@ -435,7 +437,8 @@ export function fifoAges(
   for (const d of deductions) {
     const o = out.get(d.outflow_id);
     const i = inf.get(d.inflow_id);
-    if (!o || !i) continue;
+    // A Penyesuaian Stok Fisik deduction resets a count; it isn't eggs going out.
+    if (!o || !i || o.stockAdjustmentId) continue;
     rows.push({
       product: o.product,
       outflowDate: o.date,

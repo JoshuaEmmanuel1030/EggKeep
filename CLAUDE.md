@@ -71,6 +71,7 @@ The column names are legacy — do NOT "fix" them and do NOT convert kg↔butir 
 - Out for now (owner, 2026-11-06): the Pemasok tab, the `Pesan` buttons, a suppliers table and a Suppliers tab under Catalog. `Pecah saat masuk` can't exist as designed, because cracks are found during packing, not on arrival, and `Dari retur` reads falsely low while returns are stale. Don't build these or show them with sample numbers unless the owner reopens this. Supplier names stay free text at Masuk; `supplierName` cleans them for display on Stok's batch rows, and TST counts as a supplier for now.
 - Left out on purpose: `Pesanan terbuka` (a PO's materials are deducted when it's recorded, so comparing it with stock double-counts), `Jeda PO → kirim` until POs are entered ahead of delivery.
 - Kas Tunai rows are `entryKind` manual minus `CORRECTION`; only drawer rows (with `saleId`) count as data coverage. `(RETAKAN)` children are excluded from the age lists: nothing ever sells from them.
+- Penyesuaian Stok Fisik rows are stock but never a sale or a supplier: Insight leaves them out of Kas Tunai, turnover and the latest-outflow date, and shows no supplier on their batches.
 - Insight's at-risk band is age >= `freshness_days` (default 5). The dashboard's "Lewat" figure is wider (expiring within 2 days plus overdue), so the two don't match by design.
 
 ## UUID migration (in progress — see docs/uuid-migration/PLAN.md)
