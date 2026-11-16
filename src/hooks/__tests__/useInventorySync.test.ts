@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useInventorySync } from "@/hooks/useInventorySync";
+import type { InflowEntry } from "@/types/inventory";
 import { toast } from "@/hooks/use-toast";
 
 const MAX_ROWS = 1000; // PostgREST's per-response cap on the live project
@@ -11,6 +12,7 @@ type Row = Record<string, unknown>;
 let tables: Record<string, Row[]>;
 let ranges: Record<string, [number, number][]>;
 let requestsByTable: Record<string, number>;
+let inserted: Record<string, Row[]>;
 let failPage: { table: string; from: number } | null;
 
 // A tiny PostgREST: honours is/order/range and caps every response at MAX_ROWS.
@@ -38,6 +40,10 @@ function query(table: string) {
   };
   const q = {
     select: () => q,
+    insert: (rows: Row | Row[]) => {
+      inserted[table].push(...(Array.isArray(rows) ? rows : [rows]));
+      return Promise.resolve({ error: null });
+    },
     is: (col: string, value: unknown) => {
       filters.push((r) => r[col] === value);
       return q;
@@ -92,6 +98,7 @@ async function load(inflows: Row[], outflows: Row[]) {
 beforeEach(() => {
   ranges = { inflows: [], outflows: [] };
   requestsByTable = {};
+  inserted = { inflows: [], outflows: [] };
   failPage = null;
   vi.mocked(toast).mockClear();
 });
@@ -150,5 +157,60 @@ describe("useInventorySync fetchData paging", () => {
     expect(result.current.outflows).toHaveLength(1325);
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" }));
     errorLog.mockRestore();
+  });
+});
+
+describe("useInventorySync Bentuk fields", () => {
+  const entry = (overrides: Partial<InflowEntry>): InflowEntry => ({
+    id: "in-1",
+    date: "2026-11-16",
+    product: "NEGERI BIASA",
+    quantity: 3,
+    unit: "kg",
+    quantityInButir: 3,
+    remainingButir: 3,
+    createdAt: "2026-11-16T01:00:00.000Z",
+    category: "egg",
+    ...overrides,
+  });
+
+  // The weight is only ever read back from a saved row (prefillTonaseKg seeds a new
+  // Tonase line from the newest receipt for the date), so a mapper that drops it
+  // fails nothing until the page reloads.
+  it("maps a saved form, its count and the Tonase weight back onto the entry", async () => {
+    const bentuk = () => ({ form: "tonase", form_count: 4, tonase_kg: 12.5 });
+    const result = await load(makeRows(1, "in", bentuk), []);
+
+    expect(result.current.inflows[0]).toMatchObject({
+      form: "tonase",
+      formCount: 4,
+      tonaseKg: 12.5,
+    });
+  });
+
+  it("leaves the three empty on a Langsung row", async () => {
+    const result = await load(makeRows(1, "in"), []);
+
+    expect(result.current.inflows[0].form).toBeNull();
+    expect(result.current.inflows[0].formCount).toBeUndefined();
+    expect(result.current.inflows[0].tonaseKg).toBeUndefined();
+  });
+
+  it("writes all three on both insert paths, as nulls when they do not apply", async () => {
+    const result = await load([], []);
+
+    await act(() => result.current.addInflow(entry({ form: "iket15", formCount: 2 })));
+    await act(() =>
+      result.current.addMultipleInflows([
+        entry({ id: "in-2", form: "tonase", formCount: 4, tonaseKg: 12.5 }),
+        entry({ id: "in-3", form: null }),
+      ])
+    );
+
+    expect(inserted.inflows).toEqual([
+      expect.objectContaining({ form: "iket15", form_count: 2, tonase_kg: null }),
+      expect.objectContaining({ form: "tonase", form_count: 4, tonase_kg: 12.5 }),
+      expect.objectContaining({ form: null, form_count: null, tonase_kg: null }),
+    ]);
   });
 });

@@ -43,6 +43,9 @@ export function useInventorySync() {
         createdAt: row.created_at,
         category: (row.category as InventoryCategory) || 'egg',
         invoiceSupplier: row.invoice_supplier || undefined,
+        form: row.form ?? null,
+        formCount: row.form_count ?? undefined,
+        tonaseKg: row.tonase_kg ?? undefined,
         stockAdjustmentId: row.stock_adjustment_id ?? undefined,
       }));
 
@@ -111,6 +114,9 @@ export function useInventorySync() {
           user_id: user.id,
           category: entry.category,
           invoice_supplier: entry.invoiceSupplier || null,
+          form: entry.form ?? null,
+          form_count: entry.formCount ?? null,
+          tonase_kg: entry.tonaseKg ?? null,
         });
 
         if (error) throw error;
@@ -147,6 +153,9 @@ export function useInventorySync() {
           user_id: user.id,
           category: entry.category,
           invoice_supplier: entry.invoiceSupplier || null,
+          form: entry.form ?? null,
+          form_count: entry.formCount ?? null,
+          tonase_kg: entry.tonaseKg ?? null,
         }));
 
         const { error } = await supabase.from("inflows").insert(insertData);
