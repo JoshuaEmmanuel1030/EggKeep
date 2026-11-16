@@ -334,22 +334,34 @@ export function InflowForm({ onSubmit, stockSummary = [], inflows = [], tablet =
     if (!date) setDate(today);
 
     const enabled = CATEGORIES.filter((category) => categoryData[category].enabled);
+    // Stock before -> after runs DOWN the lines per product: a second line of the
+    // same product starts where the first one left off. Declared outside the
+    // category loop, so one product split across categories chains too.
+    const running: Record<string, number> = {};
     const groups: InflowSummaryGroup[] = enabled.map((category) => ({
       category,
       ...CATEGORY_LOOK[category],
       lines: categoryData[category].items.filter((item) =>
         isValidItem(item, category, conversionMap, formsFor(item.product, itemTypes))
       ).map((item) => {
-        const quantity = nativeItemQty(item, category, conversionMap, formsFor(item.product, itemTypes)) as number;
-        const now = stockSummary.find((s) => s.product === item.product)?.totalStock ?? 0;
+        const forms = formsFor(item.product, itemTypes);
+        const form = findForm(forms, item.form);
+        const quantity = nativeItemQty(item, category, conversionMap, forms) as number;
+        const now =
+          running[item.product] ?? (stockSummary.find((s) => s.product === item.product)?.totalStock ?? 0);
+        const after = now + quantity;
+        running[item.product] = after;
         return {
           id: item.id,
           product: item.product,
           invoiceSupplier: item.invoiceSupplier,
           quantity,
           now,
-          after: now + quantity,
+          after,
           unit: getStockUnit(item.product, category, conversionMap),
+          formName: form ? form.name : undefined,
+          formCount: form ? parseEnteredQty(item, category, conversionMap, forms) ?? undefined : undefined,
+          tonaseKg: form?.unit === "weighed" ? item.tonaseKg : undefined,
         };
       }),
     }));

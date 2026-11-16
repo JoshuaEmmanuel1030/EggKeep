@@ -749,3 +749,51 @@ describe("InflowForm — Bentuk", () => {
     expect(screen.getByText(/iket ×/)).toHaveTextContent("79 iket × 15 kg = 1185 kg");
   });
 });
+
+// The Ringkasan is where a line's Bentuk and its running stock show. Two lines of
+// one product are what a form change forces (one delivery, two forms), so the
+// before -> after figures have to run down the lines, not all read live stock.
+describe("InflowForm — Ringkasan with forms", () => {
+  const openPicker = (row = 0) => fireEvent.click(screen.getAllByRole("button", { expanded: false })[row]);
+  const pickForm = (name: RegExp) =>
+    fireEvent.click(within(screen.getByRole("group", { name: "Bentuk" })).getByRole("button", { name }));
+  const panel = () => screen.getByRole("complementary");
+
+  it("notes the form and count under the line", () => {
+    render(form(vi.fn(async () => true), true));
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "79" } });
+
+    expect(within(panel()).getByText(/Iket 15 kg × 79/)).toBeInTheDocument();
+  });
+
+  it("notes the scale reading on a Tonase line", () => {
+    render(form(vi.fn(async () => true), true));
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Tonase/);
+    fireEvent.change(screen.getByLabelText("Berat per satuan"), { target: { value: "16,8" } });
+    fireEvent.change(screen.getByLabelText("Jumlah (satuan)"), { target: { value: "48" } });
+
+    expect(within(panel()).getByText(/Tonase × 48 \(16,8 kg\)/)).toBeInTheDocument();
+  });
+
+  it("chains stock before to after down two lines of one product", () => {
+    render(form(vi.fn(async () => true), true));
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    typeQty(0, "100");
+    fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
+    pickProduct(1, "NEGERI OMEGA");
+    typeQty(1, "50");
+
+    // The second line starts where the first left off, so the stock is never
+    // promised twice over.
+    expect(panel()).toHaveTextContent("Stok 186 → 286 kg");
+    expect(panel()).toHaveTextContent("Stok 286 → 336 kg");
+  });
+});
