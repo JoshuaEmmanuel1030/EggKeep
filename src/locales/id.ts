@@ -459,6 +459,12 @@ export const id = {
     off: 'Off',
     stockLine: 'Stok {now} → {after} {unit}',
     noConversion: 'Belum ada konversi satuan untuk {product} — jumlah dicatat sebagai butir 1:1. Atur satuannya di Katalog jika dijual per kg.',
+    form: 'Bentuk',
+    formDirect: 'Langsung ({unit})',
+    formDirectHint: 'sudah ditimbang / diketahui',
+    qtyPlaceholderForm: 'Jumlah',
+    tonaseWeightToday: 'Berat per satuan',
+    tonaseSizeLine: '× {kg} kg per satuan · berat berubah tiap muatan',
   },
 
   // Outflow
