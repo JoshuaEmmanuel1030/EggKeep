@@ -589,6 +589,7 @@ describe("InflowForm — Bentuk", () => {
   // option read the same.
   const pickForm = (name: RegExp) =>
     fireEvent.click(within(screen.getByRole("group", { name: "Bentuk" })).getByRole("button", { name }));
+  const addRow = () => fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
 
   it("offers forms for an egg product and none for packaging", () => {
     renderForm();
@@ -671,6 +672,46 @@ describe("InflowForm — Bentuk", () => {
     pickForm(/Tonase/);
     // The new product is weighed on its own load, so nothing is carried over.
     expect(screen.getByLabelText("Berat per satuan")).toHaveValue("");
+  });
+
+  // Picking a form clears Jumlah, so a count-less form row has nothing typed for the
+  // broken-row rule to key off. Without the form clause it submits as if it weren't
+  // there: the receipt vanishes behind a success toast for the valid row beside it.
+  it("blocks the submit on a form chosen with no count, and a valid row does not rescue it", async () => {
+    const onSubmit = renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+
+    addRow();
+    pickProduct(1, "KAMPUNG BIASA");
+    fireEvent.change(screen.getByLabelText("Jumlah (butir)"), { target: { value: "300" } });
+
+    expect(screen.getByLabelText("Jumlah (iket)")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(/Perbaiki jumlah/)).toBeInTheDocument();
+    expect(submitButton()).toBeDisabled();
+    fireEvent.submit(submitButton().closest("form") as HTMLFormElement);
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // Filling the count clears it, and then both rows go.
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "2" } });
+    expect(screen.queryByText(/Perbaiki jumlah/)).not.toBeInTheDocument();
+    const [entries] = await submitted(onSubmit);
+    expect(entries.map((e) => e.quantity)).toEqual([30, 300]);
+  });
+
+  it("does not flag a freshly added empty row, which has no form", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "2" } });
+
+    addRow();
+    expect(screen.queryByText(/Perbaiki jumlah/)).not.toBeInTheDocument();
+    expect(submitButton()).not.toBeDisabled();
   });
 
   it("blocks the submit while a Tonase line has no weight", () => {

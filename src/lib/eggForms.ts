@@ -31,7 +31,9 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 /** The forms configured for an egg product, in catalogue order. */
 export function formsFor(product: string, itemTypes: ItemType[]): EggForm[] {
   const type = itemTypes.find((t) => t.name === product && t.category === "egg");
-  return type?.forms ?? [];
+  // The column is hand-maintained JSONB with no Catalog editor, so a wrong shape is
+  // an expected failure, not an edge case: anything but an array reads as no forms.
+  return Array.isArray(type?.forms) ? type.forms : [];
 }
 
 /** The form an id refers to. Null means Langsung: no form, the amount as typed. */

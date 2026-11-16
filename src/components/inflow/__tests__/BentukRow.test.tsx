@@ -97,6 +97,20 @@ describe("BentukRow", () => {
     expect(props.onChangeForm).toHaveBeenCalledWith(null);
   });
 
+  it("marks the chosen option pressed, so selection is not colour alone", () => {
+    setup({ open: true, formId: "tray30" });
+    const picker = screen.getByRole("group", { name: "Bentuk" });
+    expect(within(picker).getByRole("button", { name: /Tray 30/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(picker).getByRole("button", { name: /Iket 15 kg/ })).toHaveAttribute("aria-pressed", "false");
+    expect(within(picker).getByRole("button", { name: /Langsung/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("marks Langsung pressed when no form is chosen", () => {
+    setup({ open: true });
+    const picker = screen.getByRole("group", { name: "Bentuk" });
+    expect(within(picker).getByRole("button", { name: /Langsung/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("shows no weight control unless the form is weighed", () => {
     setup({ formId: "tray30" });
     expect(screen.queryByLabelText(/Berat per satuan/)).not.toBeInTheDocument();
@@ -113,6 +127,16 @@ describe("BentukRow", () => {
     expect(props.onChangeTonase).toHaveBeenCalledWith("16,9");
     fireEvent.click(screen.getByRole("button", { name: /−|-/ }));
     expect(props.onChangeTonase).toHaveBeenCalledWith("16,7");
+  });
+
+  // A real scale reading carries up to four decimals, and that number is the point
+  // of the feature: the stepper must not round it onto a 0,1 grid.
+  it("keeps a four-decimal weight's decimals when stepping", () => {
+    const props = setup({ formId: "tonase", tonaseKg: "16,3068" });
+    fireEvent.click(screen.getByRole("button", { name: /\+/ }));
+    expect(props.onChangeTonase).toHaveBeenCalledWith("16,4068");
+    fireEvent.click(screen.getByRole("button", { name: /−|-/ }));
+    expect(props.onChangeTonase).toHaveBeenCalledWith("16,2068");
   });
 
   it("starts stepping from the range floor when the weight is empty", () => {

@@ -60,7 +60,9 @@ export function BentukRow({
     // An empty field steps from the floor in either direction: one tap must never
     // land on the heaviest weight in the range.
     const from = parsed ?? TONASE_MIN_KG - (direction === 1 ? TONASE_STEP_KG : 0);
-    const next = Math.min(TONASE_MAX_KG, Math.max(TONASE_MIN_KG, Math.round((from + direction * TONASE_STEP_KG) * 10) / 10));
+    // 4 dp, not 1: a real scale reading carries them, and stepping must not round
+    // away what was typed. Rounding at all is only to kill floating-point noise.
+    const next = Math.min(TONASE_MAX_KG, Math.max(TONASE_MIN_KG, Math.round((from + direction * TONASE_STEP_KG) * 1e4) / 1e4));
     emitWeight(qtyInputText(next));
   };
 
@@ -153,6 +155,8 @@ function PickerOption({
   return (
     <button
       type="button"
+      // Selection is otherwise background and ring only, which a screen reader can't see.
+      aria-pressed={selected}
       onClick={onPick}
       className={cn(
         "flex min-h-[52px] flex-col justify-center rounded-[10px] bg-ek-muted px-2.5 py-1.5 text-left hover:bg-[#e9e3d8]",

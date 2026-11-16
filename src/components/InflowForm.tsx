@@ -99,12 +99,15 @@ const isValidItem = (
   item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap, forms: EggForm[]
 ) => !!item.product && (nativeItemQty(item, category, conversionMap, forms) ?? 0) > 0;
 
-// Typed but won't be recorded (bad number, no product, 0, no Tonase weight):
-// blocks the submit, so it's never dropped silently beside valid rows. The same
-// rule as isBrokenKasLine.
+// Started but won't be recorded (bad number, no product, 0, no Tonase weight, a
+// form chosen with no count): blocks the submit, so it's never dropped silently
+// beside valid rows. The same rule as isBrokenKasLine, plus the form — picking one
+// clears Jumlah, so a count-less form row has nothing typed to judge it by.
 const isBrokenItem = (
   item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap, forms: EggForm[]
-) => item.quantity.trim() !== "" && !isValidItem(item, category, conversionMap, forms);
+) =>
+  (item.quantity.trim() !== "" || !!item.form) &&
+  !isValidItem(item, category, conversionMap, forms);
 
 export function InflowForm({ onSubmit, stockSummary = [], inflows = [], tablet = false }: InflowFormProps) {
   const { user } = useAuth();

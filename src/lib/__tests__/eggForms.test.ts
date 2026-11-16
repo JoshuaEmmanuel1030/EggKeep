@@ -34,6 +34,22 @@ describe("formsFor", () => {
   it("returns [] when the catalogue has not loaded", () => {
     expect(formsFor("NEGERI BIASA", [])).toEqual([]);
   });
+
+  // There is no Catalog editor for this column, so hand-written SQL is the only way
+  // to maintain it and a wrong JSONB shape is the expected failure. It must never
+  // reach the picker's forms.map, which would take the whole app down.
+  it("returns [] when forms is not an array", () => {
+    const malformed = [
+      { id: "5", category: "egg", name: "BAD OBJECT", forms: { iket15kg: IKET15 } },
+      { id: "6", category: "egg", name: "BAD STRING", forms: "iket15kg" },
+      { id: "7", category: "egg", name: "BAD NULL", forms: null },
+      { id: "8", category: "egg", name: "BAD NUMBER", forms: 15 },
+    ] as unknown as ItemType[];
+    expect(formsFor("BAD OBJECT", malformed)).toEqual([]);
+    expect(formsFor("BAD STRING", malformed)).toEqual([]);
+    expect(formsFor("BAD NULL", malformed)).toEqual([]);
+    expect(formsFor("BAD NUMBER", malformed)).toEqual([]);
+  });
 });
 
 describe("findForm", () => {
