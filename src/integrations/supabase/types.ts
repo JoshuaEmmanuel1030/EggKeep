@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -129,6 +129,7 @@ export type Database = {
           id: string
           name: string
           pinned_sku_ids: string[]
+          requires_claim_ref: boolean
         }
         Insert: {
           created_at?: string
@@ -137,6 +138,7 @@ export type Database = {
           id?: string
           name: string
           pinned_sku_ids?: string[]
+          requires_claim_ref?: boolean
         }
         Update: {
           created_at?: string
@@ -145,6 +147,7 @@ export type Database = {
           id?: string
           name?: string
           pinned_sku_ids?: string[]
+          requires_claim_ref?: boolean
         }
         Relationships: []
       }
@@ -159,7 +162,7 @@ export type Database = {
           id: string
           invoice_checked_by: string | null
           invoice_ref: string
-          invoice_ref_norm: string
+          invoice_ref_norm: string | null
           invoice_returned_at: string | null
           notes: string | null
           pic: string | null
@@ -176,7 +179,7 @@ export type Database = {
           id?: string
           invoice_checked_by?: string | null
           invoice_ref: string
-          invoice_ref_norm?: never
+          invoice_ref_norm?: string | null
           invoice_returned_at?: string | null
           notes?: string | null
           pic?: string | null
@@ -193,7 +196,7 @@ export type Database = {
           id?: string
           invoice_checked_by?: string | null
           invoice_ref?: string
-          invoice_ref_norm?: never
+          invoice_ref_norm?: string | null
           invoice_returned_at?: string | null
           notes?: string | null
           pic?: string | null
@@ -207,6 +210,75 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "drivers"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_lines: {
+        Row: {
+          claim_ref: string | null
+          claim_ref_norm: string | null
+          created_at: string
+          created_by: string | null
+          delivery_id: string
+          expected_expiry: string | null
+          id: string
+          note: string | null
+          pieces_per_unit: number
+          quantity: number
+          reason: string
+          sku_code: string
+          source: string
+          unit_label: string
+          updated_at: string
+        }
+        Insert: {
+          claim_ref?: string | null
+          claim_ref_norm?: string | null
+          created_at?: string
+          created_by?: string | null
+          delivery_id: string
+          expected_expiry?: string | null
+          id: string
+          note?: string | null
+          pieces_per_unit: number
+          quantity?: number
+          reason: string
+          sku_code: string
+          source?: string
+          unit_label: string
+          updated_at?: string
+        }
+        Update: {
+          claim_ref?: string | null
+          claim_ref_norm?: string | null
+          created_at?: string
+          created_by?: string | null
+          delivery_id?: string
+          expected_expiry?: string | null
+          id?: string
+          note?: string | null
+          pieces_per_unit?: number
+          quantity?: number
+          reason?: string
+          sku_code?: string
+          source?: string
+          unit_label?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_lines_delivery_id_fkey"
+            columns: ["delivery_id"]
+            isOneToOne: false
+            referencedRelation: "deliveries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_lines_delivery_id_fkey"
+            columns: ["delivery_id"]
+            isOneToOne: false
+            referencedRelation: "open_delivery_items"
+            referencedColumns: ["delivery_id"]
           },
         ]
       }
@@ -237,7 +309,8 @@ export type Database = {
           created_at: string
           id: string
           note: string | null
-          shelf_days: number
+          shelf_days: number | null
+          shelf_months: number | null
           sku_code: string | null
         }
         Insert: {
@@ -245,7 +318,8 @@ export type Database = {
           created_at?: string
           id?: string
           note?: string | null
-          shelf_days: number
+          shelf_days?: number | null
+          shelf_months?: number | null
           sku_code?: string | null
         }
         Update: {
@@ -253,7 +327,8 @@ export type Database = {
           created_at?: string
           id?: string
           note?: string | null
-          shelf_days?: number
+          shelf_days?: number | null
+          shelf_months?: number | null
           sku_code?: string | null
         }
         Relationships: []
@@ -302,6 +377,8 @@ export type Database = {
           category: Database["public"]["Enums"]["inventory_category"]
           created_at: string
           date: string
+          form: string | null
+          form_count: number | null
           id: string
           invoice_supplier: string | null
           item_type_id: string | null
@@ -309,7 +386,9 @@ export type Database = {
           quantity_butir: number
           quantity_original: number
           remaining_butir: number
+          return_id: string | null
           stock_adjustment_id: string | null
+          tonase_kg: number | null
           user_id: string
           void_reason: string | null
           voided_at: string | null
@@ -318,6 +397,8 @@ export type Database = {
           category?: Database["public"]["Enums"]["inventory_category"]
           created_at?: string
           date: string
+          form?: string | null
+          form_count?: number | null
           id?: string
           invoice_supplier?: string | null
           item_type_id?: string | null
@@ -325,7 +406,9 @@ export type Database = {
           quantity_butir: number
           quantity_original: number
           remaining_butir: number
+          return_id?: string | null
           stock_adjustment_id?: string | null
+          tonase_kg?: number | null
           user_id: string
           void_reason?: string | null
           voided_at?: string | null
@@ -334,6 +417,8 @@ export type Database = {
           category?: Database["public"]["Enums"]["inventory_category"]
           created_at?: string
           date?: string
+          form?: string | null
+          form_count?: number | null
           id?: string
           invoice_supplier?: string | null
           item_type_id?: string | null
@@ -341,7 +426,9 @@ export type Database = {
           quantity_butir?: number
           quantity_original?: number
           remaining_butir?: number
+          return_id?: string | null
           stock_adjustment_id?: string | null
+          tonase_kg?: number | null
           user_id?: string
           void_reason?: string | null
           voided_at?: string | null
@@ -354,6 +441,27 @@ export type Database = {
             referencedRelation: "item_types"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "inflows_item_type_id_fkey"
+            columns: ["item_type_id"]
+            isOneToOne: false
+            referencedRelation: "v_recon_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inflows_return_id_fkey"
+            columns: ["return_id"]
+            isOneToOne: false
+            referencedRelation: "returns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inflows_stock_adjustment_id_fkey"
+            columns: ["stock_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "stock_adjustments"
+            referencedColumns: ["id"]
+          },
         ]
       }
       item_types: {
@@ -364,11 +472,14 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           eggs_per_unit: number | null
+          forms: Json | null
           freshness_days: number | null
           id: string
+          is_retakan: boolean
           labels_per_pack: number | null
           low_stock_threshold: number | null
           name: string
+          parent_item_type_id: string | null
           unit: string | null
         }
         Insert: {
@@ -378,11 +489,14 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           eggs_per_unit?: number | null
+          forms?: Json | null
           freshness_days?: number | null
           id?: string
+          is_retakan?: boolean
           labels_per_pack?: number | null
           low_stock_threshold?: number | null
           name: string
+          parent_item_type_id?: string | null
           unit?: string | null
         }
         Update: {
@@ -392,14 +506,32 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           eggs_per_unit?: number | null
+          forms?: Json | null
           freshness_days?: number | null
           id?: string
+          is_retakan?: boolean
           labels_per_pack?: number | null
           low_stock_threshold?: number | null
           name?: string
+          parent_item_type_id?: string | null
           unit?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "item_types_parent_item_type_id_fkey"
+            columns: ["parent_item_type_id"]
+            isOneToOne: false
+            referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_types_parent_item_type_id_fkey"
+            columns: ["parent_item_type_id"]
+            isOneToOne: false
+            referencedRelation: "v_recon_products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       outflows: {
         Row: {
@@ -414,6 +546,7 @@ export type Database = {
           stock_adjustment_id: string | null
           user_id: string
           void_reason: string | null
+          void_return_id: string | null
           voided_at: string | null
         }
         Insert: {
@@ -428,6 +561,7 @@ export type Database = {
           stock_adjustment_id?: string | null
           user_id: string
           void_reason?: string | null
+          void_return_id?: string | null
           voided_at?: string | null
         }
         Update: {
@@ -442,6 +576,7 @@ export type Database = {
           stock_adjustment_id?: string | null
           user_id?: string
           void_reason?: string | null
+          void_return_id?: string | null
           voided_at?: string | null
         }
         Relationships: [
@@ -450,6 +585,27 @@ export type Database = {
             columns: ["item_type_id"]
             isOneToOne: false
             referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outflows_item_type_id_fkey"
+            columns: ["item_type_id"]
+            isOneToOne: false
+            referencedRelation: "v_recon_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outflows_stock_adjustment_id_fkey"
+            columns: ["stock_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "stock_adjustments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outflows_void_return_id_fkey"
+            columns: ["void_return_id"]
+            isOneToOne: false
+            referencedRelation: "returns"
             referencedColumns: ["id"]
           },
         ]
@@ -469,6 +625,7 @@ export type Database = {
           is_active: boolean | null
           packaging_item: string | null
           packaging_item_type_id: string | null
+          unit_label: string
         }
         Insert: {
           base_pack_code?: string | null
@@ -484,6 +641,7 @@ export type Database = {
           is_active?: boolean | null
           packaging_item?: string | null
           packaging_item_type_id?: string | null
+          unit_label?: string
         }
         Update: {
           base_pack_code?: string | null
@@ -499,6 +657,7 @@ export type Database = {
           is_active?: boolean | null
           packaging_item?: string | null
           packaging_item_type_id?: string | null
+          unit_label?: string
         }
         Relationships: [
           {
@@ -509,10 +668,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "pack_skus_egg_item_type_id_fkey"
+            columns: ["egg_item_type_id"]
+            isOneToOne: false
+            referencedRelation: "v_recon_products"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "pack_skus_packaging_item_type_id_fkey"
             columns: ["packaging_item_type_id"]
             isOneToOne: false
             referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pack_skus_packaging_item_type_id_fkey"
+            columns: ["packaging_item_type_id"]
+            isOneToOne: false
+            referencedRelation: "v_recon_products"
             referencedColumns: ["id"]
           },
         ]
@@ -737,6 +910,151 @@ export type Database = {
           },
         ]
       }
+      return_restocks: {
+        Row: {
+          id: string
+          inflow_id: string
+          quantity_restored: number
+          return_id: string
+        }
+        Insert: {
+          id?: string
+          inflow_id: string
+          quantity_restored: number
+          return_id: string
+        }
+        Update: {
+          id?: string
+          inflow_id?: string
+          quantity_restored?: number
+          return_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "return_restocks_inflow_id_fkey"
+            columns: ["inflow_id"]
+            isOneToOne: false
+            referencedRelation: "inflows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "return_restocks_return_id_fkey"
+            columns: ["return_id"]
+            isOneToOne: false
+            referencedRelation: "returns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      returns: {
+        Row: {
+          buyer_name: string | null
+          category: Database["public"]["Enums"]["inventory_category"]
+          created_at: string
+          disposition: string
+          id: string
+          item_type_id: string | null
+          outflow_id: string
+          product: string
+          quantity: number
+          reason: string | null
+          return_date: string
+          sku_code: string | null
+          user_email: string | null
+          user_id: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          buyer_name?: string | null
+          category: Database["public"]["Enums"]["inventory_category"]
+          created_at?: string
+          disposition: string
+          id: string
+          item_type_id?: string | null
+          outflow_id: string
+          product: string
+          quantity: number
+          reason?: string | null
+          return_date: string
+          sku_code?: string | null
+          user_email?: string | null
+          user_id: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          buyer_name?: string | null
+          category?: Database["public"]["Enums"]["inventory_category"]
+          created_at?: string
+          disposition?: string
+          id?: string
+          item_type_id?: string | null
+          outflow_id?: string
+          product?: string
+          quantity?: number
+          reason?: string | null
+          return_date?: string
+          sku_code?: string | null
+          user_email?: string | null
+          user_id?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "returns_item_type_id_fkey"
+            columns: ["item_type_id"]
+            isOneToOne: false
+            referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "returns_item_type_id_fkey"
+            columns: ["item_type_id"]
+            isOneToOne: false
+            referencedRelation: "v_recon_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "returns_outflow_id_fkey"
+            columns: ["outflow_id"]
+            isOneToOne: false
+            referencedRelation: "outflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_adjustments: {
+        Row: {
+          applied_at: string
+          applied_by: string
+          applied_by_email: string | null
+          count_date: string
+          id: string
+          lines: Json
+        }
+        Insert: {
+          applied_at?: string
+          applied_by: string
+          applied_by_email?: string | null
+          count_date: string
+          id?: string
+          lines: Json
+        }
+        Update: {
+          applied_at?: string
+          applied_by?: string
+          applied_by_email?: string | null
+          count_date?: string
+          id?: string
+          lines?: Json
+        }
+        Relationships: []
+      }
       stock_counts: {
         Row: {
           category: string
@@ -783,6 +1101,13 @@ export type Database = {
             columns: ["item_type_id"]
             isOneToOne: false
             referencedRelation: "item_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_counts_item_type_id_fkey"
+            columns: ["item_type_id"]
+            isOneToOne: false
+            referencedRelation: "v_recon_products"
             referencedColumns: ["id"]
           },
         ]
@@ -880,8 +1205,8 @@ export type Database = {
           no_faktur: string | null
           outflow_id: string | null
           pembeli_pemasok: string | null
-          qty: number | null
           penyesuaian: number | null
+          qty: number | null
           retur: number | null
           return_id: string | null
           tanggal: string | null
@@ -910,6 +1235,10 @@ export type Database = {
       }
     }
     Functions: {
+      apply_stock_count_adjustment: {
+        Args: { p_expected: Json }
+        Returns: Json
+      }
       correct_order: {
         Args: {
           p_entries: Json
@@ -935,7 +1264,43 @@ export type Database = {
           total_deducted: number
         }[]
       }
+      reconcile_inventory: {
+        Args: never
+        Returns: {
+          drift: number
+          expected_remaining: number
+          inflow_id: string
+          kind: string
+          product: string
+          stored_remaining: number
+        }[]
+      }
       record_order_outflows: { Args: { p_entries: Json }; Returns: undefined }
+      record_return: { Args: { p_return: Json }; Returns: undefined }
+      stock_count_adjustment_preview: {
+        Args: never
+        Returns: {
+          applied: number
+          book_at_count: number
+          book_now: number
+          delta: number
+          item_type_id: string
+          physical_js: number
+          physical_loaded: number
+          product: string
+          shortfall: number
+          target: number
+          unit: string
+        }[]
+      }
+      void_outflow: {
+        Args: { p_outflow_id: string; p_reason: string }
+        Returns: undefined
+      }
+      void_return: {
+        Args: { p_reason: string; p_return_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "user"
@@ -955,12 +1320,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -984,11 +1349,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1009,11 +1374,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1034,11 +1399,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1051,11 +1416,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
