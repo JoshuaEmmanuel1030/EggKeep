@@ -759,15 +759,24 @@ describe("InflowForm — Ringkasan with forms", () => {
     fireEvent.click(within(screen.getByRole("group", { name: "Bentuk" })).getByRole("button", { name }));
   const panel = () => screen.getByRole("complementary");
 
-  it("notes the form and count under the line", () => {
+  it("notes the form and count ahead of the faktur, and leaves a formless line alone", () => {
     render(form(vi.fn(async () => true), true));
     toggle("Telur");
     pickProduct(0, "NEGERI OMEGA");
+    typeSupplier(0, "Farm A");
     openPicker();
     pickForm(/Iket 15 kg/);
     fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "79" } });
+    fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
+    pickProduct(1, "KAMPUNG BIASA");
+    typeSupplier(1, "Farm B");
+    fireEvent.change(screen.getByLabelText("Jumlah (butir)"), { target: { value: "300" } });
 
-    expect(within(panel()).getByText(/Iket 15 kg × 79/)).toBeInTheDocument();
+    // Spec order: Bentuk · faktur · stock. The note before the faktur, not after it.
+    expect(panel()).toHaveTextContent("Iket 15 kg × 79 · Farm A · Stok 186 → 1.371 kg");
+    // The formless line keeps its own sub-line: no leading and no doubled separator.
+    expect(panel()).toHaveTextContent("Farm B · Stok 2.000 → 2.300 butir");
+    expect(within(panel()).getByText(/^Farm B ·/)).toBeInTheDocument();
   });
 
   it("notes the scale reading on a Tonase line", () => {
@@ -779,7 +788,8 @@ describe("InflowForm — Ringkasan with forms", () => {
     fireEvent.change(screen.getByLabelText("Berat per satuan"), { target: { value: "16,8" } });
     fireEvent.change(screen.getByLabelText("Jumlah (satuan)"), { target: { value: "48" } });
 
-    expect(within(panel()).getByText(/Tonase × 48 \(16,8 kg\)/)).toBeInTheDocument();
+    // Anchored: with no faktur the note still opens the sub-line.
+    expect(within(panel()).getByText(/^Tonase × 48 \(16,8 kg\) ·/)).toBeInTheDocument();
   });
 
   it("chains stock before to after down two lines of one product", () => {

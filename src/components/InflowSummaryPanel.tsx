@@ -80,7 +80,8 @@ export function InflowSummaryPanel({ date, groups, submitting, brokenNote }: Inf
                       </span>
                     </div>
                     <div className="mt-0.5 text-[12.5px] tabular-nums text-ek-mfg">
-                      {line.invoiceSupplier && `${line.invoiceSupplier} · `}
+                      {/* Spec order: Bentuk, then faktur, then the stock line. Each part
+                          carries its own trailing separator, so any of them can be absent. */}
                       {line.formName && (
                         <>
                           {line.formName} × {nf(line.formCount)}
@@ -88,6 +89,7 @@ export function InflowSummaryPanel({ date, groups, submitting, brokenNote }: Inf
                           {" · "}
                         </>
                       )}
+                      {line.invoiceSupplier && `${line.invoiceSupplier} · `}
                       {beforeAfter}
                       <b className="font-bold text-ek-fg">{nf(line.after)}</b>
                       {afterAfter}
