@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formsFor, findForm, entryUnit, toNative, formUnitWord,
-  TONASE_MIN_KG, TONASE_MAX_KG, type EggForm,
+  TONASE_MIN_KG, TONASE_MAX_KG, TONASE_STEP_KG, type EggForm,
 } from "@/lib/eggForms";
 import type { ItemType } from "@/types/inventory";
 
@@ -100,6 +100,10 @@ describe("toNative", () => {
     expect(toNative({ form: TONASE, count: 10, tonaseKg: 16.8, ...btr })).toBeNull();
   });
 
+  it("refuses a kg-sized form on a butir product: a weight per bundle is kg-only", () => {
+    expect(toNative({ form: IKET15, count: 79, ...btr })).toBeNull();
+  });
+
   it("passes Curah and Langsung through as typed", () => {
     expect(toNative({ form: CURAH, count: 24, ...kg })).toBe(24);
     expect(toNative({ form: null, count: 52.89, ...kg })).toBe(52.89);
@@ -133,8 +137,10 @@ describe("formUnitWord", () => {
 });
 
 describe("Tonase bounds", () => {
-  it("are a wide sanity range, not a tight band", () => {
-    expect(TONASE_MIN_KG).toBeLessThan(10);
-    expect(TONASE_MAX_KG).toBeGreaterThan(20);
+  // A wide sanity range, not a tight band: the spec fixes all three numbers.
+  it("are the values the spec states", () => {
+    expect(TONASE_MIN_KG).toBe(5);
+    expect(TONASE_MAX_KG).toBe(30);
+    expect(TONASE_STEP_KG).toBe(0.1);
   });
 });

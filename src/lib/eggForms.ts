@@ -74,7 +74,11 @@ export function toNative(args: {
   }
 
   if (form.size == null || form.size <= 0) return null;
-  if (form.unit === "kg") return round2(count * form.size);
+  if (form.unit === "kg") {
+    // A weight per bundle only makes sense on a kg product.
+    if (nativeUnit !== "kg") return null;
+    return round2(count * form.size);
+  }
 
   // butir-sized bundle
   if (nativeUnit === "kg") {
