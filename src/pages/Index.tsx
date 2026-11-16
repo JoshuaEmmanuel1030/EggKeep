@@ -174,7 +174,7 @@ const Index = () => {
         {...paneA11y}
       >
         <div className={isTablet ? "contents" : "max-w-2xl mx-auto"}>
-          <InflowForm tablet={isTablet} stockSummary={stockSummary} onSubmit={handleInflowSubmit} />
+          <InflowForm tablet={isTablet} stockSummary={stockSummary} inflows={inflows} onSubmit={handleInflowSubmit} />
         </div>
       </TabsContent>
 

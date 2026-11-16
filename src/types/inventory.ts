@@ -48,6 +48,12 @@ export interface InflowEntry {
   createdAt: string;
   category: InventoryCategory;
   invoiceSupplier?: string;
+  /** Masuk Bentuk: the catalogue form id this line was entered in; null = Langsung. */
+  form?: string | null;
+  /** How many of that form were entered. `quantityInButir` is still the native result. */
+  formCount?: number;
+  /** kg per satuan used for a weighed form, kept so history survives later loads. */
+  tonaseKg?: number;
   voidedAt?: string;
   voidReason?: string;
   /** Set on rows written by the Penyesuaian Stok Fisik button: stock, but not a receipt. */

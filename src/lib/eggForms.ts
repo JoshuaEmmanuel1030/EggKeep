@@ -69,7 +69,9 @@ export function toNative(args: {
   if (form.unit === "weighed") {
     // Tonase is a weight per satuan, so it only makes sense on a kg product.
     if (nativeUnit !== "kg") return null;
-    if (tonaseKg == null || tonaseKg <= 0) return null;
+    // The bounds are enforced here, not just by the stepper: a pasted weight never
+    // blurs, so this is the only check every path goes through.
+    if (tonaseKg == null || tonaseKg < TONASE_MIN_KG || tonaseKg > TONASE_MAX_KG) return null;
     return round2(count * tonaseKg);
   }
 

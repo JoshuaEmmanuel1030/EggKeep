@@ -11,11 +11,14 @@ import {
   InflowEntry,
   InventoryCategory,
   ConversionMap,
+  ItemType,
   StockSummary,
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { convertToButir, getProductUnit, getStockUnit } from "@/lib/inventory";
-import { parseQtyInput } from "@/lib/stockCount";
+import { parseQtyInput, qtyInputText } from "@/lib/stockCount";
+import { BentukRow } from "@/components/inflow/BentukRow";
+import { entryUnit, findForm, formUnitWord, formsFor, toNative, type EggForm } from "@/lib/eggForms";
 import { Box, Egg, Package, Tag, PackagePlus, Plus, Trash2, ChevronsUpDown, Check, Calculator, type LucideIcon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -29,6 +32,9 @@ interface InflowFormProps {
   onSubmit: (entries: InflowEntry[], userEmail: string) => Promise<boolean>;
   // Tablet (7a) only: the Ringkasan's stock before -> after.
   stockSummary?: StockSummary[];
+  // Masuk Bentuk: for prefilling a weighed form's kg per satuan from the day's
+  // most recent receipt.
+  inflows?: InflowEntry[];
   tablet?: boolean;
 }
 
@@ -37,6 +43,11 @@ interface CategoryItem {
   product: string;
   quantity: string;
   invoiceSupplier: string;
+  /** Masuk Bentuk: catalogue form id; null/absent = Langsung. When set, `quantity`
+   *  is a count of that form, not a native-unit amount. */
+  form?: string | null;
+  /** Raw text for a weighed form's kg per satuan. */
+  tonaseKg?: string;
 }
 
 interface CategoryData {
@@ -60,23 +71,46 @@ const TB_ROW = "grid grid-cols-[28px_minmax(0,1fr)_140px_170px_44px] items-cente
 const BROKEN_INPUT =
   "border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/15 focus-visible:shadow-[0_0_0_3px_rgba(239,68,68,0.15)]";
 
-// Jumlah in the product's native unit (kg-native: the number IS the stock quantity).
-const parseItemQty = (item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap) =>
-  parseQtyInput(item.quantity, getStockUnit(item.product, category, conversionMap));
+// What the Jumlah field holds: a count when a form is chosen, otherwise the
+// native-unit amount (kg-native: the number IS the stock quantity).
+const parseEnteredQty = (
+  item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap, forms: EggForm[]
+) =>
+  parseQtyInput(
+    item.quantity,
+    entryUnit(findForm(forms, item.form), getStockUnit(item.product, category, conversionMap))
+  );
+
+// The native-unit quantity the line will record. Null when it can't be worked out
+// yet — including a weighed form with no weight, which is why that blocks submit.
+const nativeItemQty = (
+  item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap, forms: EggForm[]
+) =>
+  toNative({
+    form: findForm(forms, item.form),
+    count: parseEnteredQty(item, category, conversionMap, forms),
+    nativeUnit: getStockUnit(item.product, category, conversionMap),
+    eggsPerUnit: conversionMap[item.product]?.eggs_per_unit,
+    tonaseKg: parseQtyInput(item.tonaseKg ?? "", "kg"),
+  });
 
 // A row counts only if handleSubmit will record it.
-const isValidItem = (item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap) =>
-  !!item.product && (parseItemQty(item, category, conversionMap) ?? 0) > 0;
+const isValidItem = (
+  item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap, forms: EggForm[]
+) => !!item.product && (nativeItemQty(item, category, conversionMap, forms) ?? 0) > 0;
 
-// Typed but won't be recorded (bad number, no product, 0): blocks the submit, so
-// it's never dropped silently beside valid rows. The same rule as isBrokenKasLine.
-const isBrokenItem = (item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap) =>
-  item.quantity.trim() !== "" && !isValidItem(item, category, conversionMap);
+// Typed but won't be recorded (bad number, no product, 0, no Tonase weight):
+// blocks the submit, so it's never dropped silently beside valid rows. The same
+// rule as isBrokenKasLine.
+const isBrokenItem = (
+  item: CategoryItem, category: InventoryCategory, conversionMap: ConversionMap, forms: EggForm[]
+) => item.quantity.trim() !== "" && !isValidItem(item, category, conversionMap, forms);
 
-export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: InflowFormProps) {
+export function InflowForm({ onSubmit, stockSummary = [], inflows = [], tablet = false }: InflowFormProps) {
   const { user } = useAuth();
   const { t } = useLanguage();
-  const { getTypesByCategory, conversionMap, eggProductNames } = useItemTypes();
+  const { getTypesByCategory, conversionMap, eggProductNames, itemTypes } = useItemTypes();
+  const [openPickerId, setOpenPickerId] = useState<string | null>(null);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [submitting, setSubmitting] = useState(false);
   
@@ -125,19 +159,47 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
     }));
   };
 
+  // A weighed form's weight: whatever was last typed on another line in this form,
+  // else the newest saved receipt for the same date, else empty — which blocks
+  // submit until someone fills it in.
+  const prefillTonaseKg = (data: Record<InventoryCategory, CategoryData>): string => {
+    for (const category of CATEGORIES) {
+      for (const item of [...data[category].items].reverse()) {
+        if (parseQtyInput(item.tonaseKg ?? "", "kg") != null) return item.tonaseKg as string;
+      }
+    }
+    const saved = inflows
+      .filter((i) => i.date === date && i.tonaseKg != null && !i.voidedAt)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+    return saved?.tonaseKg != null ? qtyInputText(saved.tonaseKg) : "";
+  };
+
   const updateItem = (
     category: InventoryCategory,
     itemId: string,
     field: keyof CategoryItem,
-    value: string
+    value: string | null
   ) => {
     setCategoryData((prev) => ({
       ...prev,
       [category]: {
         ...prev[category],
-        items: prev[category].items.map((item) =>
-          item.id === itemId ? { ...item, [field]: value } : item
-        ),
+        items: prev[category].items.map((item) => {
+          if (item.id !== itemId) return item;
+          const next = { ...item, [field]: value } as CategoryItem;
+          // A count of iket must never be read as the previous kg amount, and a
+          // form from the old product must not survive into the new one.
+          if (field === "form" && value !== (item.form ?? null)) {
+            next.quantity = "";
+            const picked = findForm(formsFor(item.product, itemTypes), value);
+            next.tonaseKg = picked?.unit === "weighed" ? (item.tonaseKg || prefillTonaseKg(prev)) : "";
+          }
+          if (field === "product" && value !== item.product) {
+            next.form = null;
+            next.tonaseKg = "";
+          }
+          return next;
+        }),
       },
     }));
   };
@@ -151,11 +213,17 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
 
   // A switched-off category has no items (toggleCategory clears them).
   const totalItemCount = CATEGORIES.reduce(
-    (sum, category) => sum + categoryData[category].items.filter((i) => isValidItem(i, category, conversionMap)).length,
+    (sum, category) =>
+      sum +
+      categoryData[category].items.filter((i) =>
+        isValidItem(i, category, conversionMap, formsFor(i.product, itemTypes))
+      ).length,
     0
   );
   const brokenItems = CATEGORIES.flatMap((category) =>
-    categoryData[category].items.filter((i) => isBrokenItem(i, category, conversionMap))
+    categoryData[category].items.filter((i) =>
+      isBrokenItem(i, category, conversionMap, formsFor(i.product, itemTypes))
+    )
   );
   // Only a row with a product goes red, so that's the message that talks about red.
   const brokenNote =
@@ -174,14 +242,17 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
       for (const item of data.items) {
         if (!item.product || !item.quantity) continue;
 
-        const quantityNum = parseItemQty(item, category, conversionMap);
+        const forms = formsFor(item.product, itemTypes);
+        const form = findForm(forms, item.form);
+        const quantityNum = nativeItemQty(item, category, conversionMap, forms);
         if (quantityNum == null || quantityNum <= 0) continue;
 
         const unit = category === "egg" ? getProductUnit(item.product, conversionMap) : "pcs";
-        // kg-native: stock is stored in the product's own unit. The form already
-        // takes input in that unit (kg for weight-sold eggs, butir otherwise),
-        // so the entered quantity IS the stock quantity — no conversion.
+        // kg-native: stock is stored in the product's own unit, and nativeItemQty
+        // already returned it, so there is no conversion here.
         const quantityInButir = quantityNum;
+        const count = parseEnteredQty(item, category, conversionMap, forms);
+        const weight = parseQtyInput(item.tonaseKg ?? "", "kg");
 
         entries.push({
           id: crypto.randomUUID(),
@@ -194,6 +265,9 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
           createdAt: new Date().toISOString(),
           category,
           invoiceSupplier: item.invoiceSupplier || undefined,
+          form: form ? form.id : null,
+          formCount: form && count != null ? count : undefined,
+          tonaseKg: form?.unit === "weighed" && weight != null ? weight : undefined,
         });
       }
     }
@@ -241,9 +315,13 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
     items: categoryData[category].items,
     productOptions: getProductOptions(category),
     conversionMap,
+    itemTypes,
+    openPickerId,
+    onOpenPicker: setOpenPickerId,
     onAddItem: () => addItemToCategory(category),
     onRemoveItem: (itemId: string) => removeItemFromCategory(category, itemId),
-    onUpdateItem: (itemId: string, field: keyof CategoryItem, value: string) => updateItem(category, itemId, field, value),
+    onUpdateItem: (itemId: string, field: keyof CategoryItem, value: string | null) =>
+      updateItem(category, itemId, field, value),
   });
 
   if (tablet) {
@@ -255,8 +333,10 @@ export function InflowForm({ onSubmit, stockSummary = [], tablet = false }: Infl
     const groups: InflowSummaryGroup[] = enabled.map((category) => ({
       category,
       ...CATEGORY_LOOK[category],
-      lines: categoryData[category].items.filter((item) => isValidItem(item, category, conversionMap)).map((item) => {
-        const quantity = parseItemQty(item, category, conversionMap) as number;
+      lines: categoryData[category].items.filter((item) =>
+        isValidItem(item, category, conversionMap, formsFor(item.product, itemTypes))
+      ).map((item) => {
+        const quantity = nativeItemQty(item, category, conversionMap, formsFor(item.product, itemTypes)) as number;
         const now = stockSummary.find((s) => s.product === item.product)?.totalStock ?? 0;
         return {
           id: item.id,
@@ -417,9 +497,14 @@ interface CategorySectionProps {
   items: CategoryItem[];
   productOptions: string[];
   conversionMap: ConversionMap;
+  // Masuk Bentuk: the catalogue the forms come from, and which row's picker is open
+  // (one at a time, so the parent owns it).
+  itemTypes: ItemType[];
+  openPickerId: string | null;
+  onOpenPicker: (id: string | null) => void;
   onAddItem: () => void;
   onRemoveItem: (itemId: string) => void;
-  onUpdateItem: (itemId: string, field: keyof CategoryItem, value: string) => void;
+  onUpdateItem: (itemId: string, field: keyof CategoryItem, value: string | null) => void;
 }
 
 function CategorySection({
@@ -427,6 +512,9 @@ function CategorySection({
   items,
   productOptions,
   conversionMap,
+  itemTypes,
+  openPickerId,
+  onOpenPicker,
   onAddItem,
   onRemoveItem,
   onUpdateItem,
@@ -451,6 +539,9 @@ function CategorySection({
           category={category}
           productOptions={productOptions}
           conversionMap={conversionMap}
+          itemTypes={itemTypes}
+          openPickerId={openPickerId}
+          onOpenPicker={onOpenPicker}
           onRemove={() => onRemoveItem(item.id)}
           onUpdate={(field, value) => onUpdateItem(item.id, field, value)}
         />
@@ -475,6 +566,9 @@ function CategoryTable({
   items,
   productOptions,
   conversionMap,
+  itemTypes,
+  openPickerId,
+  onOpenPicker,
   onAddItem,
   onRemoveItem,
   onUpdateItem,
@@ -519,6 +613,9 @@ function CategoryTable({
               category={category}
               productOptions={productOptions}
               conversionMap={conversionMap}
+              itemTypes={itemTypes}
+              openPickerId={openPickerId}
+              onOpenPicker={onOpenPicker}
               onRemove={() => onRemoveItem(item.id)}
               onUpdate={(field, value) => onUpdateItem(item.id, field, value)}
             />
@@ -529,16 +626,24 @@ function CategoryTable({
   );
 }
 
-function TableItemRow({ item, index, category, productOptions, conversionMap, onRemove, onUpdate }: ItemRowProps) {
+function TableItemRow({
+  item, index, category, productOptions, conversionMap, itemTypes, openPickerId, onOpenPicker, onRemove, onUpdate,
+}: ItemRowProps) {
   const { t, language } = useLanguage();
   const locale = language === "id" ? "id-ID" : "en-US";
   const nf = (n: number) => n.toLocaleString(locale);
   const [open, setOpen] = useState(false);
 
-  const quantityNum = parseItemQty(item, category, conversionMap) ?? 0;
-  // Flag the number only once a product is picked (typing qty first is normal).
-  const broken = !!item.product && isBrokenItem(item, category, conversionMap);
   const unit = getStockUnit(item.product, category, conversionMap);
+  const forms = formsFor(item.product, itemTypes);
+  const form = findForm(forms, item.form);
+  const unitWord = formUnitWord(form, unit);
+  // What was typed (a count with a form, the native amount without) and what it
+  // comes to. Both 0 when the line can't be worked out: nothing to show.
+  const enteredQty = parseEnteredQty(item, category, conversionMap, forms) ?? 0;
+  const nativeQty = nativeItemQty(item, category, conversionMap, forms) ?? 0;
+  // Flag the number only once a product is picked (typing qty first is normal).
+  const broken = !!item.product && isBrokenItem(item, category, conversionMap, forms);
 
   return (
     <div className="flex flex-col gap-2 border-t border-ek-border px-3.5 py-2.5">
@@ -602,12 +707,12 @@ function TableItemRow({ item, index, category, productOptions, conversionMap, on
             inputMode="decimal"
             value={item.quantity}
             onChange={(e) => onUpdate("quantity", e.target.value)}
-            aria-label={`${t.common.quantity} (${unit})`}
+            aria-label={`${t.common.quantity} (${unitWord})`}
             aria-invalid={broken || undefined}
-            placeholder={t.outflow.enterQty}
-            className={cn(TB_CONTROL, "pr-[52px] font-semibold tabular-nums placeholder:font-normal", broken && BROKEN_INPUT)}
+            placeholder={form ? t.inflow.qtyPlaceholderForm : t.outflow.enterQty}
+            className={cn(TB_CONTROL, "pr-[66px] font-semibold tabular-nums placeholder:font-normal", broken && BROKEN_INPUT)}
           />
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13.5px] text-ek-mfg">{unit}</span>
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13.5px] text-ek-mfg">{unitWord}</span>
         </span>
 
         <Input
@@ -630,6 +735,17 @@ function TableItemRow({ item, index, category, productOptions, conversionMap, on
         </Button>
       </div>
 
+      <BentukRow
+        forms={forms}
+        formId={item.form ?? null}
+        tonaseKg={item.tonaseKg ?? ""}
+        nativeUnit={unit}
+        open={openPickerId === item.id}
+        onOpenChange={(next) => onOpenPicker(next ? item.id : null)}
+        onChangeForm={(id) => onUpdate("form", id)}
+        onChangeTonase={(value) => onUpdate("tonaseKg", value)}
+      />
+
       {category === "egg" && item.product && !conversionMap[item.product] && (
         <div className="ml-9 mr-[52px] flex items-center gap-2 rounded-[9px] bg-amber-50 px-3 py-2 text-sm text-amber-700">
           <Calculator aria-hidden className="h-[15px] w-[15px] shrink-0" />
@@ -637,14 +753,29 @@ function TableItemRow({ item, index, category, productOptions, conversionMap, on
         </div>
       )}
 
-      {/* kg eggs only: a butir egg is 1:1, so its line would just repeat the number. */}
-      {unit === "kg" && quantityNum > 0 && (
+      {/* Langsung on a butir product is 1:1, so its line would just repeat the
+          number. With a form chosen there is working worth showing. */}
+      {nativeQty > 0 && (unit === "kg" || !!form) && (
         <div className="ml-9 mr-[52px] flex items-center gap-2 rounded-[9px] bg-emerald-50 px-3 py-2 text-sm">
           <Calculator aria-hidden className="h-[15px] w-[15px] shrink-0 text-emerald-600" />
           <span>
-            <b className="font-bold">{nf(quantityNum)}</b> kg ={" "}
-            <b className="font-bold text-emerald-700">{nf(convertToButir(item.product, quantityNum, conversionMap))}</b> butir{" "}
-            <span className="text-ek-mfg">(× {nf(conversionMap[item.product].eggs_per_unit)} butir/kg)</span>
+            {form && form.unit !== "native" && (
+              <>
+                <b className="font-bold">{nf(enteredQty)}</b> {unitWord} ×{" "}
+                <b className="font-bold">
+                  {form.unit === "weighed" ? `${item.tonaseKg} kg` : `${nf(form.size as number)} ${form.unit}`}
+                </b>{" "}
+                ={" "}
+              </>
+            )}
+            <b className="font-bold">{nf(nativeQty)}</b> {unit}
+            {unit === "kg" && (
+              <>
+                {" = "}
+                <b className="font-bold text-emerald-700">{nf(convertToButir(item.product, nativeQty, conversionMap))}</b> butir{" "}
+                <span className="text-ek-mfg">(× {nf(conversionMap[item.product].eggs_per_unit)} butir/kg)</span>
+              </>
+            )}
           </span>
         </div>
       )}
@@ -658,20 +789,31 @@ interface ItemRowProps {
   category: InventoryCategory;
   productOptions: string[];
   conversionMap: ConversionMap;
+  itemTypes: ItemType[];
+  openPickerId: string | null;
+  onOpenPicker: (id: string | null) => void;
   onRemove: () => void;
-  onUpdate: (field: keyof CategoryItem, value: string) => void;
+  onUpdate: (field: keyof CategoryItem, value: string | null) => void;
 }
 
-function ItemRow({ item, index, category, productOptions, conversionMap, onRemove, onUpdate }: ItemRowProps) {
+function ItemRow({
+  item, index, category, productOptions, conversionMap, itemTypes, openPickerId, onOpenPicker, onRemove, onUpdate,
+}: ItemRowProps) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
-  const quantityNum = parseItemQty(item, category, conversionMap) ?? 0;
+  const forms = formsFor(item.product, itemTypes);
+  const form = findForm(forms, item.form);
   // Flag the number only once a product is picked (typing qty first is normal).
-  const broken = !!item.product && isBrokenItem(item, category, conversionMap);
-  const showConversion = category === "egg" && item.product && quantityNum > 0;
-  const convertedButir = showConversion ? convertToButir(item.product, quantityNum, conversionMap) : 0;
+  const broken = !!item.product && isBrokenItem(item, category, conversionMap, forms);
+  const enteredQty = parseEnteredQty(item, category, conversionMap, forms) ?? 0;
+  const nativeQty = nativeItemQty(item, category, conversionMap, forms) ?? 0;
+  // This layout has always shown the line for a butir egg too ("1500 pcs = 1.500
+  // butir"), so the form working is added in front of what it already showed.
+  const showConversion = category === "egg" && !!item.product && nativeQty > 0;
+  const convertedButir = showConversion ? convertToButir(item.product, nativeQty, conversionMap) : 0;
   const unit = category === "egg" && item.product ? getProductUnit(item.product, conversionMap) : "pcs";
+  const unitWord = formUnitWord(form, unit);
 
   return (
     <div className="space-y-2 p-3 bg-background rounded border">
@@ -731,14 +873,14 @@ function ItemRow({ item, index, category, productOptions, conversionMap, onRemov
 
         {/* Quantity */}
         <div className="space-y-1">
-          <Label className="text-xs">{t.common.quantity} {unit && `(${unit})`}</Label>
+          <Label className="text-xs">{t.common.quantity} {unitWord && `(${unitWord})`}</Label>
           <Input
             type="text"
             inputMode="decimal"
             value={item.quantity}
             onChange={(e) => onUpdate("quantity", e.target.value)}
             aria-invalid={broken || undefined}
-            placeholder={t.outflow.enterQty}
+            placeholder={form ? t.inflow.qtyPlaceholderForm : t.outflow.enterQty}
             className={cn("h-10", broken && BROKEN_INPUT)}
           />
         </div>
@@ -756,6 +898,17 @@ function ItemRow({ item, index, category, productOptions, conversionMap, onRemov
         </div>
       </div>
 
+      <BentukRow
+        forms={forms}
+        formId={item.form ?? null}
+        tonaseKg={item.tonaseKg ?? ""}
+        nativeUnit={getStockUnit(item.product, category, conversionMap)}
+        open={openPickerId === item.id}
+        onOpenChange={(next) => onOpenPicker(next ? item.id : null)}
+        onChangeForm={(id) => onUpdate("form", id)}
+        onChangeTonase={(value) => onUpdate("tonaseKg", value)}
+      />
+
       {category === "egg" && item.product && !conversionMap[item.product] && (
         <div className="flex items-center gap-2 p-2 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 rounded text-xs">
           <Calculator className="h-3 w-3 shrink-0" />
@@ -771,7 +924,16 @@ function ItemRow({ item, index, category, productOptions, conversionMap, onRemov
         <div className="flex items-center gap-2 p-2 bg-accent/50 rounded text-xs">
           <Calculator className="h-3 w-3 text-primary" />
           <span>
-            <strong>{quantityNum}</strong> {unit} ={" "}
+            {form && form.unit !== "native" && (
+              <>
+                <strong>{enteredQty}</strong> {unitWord} ×{" "}
+                <strong>
+                  {form.unit === "weighed" ? `${item.tonaseKg} kg` : `${form.size} ${form.unit}`}
+                </strong>{" "}
+                ={" "}
+              </>
+            )}
+            <strong>{nativeQty}</strong> {unit} ={" "}
             <strong className="text-primary">{convertedButir.toLocaleString()}</strong> butir
             {unit === "kg" && conversionMap[item.product] && (
               <span className="text-muted-foreground ml-1">

@@ -96,6 +96,18 @@ describe("toNative", () => {
     expect(toNative({ form: TONASE, count: 10, tonaseKg: 0, ...kg })).toBeNull();
   });
 
+  // The stepper and the blur restore keep the field inside the range, but a paste
+  // never blurs, so the quantity itself has to refuse a weight outside it.
+  it("returns null for a weight below the floor or above the ceiling", () => {
+    expect(toNative({ form: TONASE, count: 10, tonaseKg: 1.6, ...kg })).toBeNull();
+    expect(toNative({ form: TONASE, count: 10, tonaseKg: 168, ...kg })).toBeNull();
+  });
+
+  it("accepts the bounds themselves", () => {
+    expect(toNative({ form: TONASE, count: 10, tonaseKg: TONASE_MIN_KG, ...kg })).toBe(50);
+    expect(toNative({ form: TONASE, count: 10, tonaseKg: TONASE_MAX_KG, ...kg })).toBe(300);
+  });
+
   it("refuses a weighed form on a butir product: Tonase is kg-only", () => {
     expect(toNative({ form: TONASE, count: 10, tonaseKg: 16.8, ...btr })).toBeNull();
   });
