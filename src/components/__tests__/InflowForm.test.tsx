@@ -642,6 +642,21 @@ describe("InflowForm — Bentuk", () => {
     expect(screen.getByRole("button", { name: /Langsung \(kg\)/ })).toBeInTheDocument();
   });
 
+  // The other half of this rule — a Langsung line keeping its number across a
+  // product change — is pinned exactly by "shows the conversion line for kg eggs
+  // only; a butir egg has none" (300 survives NEGERI OMEGA -> KAMPUNG BIASA).
+  it("clears a form's count when the product changes, so 79 iket is never read as 79 kg", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "79" } });
+
+    pickProduct(0, "KAMPUNG BIASA");
+    expect(screen.getByLabelText("Jumlah (butir)")).toHaveValue("");
+  });
+
   it("drops a Tonase weight when the product changes", () => {
     renderForm();
     toggle("Telur");

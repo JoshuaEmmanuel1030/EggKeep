@@ -195,6 +195,10 @@ export function InflowForm({ onSubmit, stockSummary = [], inflows = [], tablet =
             next.tonaseKg = picked?.unit === "weighed" ? (item.tonaseKg || prefillTonaseKg(prev)) : "";
           }
           if (field === "product" && value !== item.product) {
+            // The new product is back on Langsung, so a count of the old form would
+            // be read as a native amount: 79 iket must not become 79 kg. A line
+            // that never had a form keeps its number, as it always has.
+            if (item.form) next.quantity = "";
             next.form = null;
             next.tonaseKg = "";
           }
