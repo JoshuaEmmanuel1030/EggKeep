@@ -792,7 +792,9 @@ export function BentukRow({
   const size = sizeText(form, nativeUnit);
 
   const step = (direction: 1 | -1) => {
-    const from = parsedWeight ?? (direction === 1 ? TONASE_MIN_KG - TONASE_STEP_KG : TONASE_MAX_KG + TONASE_STEP_KG);
+    // An empty field steps from the FLOOR in either direction: one tap must never
+    // land on the heaviest weight in the range.
+    const from = parsedWeight ?? TONASE_MIN_KG - (direction === 1 ? TONASE_STEP_KG : 0);
     const next = Math.min(TONASE_MAX_KG, Math.max(TONASE_MIN_KG, Math.round((from + direction * TONASE_STEP_KG) * 10) / 10));
     onChangeTonase(qtyInputText(next));
   };
