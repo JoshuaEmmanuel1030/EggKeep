@@ -57,7 +57,9 @@ export function BentukRow({
 
   const step = (direction: 1 | -1) => {
     const parsed = parseQtyInput(tonaseKg, "kg");
-    const from = parsed ?? (direction === 1 ? TONASE_MIN_KG - TONASE_STEP_KG : TONASE_MAX_KG + TONASE_STEP_KG);
+    // An empty field steps from the floor in either direction: one tap must never
+    // land on the heaviest weight in the range.
+    const from = parsed ?? TONASE_MIN_KG - (direction === 1 ? TONASE_STEP_KG : 0);
     const next = Math.min(TONASE_MAX_KG, Math.max(TONASE_MIN_KG, Math.round((from + direction * TONASE_STEP_KG) * 10) / 10));
     emitWeight(qtyInputText(next));
   };

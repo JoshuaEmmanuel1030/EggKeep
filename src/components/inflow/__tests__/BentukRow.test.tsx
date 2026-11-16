@@ -121,6 +121,18 @@ describe("BentukRow", () => {
     expect(props.onChangeTonase).toHaveBeenCalledWith("5");
   });
 
+  it("starts from the floor stepping down from empty too — never the ceiling", () => {
+    const props = setup({ formId: "tonase", tonaseKg: "" });
+    fireEvent.click(screen.getByRole("button", { name: /−|-/ }));
+    expect(props.onChangeTonase).toHaveBeenCalledWith("5");
+  });
+
+  it("does not step below the range", () => {
+    const props = setup({ formId: "tonase", tonaseKg: "5" });
+    fireEvent.click(screen.getByRole("button", { name: /−|-/ }));
+    expect(props.onChangeTonase).toHaveBeenCalledWith("5");
+  });
+
   it("does not step past the range", () => {
     const props = setup({ formId: "tonase", tonaseKg: "30" });
     fireEvent.click(screen.getByRole("button", { name: /\+/ }));
