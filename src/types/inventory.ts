@@ -1,3 +1,5 @@
+import type { EggForm } from "@/lib/eggForms";
+
 export type InventoryCategory = "egg" | "box" | "label" | "packaging";
 
 export interface ProductConfig {
@@ -29,6 +31,10 @@ export interface ItemType {
   // True when this is an auto-created Retakan (hairline-crack) child of another
   // egg product. Set by the record_return RPC; display-only in the UI.
   isRetakan?: boolean;
+  // Egg-only: the forms this product can arrive in, in display order. Undefined
+  // (or []) means the Bentuk row does not render and entry stays native-unit.
+  // See src/lib/eggForms.ts.
+  forms?: EggForm[];
 }
 
 export interface InflowEntry {

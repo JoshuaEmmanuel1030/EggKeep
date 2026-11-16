@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ItemType, InventoryCategory, ConversionMap, buildConversionMap } from "@/types/inventory";
+import type { EggForm } from "@/lib/eggForms";
 import { BoxCapacityMap, buildBoxCapacityMap, LabelsPerPackMap, buildLabelsPerPackMap } from "@/lib/outflowCalculator";
 
 export function useItemTypes() {
@@ -40,6 +41,9 @@ export function useItemTypes() {
         countTolerance:
           (row as { count_tolerance?: number | null }).count_tolerance ?? undefined,
         isRetakan: (row as { is_retakan?: boolean | null }).is_retakan ?? false,
+        // Egg-only: the forms this product can arrive in (Masuk Bentuk).
+        // (via unknown: the generated row type calls this column Json.)
+        forms: ((row as { forms?: unknown }).forms as EggForm[] | null) ?? undefined,
       }));
 
       setItemTypes(mapped);
