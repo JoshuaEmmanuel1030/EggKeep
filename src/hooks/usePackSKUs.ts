@@ -6,6 +6,12 @@ import { PackSKU, PackSKUInput } from "@/types/catalog";
 const unitLabelColumn = (input: PackSKUInput) =>
   (input.unitLabel ? { unit_label: input.unitLabel } : {}) as Record<string, never>;
 
+// Always written, null included: clearing the field has to restore the product
+// rate, which "write it only when set" could not express. Cast like unit_label
+// because eggs_per_kg is newer than the generated types.
+const eggsPerKgColumn = (input: PackSKUInput) =>
+  ({ eggs_per_kg: input.eggsPerKg ?? null }) as unknown as Record<string, never>;
+
 export function usePackSKUs() {
   const queryClient = useQueryClient();
 
@@ -33,6 +39,8 @@ export function usePackSKUs() {
         boxMode: row.box_mode,
         // unit_label: Phase 2 column, not in the generated types yet.
         unitLabel: ((row as { unit_label?: string }).unit_label === "box" ? "box" : "pak") as "pak" | "box",
+        // eggs_per_kg: added 2026-11-17, not in the generated types yet.
+        eggsPerKg: (row as { eggs_per_kg?: number | null }).eggs_per_kg ?? null,
       }));
     },
   });
@@ -51,6 +59,7 @@ export function usePackSKUs() {
           base_pack_code: input.basePackCode ?? null,
           box_mode: input.boxMode ?? null,
           ...unitLabelColumn(input),
+          ...eggsPerKgColumn(input),
         })
         .select()
         .single();
@@ -77,6 +86,7 @@ export function usePackSKUs() {
           base_pack_code: input.basePackCode ?? null,
           box_mode: input.boxMode ?? null,
           ...unitLabelColumn(input),
+          ...eggsPerKgColumn(input),
         })
         .eq("id", id)
         .select()
