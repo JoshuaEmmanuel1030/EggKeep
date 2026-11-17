@@ -13,6 +13,22 @@ import type { InflowEntry, StockSummary } from "@/types/inventory";
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "u1", email: "staff@js.test" } }) }));
 vi.mock("@/hooks/useItemTypes", () => ({
   useItemTypes: () => ({
+    itemTypes: [
+      {
+        id: "1", category: "egg", name: "NEGERI OMEGA", unit: "kg", eggsPerUnit: 15.5,
+        forms: [
+          { id: "iket15kg", name: "Iket 15 kg", size: 15, unit: "kg", unitWord: "iket" },
+          { id: "tray30", name: "Tray 30", size: 30, unit: "butir", unitWord: "tray" },
+          { id: "curah", name: "Curah", size: 1, unit: "native" },
+          { id: "tonase", name: "Tonase", unit: "weighed", unitWord: "satuan" },
+        ],
+      },
+      {
+        id: "2", category: "egg", name: "KAMPUNG BIASA", unit: "btr", eggsPerUnit: 1,
+        forms: [{ id: "iket300", name: "Iket 300", size: 300, unit: "butir", unitWord: "iket" }],
+      },
+      { id: "3", category: "egg", name: "PUYUH BARU" }, // no conversion, no forms
+    ],
     conversionMap: {
       "NEGERI OMEGA": { unit: "kg", eggs_per_unit: 15.5 },
       "KAMPUNG BIASA": { unit: "butir", eggs_per_unit: 1 },
@@ -92,7 +108,8 @@ describe.each([
 
     const [entries, email] = await submitted(onSubmit);
     expect(email).toBe("staff@js.test");
-    const base = { id: expect.any(String), createdAt: expect.any(String), date: "2026-10-20" };
+    // form: null on every row — no Bentuk was chosen, and non-egg rows have none to choose.
+    const base = { id: expect.any(String), createdAt: expect.any(String), date: "2026-10-20", form: null };
     expect(entries).toEqual([
       // kg-native: the typed number IS the stock quantity, never converted.
       { ...base, category: "egg", product: "NEGERI OMEGA", unit: "kg", quantity: 52.89, quantityInButir: 52.89, remainingButir: 52.89, invoiceSupplier: "Farm A" },
@@ -554,5 +571,280 @@ describe("InflowForm phone layout", () => {
     pickProduct(0, "KAMPUNG BIASA");
     typeQty(0, "1.500");
     expect(screen.getByText(/butir$/)).toHaveTextContent(/1500 pcs = 1[.,]500 butir/);
+  });
+});
+
+// Masuk Bentuk. Driven through the tablet row, the layout whose fields are
+// labelled; the phone row keeps its own copy of the quantity field, so it gets a
+// case of its own at the end.
+describe("InflowForm — Bentuk", () => {
+  const renderForm = (onSubmit = vi.fn(async () => true), tablet = true) => {
+    render(form(onSubmit, tablet));
+    return onSubmit;
+  };
+  // The Bentuk trigger is the only button carrying aria-expanded, so a row's
+  // picker opens without matching on whichever form the trigger currently shows.
+  const openPicker = (row = 0) => fireEvent.click(screen.getAllByRole("button", { expanded: false })[row]);
+  // Scoped to the open picker: with Langsung chosen, the trigger and the first
+  // option read the same.
+  const pickForm = (name: RegExp) =>
+    fireEvent.click(within(screen.getByRole("group", { name: "Bentuk" })).getByRole("button", { name }));
+  const addRow = () => fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
+
+  it("offers forms for an egg product and none for packaging", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    expect(screen.getByRole("button", { name: /Langsung \(kg\)/ })).toBeInTheDocument();
+
+    toggle("Kemasan");
+    pickProduct(1, "MIKA 10");
+    expect(screen.getAllByText("Bentuk")).toHaveLength(1); // the egg row's, not the packaging row's
+  });
+
+  it("records a kg form as its native kg, not as the count", async () => {
+    const onSubmit = renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "79" } });
+
+    const [entries] = await submitted(onSubmit);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      product: "NEGERI OMEGA", quantity: 1185, quantityInButir: 1185,
+      form: "iket15kg", formCount: 79,
+    });
+  });
+
+  it("clears the quantity when the form changes, so 10 kg is never read as 10 iket", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    fireEvent.change(screen.getByLabelText("Jumlah (kg)"), { target: { value: "10" } });
+    openPicker();
+    pickForm(/Iket 15 kg/);
+    expect(screen.getByLabelText("Jumlah (iket)")).toHaveValue("");
+  });
+
+  it("resets the form to Langsung when the product changes", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Tray 30/);
+
+    pickProduct(0, "KAMPUNG BIASA");
+    expect(screen.getByRole("button", { name: /Langsung \(butir\)/ })).toBeInTheDocument();
+    // And it is gone, not merely unresolvable on the new product: coming back must
+    // not bring Tray 30 with it.
+    pickProduct(0, "NEGERI OMEGA");
+    expect(screen.getByRole("button", { name: /Langsung \(kg\)/ })).toBeInTheDocument();
+  });
+
+  // The other half of this rule — a Langsung line keeping its number across a
+  // product change — is pinned exactly by "shows the conversion line for kg eggs
+  // only; a butir egg has none" (300 survives NEGERI OMEGA -> KAMPUNG BIASA).
+  it("clears a form's count when the product changes, so 79 iket is never read as 79 kg", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "79" } });
+
+    pickProduct(0, "KAMPUNG BIASA");
+    expect(screen.getByLabelText("Jumlah (butir)")).toHaveValue("");
+  });
+
+  it("drops a Tonase weight when the product changes", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Tonase/);
+    fireEvent.change(screen.getByLabelText("Berat per satuan"), { target: { value: "16,8" } });
+
+    pickProduct(0, "KAMPUNG BIASA");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Tonase/);
+    // The new product is weighed on its own load, so nothing is carried over.
+    expect(screen.getByLabelText("Berat per satuan")).toHaveValue("");
+  });
+
+  // Picking a form clears Jumlah, so a count-less form row has nothing typed for the
+  // broken-row rule to key off. Without the form clause it submits as if it weren't
+  // there: the receipt vanishes behind a success toast for the valid row beside it.
+  it("blocks the submit on a form chosen with no count, and a valid row does not rescue it", async () => {
+    const onSubmit = renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+
+    addRow();
+    pickProduct(1, "KAMPUNG BIASA");
+    fireEvent.change(screen.getByLabelText("Jumlah (butir)"), { target: { value: "300" } });
+
+    expect(screen.getByLabelText("Jumlah (iket)")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(/Perbaiki jumlah/)).toBeInTheDocument();
+    expect(submitButton()).toBeDisabled();
+    fireEvent.submit(submitButton().closest("form") as HTMLFormElement);
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // Filling the count clears it, and then both rows go.
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "2" } });
+    expect(screen.queryByText(/Perbaiki jumlah/)).not.toBeInTheDocument();
+    const [entries] = await submitted(onSubmit);
+    expect(entries.map((e) => e.quantity)).toEqual([30, 300]);
+  });
+
+  it("does not flag a freshly added empty row, which has no form", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "2" } });
+
+    addRow();
+    expect(screen.queryByText(/Perbaiki jumlah/)).not.toBeInTheDocument();
+    expect(submitButton()).not.toBeDisabled();
+  });
+
+  it("blocks the submit while a Tonase line has no weight", () => {
+    const onSubmit = renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Tonase/);
+    fireEvent.change(screen.getByLabelText("Jumlah (satuan)"), { target: { value: "10" } });
+
+    expect(screen.getByLabelText("Jumlah (satuan)")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(/Perbaiki jumlah/)).toBeInTheDocument();
+    expect(submitButton()).toBeDisabled();
+    fireEvent.submit(submitButton().closest("form") as HTMLFormElement);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("records a Tonase line at the weight entered on it", async () => {
+    const onSubmit = renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Tonase/);
+    const weight = screen.getByLabelText("Berat per satuan");
+    fireEvent.change(weight, { target: { value: "16,8" } });
+    fireEvent.blur(weight);
+    fireEvent.change(screen.getByLabelText("Jumlah (satuan)"), { target: { value: "10" } });
+
+    const [entries] = await submitted(onSubmit);
+    expect(entries[0]).toMatchObject({ quantityInButir: 168, form: "tonase", formCount: 10, tonaseKg: 16.8 });
+  });
+
+  it("prefills a second Tonase line with the weight already typed", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Tonase/);
+    fireEvent.change(screen.getByLabelText("Berat per satuan"), { target: { value: "16,8" } });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
+    pickProduct(1, "NEGERI OMEGA");
+    openPicker(1);
+    pickForm(/Tonase/);
+    expect(screen.getAllByLabelText("Berat per satuan")[1]).toHaveValue("16,8");
+  });
+
+  it("shows the working for a butir product once a form is chosen", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "KAMPUNG BIASA");
+    fireEvent.change(screen.getByLabelText("Jumlah (butir)"), { target: { value: "1.500" } });
+    expect(screen.queryByText(/× 300 butir/)).not.toBeInTheDocument();
+
+    openPicker();
+    pickForm(/Iket 300/);
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "5" } });
+    expect(screen.getByText(/iket ×/)).toHaveTextContent("5 iket × 300 butir = 1.500 butir");
+  });
+
+  it("shows no Bentuk row for a product with no forms", () => {
+    renderForm();
+    toggle("Telur");
+    pickProduct(0, "PUYUH BARU");
+    expect(screen.queryByText("Bentuk")).not.toBeInTheDocument();
+  });
+
+  it("carries the form into the phone row's quantity field and working too", () => {
+    renderForm(vi.fn(async () => true), false);
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+    expect(screen.getByText("Jumlah (iket)")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Jumlah"), { target: { value: "79" } });
+    expect(screen.getByText(/iket ×/)).toHaveTextContent("79 iket × 15 kg = 1185 kg");
+  });
+});
+
+// The Ringkasan is where a line's Bentuk and its running stock show. Two lines of
+// one product are what a form change forces (one delivery, two forms), so the
+// before -> after figures have to run down the lines, not all read live stock.
+describe("InflowForm — Ringkasan with forms", () => {
+  const openPicker = (row = 0) => fireEvent.click(screen.getAllByRole("button", { expanded: false })[row]);
+  const pickForm = (name: RegExp) =>
+    fireEvent.click(within(screen.getByRole("group", { name: "Bentuk" })).getByRole("button", { name }));
+  const panel = () => screen.getByRole("complementary");
+
+  it("notes the form and count ahead of the faktur, and leaves a formless line alone", () => {
+    render(form(vi.fn(async () => true), true));
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    typeSupplier(0, "Farm A");
+    openPicker();
+    pickForm(/Iket 15 kg/);
+    fireEvent.change(screen.getByLabelText("Jumlah (iket)"), { target: { value: "79" } });
+    fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
+    pickProduct(1, "KAMPUNG BIASA");
+    typeSupplier(1, "Farm B");
+    fireEvent.change(screen.getByLabelText("Jumlah (butir)"), { target: { value: "300" } });
+
+    // Spec order: Bentuk · faktur · stock. The note before the faktur, not after it.
+    expect(panel()).toHaveTextContent("Iket 15 kg × 79 · Farm A · Stok 186 → 1.371 kg");
+    // The formless line keeps its own sub-line: no leading and no doubled separator.
+    expect(panel()).toHaveTextContent("Farm B · Stok 2.000 → 2.300 butir");
+    expect(within(panel()).getByText(/^Farm B ·/)).toBeInTheDocument();
+  });
+
+  it("notes the scale reading on a Tonase line", () => {
+    render(form(vi.fn(async () => true), true));
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    openPicker();
+    pickForm(/Tonase/);
+    fireEvent.change(screen.getByLabelText("Berat per satuan"), { target: { value: "16,8" } });
+    fireEvent.change(screen.getByLabelText("Jumlah (satuan)"), { target: { value: "48" } });
+
+    // Anchored: with no faktur the note still opens the sub-line.
+    expect(within(panel()).getByText(/^Tonase × 48 \(16,8 kg\) ·/)).toBeInTheDocument();
+  });
+
+  it("chains stock before to after down two lines of one product", () => {
+    render(form(vi.fn(async () => true), true));
+    toggle("Telur");
+    pickProduct(0, "NEGERI OMEGA");
+    typeQty(0, "100");
+    fireEvent.click(screen.getAllByRole("button", { name: /Tambah Item/ })[0]);
+    pickProduct(1, "NEGERI OMEGA");
+    typeQty(1, "50");
+
+    // The second line starts where the first left off, so the stock is never
+    // promised twice over.
+    expect(panel()).toHaveTextContent("Stok 186 → 286 kg");
+    expect(panel()).toHaveTextContent("Stok 286 → 336 kg");
   });
 });

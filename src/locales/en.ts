@@ -460,6 +460,12 @@ export const en = {
     off: 'Off',
     stockLine: 'Stock {now} → {after} {unit}',
     noConversion: 'No unit conversion set for {product} — the quantity is recorded as butir 1:1. Set its unit in the Catalog if it is sold by kg.',
+    form: 'Form',
+    formDirect: 'Direct ({unit})',
+    formDirectHint: 'already weighed / known',
+    qtyPlaceholderForm: 'Quantity',
+    tonaseWeightToday: 'Weight per satuan',
+    tonaseSizeLine: '× {kg} kg per satuan · changes with each load',
   },
 
   // Outflow

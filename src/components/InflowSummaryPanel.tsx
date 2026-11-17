@@ -14,6 +14,11 @@ export interface InflowSummaryLine {
   now: number;
   after: number;
   unit: string;
+  /** Masuk Bentuk: set together when the line was entered as a count of a form. */
+  formName?: string;
+  formCount?: number;
+  /** Weighed forms only, as typed, so the note shows the scale reading. */
+  tonaseKg?: string;
 }
 
 export interface InflowSummaryGroup {
@@ -75,6 +80,15 @@ export function InflowSummaryPanel({ date, groups, submitting, brokenNote }: Inf
                       </span>
                     </div>
                     <div className="mt-0.5 text-[12.5px] tabular-nums text-ek-mfg">
+                      {/* Spec order: Bentuk, then faktur, then the stock line. Each part
+                          carries its own trailing separator, so any of them can be absent. */}
+                      {line.formName && (
+                        <>
+                          {line.formName} × {nf(line.formCount)}
+                          {line.tonaseKg ? ` (${line.tonaseKg} kg)` : ""}
+                          {" · "}
+                        </>
+                      )}
                       {line.invoiceSupplier && `${line.invoiceSupplier} · `}
                       {beforeAfter}
                       <b className="font-bold text-ek-fg">{nf(line.after)}</b>
