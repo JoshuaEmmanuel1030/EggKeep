@@ -14,6 +14,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -31,6 +32,17 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { PackSKU, PackSKUInput } from "@/types/catalog";
+import { parseQtyInput, qtyInputText } from "@/lib/stockCount";
+
+// A sanity band, not a measured range: wide enough for any real egg, tight
+// enough to catch a decimal typed in the wrong place (1622, or 0,1622).
+const EGGS_PER_KG_MIN = 5;
+const EGGS_PER_KG_MAX = 40;
+
+// Text, not z.coerce.number(): an empty field has to mean "no override", and
+// coercion turns "" into 0. Parsed at submit, so a decimal comma works here
+// like it does on every other quantity input.
+const eggsPerKgValue = (raw: string | undefined) => parseQtyInput(raw ?? "", "kg");
 
 const skuSchema = z.object({
   code: z.string().min(1, "Code is required").max(20),
@@ -42,11 +54,17 @@ const skuSchema = z.object({
   basePackCode: z.string().optional(),
   boxMode: z.string().optional(),
   unitLabel: z.enum(["pak", "box"]),
+  eggsPerKg: z.string().optional(),
   isActive: z.boolean(),
 }).refine((d) => d.kind !== "pack" || (d.eggsPerPack && d.eggsPerPack >= 1 && d.eggProduct),
   { message: "Pack SKUs need eggs-per-pack and an egg product", path: ["eggProduct"] })
   .refine((d) => d.kind !== "box" || (d.basePackCode && d.boxMode),
-  { message: "Box SKUs need a base pack and a box", path: ["basePackCode"] });
+  { message: "Box SKUs need a base pack and a box", path: ["basePackCode"] })
+  .refine((d) => {
+    if (!d.eggsPerKg?.trim()) return true; // blank = use the product rate
+    const n = eggsPerKgValue(d.eggsPerKg);
+    return n != null && n >= EGGS_PER_KG_MIN && n <= EGGS_PER_KG_MAX;
+  }, { message: `Leave blank, or ${EGGS_PER_KG_MIN}–${EGGS_PER_KG_MAX}`, path: ["eggsPerKg"] });
 
 type SKUFormData = z.infer<typeof skuSchema>;
 
@@ -103,6 +121,7 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
           basePackCode: sku.basePackCode || "",
           boxMode: sku.boxMode || "",
           unitLabel: sku.unitLabel ?? (sku.basePackCode ? "box" : "pak"),
+          eggsPerKg: qtyInputText(sku.eggsPerKg),
           isActive: sku.isActive,
         });
       } else {
@@ -116,6 +135,7 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
           basePackCode: "",
           boxMode: "",
           unitLabel: "pak",
+          eggsPerKg: "",
           isActive: true,
         });
       }
@@ -133,6 +153,9 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
         basePackCode: data.basePackCode,
         boxMode: data.boxMode,
         unitLabel: data.unitLabel,
+        // A box line is resolved to its base pack before the conversion, so a
+        // rate stored here would never be read. Keep it null rather than lie.
+        eggsPerKg: null,
         isActive: data.isActive,
       });
     } else {
@@ -145,6 +168,7 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
         basePackCode: null,
         boxMode: null,
         unitLabel: data.unitLabel,
+        eggsPerKg: eggsPerKgValue(data.eggsPerKg),
         isActive: data.isActive,
       });
     }
@@ -244,6 +268,21 @@ export function SKUDialog({ open, onOpenChange, sku, onSave, isLoading }: SKUDia
                       <FormControl>
                         <Input {...field} type="number" min={1} />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="eggsPerKg"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t.catalog.eggsPerKgOverride}</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="text" inputMode="decimal" placeholder={t.catalog.eggsPerKgOverridePlaceholder} />
+                      </FormControl>
+                      <FormDescription>{t.catalog.eggsPerKgOverrideHint}</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

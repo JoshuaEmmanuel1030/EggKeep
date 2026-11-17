@@ -343,7 +343,7 @@ Tab di Katalog: **SKU**, **Telur**, **Kotak**, **Label**, **Kemasan**, **Pembeli
 - Iketan 10 kg = 10 kg Negeri
 - Box Osave = 18 pack Negeri
 - Box Kecil = 20 KP6
-- Iketan Osave = 1,9 × 5 = 9,5 kg Negeri
+- Iketan Osave = 1,85 × 5 = 9,25 kg Negeri (tray Osave diisi telur yang lebih kecil; atur **Telur/kg** pada SKU-nya di Katalog)
 
 **Retur NEGERI:** 15,5 butir = 1 kg (angka tetap untuk retur).
 

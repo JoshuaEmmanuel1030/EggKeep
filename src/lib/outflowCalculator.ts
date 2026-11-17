@@ -12,6 +12,8 @@ export interface PackSKU {
   isActive?: boolean;
   basePackCode?: string | null;
   boxMode?: string | null;
+  /** Overrides the product's eggs_per_unit for this SKU's bundles. */
+  eggsPerKg?: number | null;
 }
 
 // Box capacities: boxType -> skuCode -> packs per box
@@ -174,9 +176,14 @@ export function calculateLineMaterials(
     // via the catalog factor. Count-sold eggs deduct the count directly.
     const eggCount = line.packQty * sku.eggsPerPack;
     const eggConfig = conversionMap[sku.eggProduct];
+    // This SKU's own rate wins over the product average, because bundles packed
+    // with smaller eggs weigh less than the product rate predicts. A positive
+    // check, not `??`: a 0 or negative rate must fall through to the product
+    // rate, never divide, or a butir count would be banked as kilograms.
+    const rate = sku.eggsPerKg > 0 ? sku.eggsPerKg : eggConfig?.eggs_per_unit;
     const eggsButir =
-      eggConfig?.unit === "kg" && eggConfig.eggs_per_unit > 0
-        ? Math.round((eggCount / eggConfig.eggs_per_unit) * 100) / 100
+      eggConfig?.unit === "kg" && rate > 0
+        ? Math.round((eggCount / rate) * 100) / 100
         : eggCount;
 
 
