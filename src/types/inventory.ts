@@ -35,6 +35,11 @@ export interface ItemType {
   // (or []) means the Bentuk row does not render and entry stays native-unit.
   // See src/lib/eggForms.ts.
   forms?: EggForm[];
+  // Egg-only: bundles countable at a physical count but never received — the
+  // previous day's packed stock. Stok Fisik counts forms UNION countForms; Masuk
+  // reads forms alone, so an entry here can never offer a receipt that never
+  // happens. See countFormsFor in src/lib/eggForms.ts.
+  countForms?: EggForm[];
 }
 
 export interface InflowEntry {

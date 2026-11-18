@@ -33,6 +33,7 @@ export interface ItemTypeSaveData {
   lowStockThreshold?: number;
   countTolerance?: number;
   forms?: EggForm[];
+  countForms?: EggForm[];
 }
 
 interface ItemTypeDialogProps {
@@ -72,6 +73,8 @@ export function ItemTypeDialog({
   const [caps, setCaps] = useState<Record<string, string>>({});
   // Egg-only: the forms a delivery of this product can arrive in (Masuk Bentuk).
   const [formRows, setFormRows] = useState<FormRow[]>([]);
+  // Egg-only: bundles only ever counted, never received (packed leftovers).
+  const [countFormRows, setCountFormRows] = useState<FormRow[]>([]);
 
   // Only active SKUs are configurable.
   const activeSkus = useMemo(() => skus.filter((s) => s.isActive && !s.basePackCode), [skus]);
@@ -103,6 +106,7 @@ export function ItemTypeDialog({
       // sanitizeForms, not item.forms: the column can still be written by hand, and a
       // malformed row must not become an un-editable row in here.
       setFormRows(isEgg ? sanitizeForms(item?.forms).map(formToRow) : []);
+      setCountFormRows(isEgg ? sanitizeForms(item?.countForms).map(formToRow) : []);
     }
   }, [open, item, isBox, isEgg, activeSkus]);
 
@@ -113,7 +117,11 @@ export function ItemTypeDialog({
   // null means at least one row is unusable. Blocking the save is deliberate: dropping
   // the bad row and reporting success would lose work the owner just typed.
   const formsValue = useMemo(() => (isEgg ? rowsToForms(formRows) : []), [isEgg, formRows]);
-  const formsInvalid = isEgg && formsValue === null;
+  const countFormsValue = useMemo(
+    () => (isEgg ? rowsToForms(countFormRows) : []),
+    [isEgg, countFormRows]
+  );
+  const formsInvalid = isEgg && (formsValue === null || countFormsValue === null);
 
   const canSave = !!name.trim() && !factorInvalid && !formsInvalid;
 
@@ -148,6 +156,7 @@ export function ItemTypeDialog({
         countTolerance: countToleranceValue,
         // An empty array is meaningful: it is how the last form gets removed.
         forms: formsValue ?? undefined,
+        countForms: countFormsValue ?? undefined,
       });
     } else if (isBox) {
       // Collect positive-integer entries; blanks are omitted (fall back to baseline).
@@ -256,6 +265,16 @@ export function ItemTypeDialog({
                 // move as the rate is edited.
                 eggsPerUnit={unit === "kg" ? (isNaN(factorNum) ? undefined : factorNum) : 1}
                 onChange={setFormRows}
+              />
+
+              <FormsEditor
+                rows={countFormRows}
+                nativeUnit={unit}
+                eggsPerUnit={unit === "kg" ? (isNaN(factorNum) ? undefined : factorNum) : 1}
+                onChange={setCountFormRows}
+                label={t.catalog.countForms}
+                help={t.catalog.countFormsHelp}
+                emptyText={t.catalog.countFormsEmpty}
               />
             </>
           )}
