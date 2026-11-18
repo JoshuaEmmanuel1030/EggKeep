@@ -95,6 +95,13 @@ export function useItemTypes() {
     [itemTypes]
   );
 
+  // Omitted entirely when undefined, so saving a non-egg item leaves the column
+  // alone; an empty array IS written, because that is how the last form is removed.
+  // Cast because the generated row type calls this column Json, which an EggForm[]
+  // with optional fields does not satisfy.
+  const formsColumn = (forms?: EggForm[]) =>
+    (forms === undefined ? {} : { forms }) as unknown as Record<string, never>;
+
   const addItemType = useMutation({
     mutationFn: async ({
       name,
@@ -106,6 +113,7 @@ export function useItemTypes() {
       labelsPerPack,
       lowStockThreshold,
       countTolerance,
+      forms,
     }: {
       name: string;
       category: InventoryCategory;
@@ -116,6 +124,7 @@ export function useItemTypes() {
       labelsPerPack?: number;
       lowStockThreshold?: number;
       countTolerance?: number;
+      forms?: EggForm[];
     }) => {
       const { data, error } = await supabase
         .from("item_types")
@@ -129,6 +138,7 @@ export function useItemTypes() {
           labels_per_pack: labelsPerPack ?? null,
           low_stock_threshold: lowStockThreshold ?? null,
           count_tolerance: countTolerance ?? null,
+          ...formsColumn(forms),
         })
         .select()
         .single();
@@ -152,6 +162,7 @@ export function useItemTypes() {
       labelsPerPack,
       lowStockThreshold,
       countTolerance,
+      forms,
     }: {
       id: string;
       name: string;
@@ -162,6 +173,7 @@ export function useItemTypes() {
       labelsPerPack?: number;
       lowStockThreshold?: number;
       countTolerance?: number;
+      forms?: EggForm[];
     }) => {
       const { data, error } = await supabase
         .from("item_types")
