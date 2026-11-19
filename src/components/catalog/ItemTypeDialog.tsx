@@ -20,6 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
+import { sanitizeForms, type EggForm } from "@/lib/eggForms";
+import { FormsEditor, formToRow, rowsToForms, type FormRow } from "./FormsEditor";
 
 export interface ItemTypeSaveData {
   name: string;
@@ -30,6 +32,8 @@ export interface ItemTypeSaveData {
   labelsPerPack?: number;
   lowStockThreshold?: number;
   countTolerance?: number;
+  forms?: EggForm[];
+  countForms?: EggForm[];
 }
 
 interface ItemTypeDialogProps {
@@ -67,6 +71,10 @@ export function ItemTypeDialog({
   const [countTolerance, setCountTolerance] = useState("");
   // Per-SKU packs-per-box, kept as raw strings keyed by SKU code (blank = unset).
   const [caps, setCaps] = useState<Record<string, string>>({});
+  // Egg-only: the forms a delivery of this product can arrive in (Masuk Bentuk).
+  const [formRows, setFormRows] = useState<FormRow[]>([]);
+  // Egg-only: bundles only ever counted, never received (packed leftovers).
+  const [countFormRows, setCountFormRows] = useState<FormRow[]>([]);
 
   // Only active SKUs are configurable.
   const activeSkus = useMemo(() => skus.filter((s) => s.isActive && !s.basePackCode), [skus]);
@@ -94,13 +102,28 @@ export function ItemTypeDialog({
       } else {
         setCaps({});
       }
+
+      // sanitizeForms, not item.forms: the column can still be written by hand, and a
+      // malformed row must not become an un-editable row in here.
+      setFormRows(isEgg ? sanitizeForms(item?.forms).map(formToRow) : []);
+      setCountFormRows(isEgg ? sanitizeForms(item?.countForms).map(formToRow) : []);
     }
-  }, [open, item, isBox, activeSkus]);
+  }, [open, item, isBox, isEgg, activeSkus]);
 
   // For eggs sold by kg, a positive factor is required.
   const factorNum = parseFloat(eggsPerUnit);
   const factorInvalid = isEgg && unit === "kg" && (!eggsPerUnit || isNaN(factorNum) || factorNum <= 0);
-  const canSave = !!name.trim() && !factorInvalid;
+
+  // null means at least one row is unusable. Blocking the save is deliberate: dropping
+  // the bad row and reporting success would lose work the owner just typed.
+  const formsValue = useMemo(() => (isEgg ? rowsToForms(formRows) : []), [isEgg, formRows]);
+  const countFormsValue = useMemo(
+    () => (isEgg ? rowsToForms(countFormRows) : []),
+    [isEgg, countFormRows]
+  );
+  const formsInvalid = isEgg && (formsValue === null || countFormsValue === null);
+
+  const canSave = !!name.trim() && !factorInvalid && !formsInvalid;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,6 +154,9 @@ export function ItemTypeDialog({
         unit,
         eggsPerUnit: unit === "kg" ? factorNum : 1,
         countTolerance: countToleranceValue,
+        // An empty array is meaningful: it is how the last form gets removed.
+        forms: formsValue ?? undefined,
+        countForms: countFormsValue ?? undefined,
       });
     } else if (isBox) {
       // Collect positive-integer entries; blanks are omitted (fall back to baseline).
@@ -231,6 +257,25 @@ export function ItemTypeDialog({
                 />
                 <p className="text-xs text-muted-foreground">{t.catalog.countToleranceHelp}</p>
               </div>
+
+              <FormsEditor
+                rows={formRows}
+                nativeUnit={unit}
+                // The value being typed above, not the saved one, so the weights below
+                // move as the rate is edited.
+                eggsPerUnit={unit === "kg" ? (isNaN(factorNum) ? undefined : factorNum) : 1}
+                onChange={setFormRows}
+              />
+
+              <FormsEditor
+                rows={countFormRows}
+                nativeUnit={unit}
+                eggsPerUnit={unit === "kg" ? (isNaN(factorNum) ? undefined : factorNum) : 1}
+                onChange={setCountFormRows}
+                label={t.catalog.countForms}
+                help={t.catalog.countFormsHelp}
+                emptyText={t.catalog.countFormsEmpty}
+              />
             </>
           )}
 

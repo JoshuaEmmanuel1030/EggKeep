@@ -28,12 +28,90 @@ export const TONASE_STEP_KG = 0.1;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** The forms configured for an egg product, in catalogue order. */
+const FORM_UNITS: readonly FormUnit[] = ["kg", "butir", "native", "weighed"];
+
+/** Whether a value is a usable form. JSONB holds no shape for us, and the column can
+ *  still be written by hand, so a wrong shape is an expected failure, not an edge case. */
+export function isEggForm(value: unknown): value is EggForm {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const f = value as Partial<EggForm>;
+  if (typeof f.id !== "string" || f.id.trim() === "") return false;
+  if (typeof f.name !== "string" || f.name.trim() === "") return false;
+  if (!FORM_UNITS.includes(f.unit as FormUnit)) return false;
+  // kg and butir are sized bundles. native takes the amount as typed and weighed
+  // takes the line's own scale reading, so neither carries a size.
+  if ((f.unit === "kg" || f.unit === "butir") &&
+      (typeof f.size !== "number" || !Number.isFinite(f.size) || f.size <= 0)) return false;
+  if (f.unitWord != null && typeof f.unitWord !== "string") return false;
+  return true;
+}
+
+/** Usable forms only, in order, first of any duplicated id winning. Guards the
+ *  container AND the elements: `[{}, null, "x"]` would otherwise reach the picker
+ *  and render a garbled option. */
+export function sanitizeForms(value: unknown): EggForm[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: EggForm[] = [];
+  for (const el of value) {
+    if (!isEggForm(el) || seen.has(el.id)) continue;
+    seen.add(el.id);
+    out.push(el);
+  }
+  return out;
+}
+
+/** A form id from its name. Ids are what `inflows.form` stores, so they are minted
+ *  once and never change when a form is renamed — history keeps resolving. */
+export function formIdFromName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 40) || "bentuk";
+}
+
+/** The forms configured for an egg product, in catalogue order. Arrivals only —
+ *  this is what Masuk offers. */
 export function formsFor(product: string, itemTypes: ItemType[]): EggForm[] {
   const type = itemTypes.find((t) => t.name === product && t.category === "egg");
-  // The column is hand-maintained JSONB with no Catalog editor, so a wrong shape is
-  // an expected failure, not an edge case: anything but an array reads as no forms.
-  return Array.isArray(type?.forms) ? type.forms : [];
+  return sanitizeForms(type?.forms);
+}
+
+/** Every bundle that can be standing in the warehouse at a physical count: the
+ *  arrival forms plus the count-only ones (the previous day's packed stock). Stok
+ *  Fisik reads this; Masuk never does, so a count-only entry can never offer a
+ *  receipt that never happens. An arrival form shadows a count form of the same id,
+ *  because sanitizeForms keeps the first of a duplicated id. */
+export function countFormsFor(product: string, itemTypes: ItemType[]): EggForm[] {
+  const type = itemTypes.find((t) => t.name === product && t.category === "egg");
+  return sanitizeForms([
+    ...sanitizeForms(type?.forms),
+    ...sanitizeForms(type?.countForms),
+  ]);
+}
+
+/** The native-unit total for a set of counted bundles. Keyed by form id; a value
+ *  that will not parse, or a form that cannot convert, contributes nothing. Returns
+ *  the sum rounded to 2 dp and how many lines actually counted. */
+export function sumCountedBundles(args: {
+  forms: EggForm[];
+  counts: Record<string, number | null>;
+  nativeUnit: "kg" | "butir" | "pcs";
+  eggsPerUnit?: number;
+}): { total: number; lines: number } {
+  const { forms, counts, nativeUnit, eggsPerUnit } = args;
+  let total = 0;
+  let lines = 0;
+  for (const form of forms) {
+    const count = counts[form.id];
+    if (count == null || count <= 0) continue;
+    // No tonaseKg is passed, and none could be: a weighed form's size is one
+    // delivery's scale reading, not a property of a bundle on a shelf. toNative
+    // therefore returns null for it, which the next line drops — so there is no
+    // separate guard here. The dialog also hides those rows.
+    const native = toNative({ form, count, nativeUnit, eggsPerUnit });
+    if (native == null) continue;
+    total += native;
+    lines += 1;
+  }
+  return { total: round2(total), lines };
 }
 
 /** The form an id refers to. Null means Langsung: no form, the amount as typed. */
