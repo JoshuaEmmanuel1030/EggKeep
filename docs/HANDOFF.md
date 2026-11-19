@@ -327,17 +327,23 @@ whole row from `string_agg`. That artifact once read as "Tonase has been deleted
 
 Point-in-time. Re-derive with §5 before relying on any of it.
 
-**Open on GitHub:** **PR #35** (`claude/eggkeep-tasks` → `main`), "masukan UX
-improvements and insight returns PO list", not a draft, 7 files. It is **7 commits
-behind `main`** and touches `src/hooks/useItemTypes.ts`, which PRs #32 and #34 just
-rewrote — **expect a conflict there**, and re-run the verify gate after merging main
-into it.
+**Open on GitHub:** nothing. PRs #32, #33, #34 and #35 all merged on 2026-11-19.
 
-**Just shipped, and never seen by a human:** the Catalog forms editor (PR #32) and
-the Stok Fisik bundle tally (PR #34), merged 2026-11-19 with the `count_forms`
-migration applied. Production build green. Both sit behind an admin sign-in, so
-nobody has watched either render. Parts C and D of `docs/smoke-test-masuk.md` cover
-them and now run against production directly.
+**Seen working in the app, 2026-11-19:** the Catalog forms editor (#32), the Stok
+Fisik bundle tally (#34) and the Masuk retakan filter (#35) were all driven in a
+browser against a preview, and behave as specified — row previews compute, the tally
+sums across arrival and count-only bundles with Tonase correctly absent, and the
+retakan filter applies to Masuk alone. Nothing was saved during that check.
+
+**#35 is worth reading as a worked example of §1.6.** Its first version filtered
+`(RETAKAN)` products out of `eggProductNames` — the list shared by Masuk *and* the
+sales pickers — which would have made a retakan cash sale impossible to record, and
+retakan eggs do sell. The fix puts the filter at the one caller that wants it
+(`src/lib/masukProducts.ts`, used only by `InflowForm`), leaving the shared list
+alone. A filter wanted by one caller belongs at that caller, not in the shared
+helper. Three independent retakan filters now exist — Masuk, the radial wheel
+(`eggRingItems`) and Insight — so check which one you are looking at before
+concluding anything about where retakan is visible.
 
 **Never exercised:** the Stok Fisik "Penyesuaian" (adjustment) button. Its SQL tests
 were never run, and it has never been pressed. **Preview the adjustment and compare
