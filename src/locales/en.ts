@@ -1084,6 +1084,7 @@ export const en = {
     returnsRecordedTo: 'Returns recorded up to {date}.',
     returnSpike: '{n} invoices with returns in {period}, usually {usual}.',
     seeInDeliveries: 'See in Deliveries',
+    returnPoList: 'POs with warehouse returns',
     hasReturnsChip: 'With returns · {n}',
     mergedSpellings: 'Merged spellings (case, spacing)',
     rhythm: 'Order rhythm',

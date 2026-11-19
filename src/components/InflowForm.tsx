@@ -639,6 +639,18 @@ function CategoryTable({
               onUpdate={(field, value) => onUpdateItem(item.id, field, value)}
             />
           ))}
+          {/* Add line button at the bottom so users don't need to scroll up */}
+          <div className="border-t border-ek-border px-3.5 py-2.5">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onAddItem}
+              className="h-9 w-full gap-2 rounded-[10px] text-sm font-semibold text-ek-mfg hover:bg-ek-muted hover:text-ek-fg [&_svg]:size-3.5"
+            >
+              <Plus aria-hidden />
+              {t.common.addItem}
+            </Button>
+          </div>
         </>
       )}
     </div>

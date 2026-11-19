@@ -35,13 +35,17 @@ import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { RenameWarningDialog } from "./RenameWarningDialog";
 import { checkBuyerDependencies, DependencyCheckResult } from "@/lib/catalogDependencies";
 
+const HISTORY_PAGE_SIZE = 15;
+
 function BuyerHistoryDialog({ buyer, open, onOpenChange }: { buyer: Buyer | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(HISTORY_PAGE_SIZE);
 
   useEffect(() => {
     if (!open || !buyer) return;
     setLoading(true);
+    setVisibleCount(HISTORY_PAGE_SIZE);
     supabase
       .from('activity_logs')
       .select('recorded_at, product, quantity_butir, invoice_supplier, metadata, voided_at')
@@ -59,6 +63,8 @@ function BuyerHistoryDialog({ buyer, open, onOpenChange }: { buyer: Buyer | null
   if (!buyer) return null;
 
   const totalButir = logs.reduce((sum, l) => sum + (l.quantity_butir || 0), 0);
+  const visibleLogs = logs.slice(0, visibleCount);
+  const hasMore = visibleCount < logs.length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -91,7 +97,7 @@ function BuyerHistoryDialog({ buyer, open, onOpenChange }: { buyer: Buyer | null
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {logs.map((log, i) => (
+                  {visibleLogs.map((log, i) => (
                     <TableRow key={i}>
                       <TableCell className="text-sm whitespace-nowrap">
                         {new Date(log.recorded_at).toLocaleDateString()}
@@ -107,6 +113,17 @@ function BuyerHistoryDialog({ buyer, open, onOpenChange }: { buyer: Buyer | null
                   ))}
                 </TableBody>
               </Table>
+              {hasMore && (
+                <div className="p-3 text-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setVisibleCount((n) => n + HISTORY_PAGE_SIZE)}
+                  >
+                    Show more ({logs.length - visibleCount} remaining)
+                  </Button>
+                </div>
+              )}
             </ScrollArea>
           </>
         )}
