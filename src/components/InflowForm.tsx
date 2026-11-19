@@ -15,6 +15,7 @@ import {
   StockSummary,
 } from "@/types/inventory";
 import { useItemTypes } from "@/hooks/useItemTypes";
+import { masukEggProducts } from "@/lib/masukProducts";
 import { convertToButir, getProductUnit, getStockUnit } from "@/lib/inventory";
 import { parseQtyInput, qtyInputText } from "@/lib/stockCount";
 import { BentukRow } from "@/components/inflow/BentukRow";
@@ -213,7 +214,7 @@ export function InflowForm({ onSubmit, stockSummary = [], inflows = [], tablet =
 
   const getProductOptions = (category: InventoryCategory): string[] => {
     if (category === "egg") {
-      return eggProductNames;
+      return masukEggProducts(eggProductNames, itemTypes);
     }
     return getTypesByCategory(category).map((t) => t.name);
   };

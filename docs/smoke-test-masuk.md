@@ -55,8 +55,9 @@ always a stale bundle.
       options change (Iket 300, Tray 30, Pack 6's / 10's / 15's, Curah) and there is
       **no** Tonase — it only exists on kg products.
 - [ ] Change the product to a packaging or box item. **No Bentuk row at all.**
-- [ ] Pick **NEGERI BIASA (RETAKAN)**. No Bentuk row — that product has no forms
-      configured.
+- [ ] Open the egg product list. **No (RETAKAN) product is listed** (e.g. no
+      NEGERI BIASA (RETAKAN)); every other egg product still is. Retakan stock only
+      arrives through a return. The order and Kas Tunai pickers still list them.
 
 ### The Tonase weight control
 

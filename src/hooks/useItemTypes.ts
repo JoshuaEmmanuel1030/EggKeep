@@ -82,7 +82,7 @@ export function useItemTypes() {
   // still layers it so historical rows keep converting.
   const eggProductNames: string[] = useMemo(() => {
     const catalogEggs = itemTypes
-      .filter((t) => t.category === "egg" && !t.isRetakan)
+      .filter((t) => t.category === "egg")
       .map((t) => t.name);
     return (catalogEggs.length > 0 ? catalogEggs : Object.keys(conversionMap)).sort();
   }, [itemTypes, conversionMap]);
