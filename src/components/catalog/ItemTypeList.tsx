@@ -132,6 +132,7 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
           lowStockThreshold: data.lowStockThreshold,
           countTolerance: data.countTolerance,
           forms: data.forms,
+          countForms: data.countForms,
         });
         toast.success(t.catalog.updateSuccess);
       } else if (addItemType) {
@@ -146,6 +147,7 @@ export function ItemTypeList({ category, isAdmin = false }: ItemTypeListProps) {
           lowStockThreshold: data.lowStockThreshold,
           countTolerance: data.countTolerance,
           forms: data.forms,
+          countForms: data.countForms,
         });
         toast.success(t.catalog.addSuccess);
       }

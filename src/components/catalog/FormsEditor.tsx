@@ -101,9 +101,15 @@ export interface FormsEditorProps {
   /** The product's eggs-per-kg, needed to show what a butir bundle weighs. */
   eggsPerUnit?: number;
   onChange: (rows: FormRow[]) => void;
+  /** Overrides, so the same editor serves the arrival list and the count-only list. */
+  label?: string;
+  help?: string;
+  emptyText?: string;
 }
 
-export function FormsEditor({ rows, nativeUnit, eggsPerUnit, onChange }: FormsEditorProps) {
+export function FormsEditor({
+  rows, nativeUnit, eggsPerUnit, onChange, label, help, emptyText,
+}: FormsEditorProps) {
   const { t } = useLanguage();
   const unitLabel = nativeUnit === "kg" ? "kg" : "butir";
 
@@ -112,10 +118,10 @@ export function FormsEditor({ rows, nativeUnit, eggsPerUnit, onChange }: FormsEd
 
   return (
     <div className="space-y-2">
-      <Label>{t.catalog.forms}</Label>
+      <Label>{label ?? t.catalog.forms}</Label>
 
       {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t.catalog.formsEmpty}</p>
+        <p className="text-xs text-muted-foreground">{emptyText ?? t.catalog.formsEmpty}</p>
       ) : (
         <div className="space-y-2 rounded-md border p-2">
           {rows.map((row) => (
@@ -190,7 +196,7 @@ export function FormsEditor({ rows, nativeUnit, eggsPerUnit, onChange }: FormsEd
         {t.catalog.formsAdd}
       </Button>
       <p className="text-xs text-muted-foreground">
-        {t.catalog.formsHelp.replace("{unit}", unitLabel)}
+        {(help ?? t.catalog.formsHelp).replace("{unit}", unitLabel)}
       </p>
     </div>
   );

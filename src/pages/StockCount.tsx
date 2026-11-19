@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, Calendar, AlertTriangle, ArrowUp, ArrowDown, Plus, Check } from "lucide-react";
+import { ChevronLeft, Calendar, AlertTriangle, ArrowUp, ArrowDown, Plus, Check, Calculator } from "lucide-react";
 import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,8 @@ import {
   qtyInputText,
 } from "@/lib/stockCount";
 import { StockCountSaveEntry } from "@/types/stockCount";
+import { countFormsFor } from "@/lib/eggForms";
+import { BundleCountDialog } from "@/components/stockcount/BundleCountDialog";
 
 // Raw string inputs keyed `${itemTypeId}:${location}` (blank = not counted).
 type Draft = Record<string, string>;
@@ -64,6 +66,14 @@ export default function StockCount() {
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [lines, setLines] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // The product whose bundle tally is open, or null. Holds a snapshot of what the
+  // dialog needs so it does not have to look the item up again.
+  const [bundleFor, setBundleFor] = useState<{
+    id: string;
+    name: string;
+    unit: "kg" | "butir" | "pcs";
+    eggsPerUnit?: number;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [prior, setPrior] = useState<{ accuracy: number; date: string } | null>(null);
 
@@ -396,9 +406,23 @@ export default function StockCount() {
 
               {rows.map(({ id, it, unit, sys, variance, pct }) => (
                 <div key={id} className="grid grid-cols-[1fr_44px_44px_44px_60px] border-t">
-                  <div className="px-3 py-2 min-w-0 self-center">
-                    <div className="text-[12.5px] font-semibold truncate">{it?.name}</div>
-                    <div className="text-[10px] text-muted-foreground tabular-nums">{unit} · {t.stockCount.expShort} {fmt(sys)}</div>
+                  <div className="px-3 py-2 min-w-0 self-center flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] font-semibold truncate">{it?.name}</div>
+                      <div className="text-[10px] text-muted-foreground tabular-nums">{unit} · {t.stockCount.expShort} {fmt(sys)}</div>
+                    </div>
+                    {/* Only offered where bundles are configured; the cells stay the
+                        fast path for anyone who already has a number. */}
+                    {isToday && it && countFormsFor(it.name, itemTypes).some((f) => f.unit !== "weighed") && (
+                      <button
+                        type="button"
+                        aria-label={`${t.stockCount.bundleCount} ${it.name}`}
+                        onClick={() => setBundleFor({ id, name: it.name, unit, eggsPerUnit: it.eggsPerUnit })}
+                        className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <Calculator className="h-4 w-4" aria-hidden />
+                      </button>
+                    )}
                   </div>
                   {STOCK_LOCATIONS.map((loc) => (
                     <div key={loc} className="border-l">
@@ -515,6 +539,19 @@ export default function StockCount() {
             <p className="text-[11px] text-muted-foreground text-center mt-3">{t.stockCount.footNote}</p>
           </>
         )}
+
+      {bundleFor && (
+        <BundleCountDialog
+          open
+          onOpenChange={(o) => { if (!o) setBundleFor(null); }}
+          productName={bundleFor.name}
+          forms={countFormsFor(bundleFor.name, itemTypes)}
+          nativeUnit={bundleFor.unit}
+          eggsPerUnit={bundleFor.eggsPerUnit}
+          location="js_warehouse"
+          onApply={(loc, total) => setDraftValue(bundleFor.id, loc, qtyInputText(total))}
+        />
+      )}
     </>
   );
 

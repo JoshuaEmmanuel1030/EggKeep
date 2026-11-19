@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ItemType, InventoryCategory, ConversionMap, buildConversionMap } from "@/types/inventory";
 import type { EggForm } from "@/lib/eggForms";
+import { itemTypeColumns, type ItemTypeWrite } from "@/lib/itemTypeColumns";
 import { BoxCapacityMap, buildBoxCapacityMap, LabelsPerPackMap, buildLabelsPerPackMap } from "@/lib/outflowCalculator";
 
 export function useItemTypes() {
@@ -44,6 +45,9 @@ export function useItemTypes() {
         // Egg-only: the forms this product can arrive in (Masuk Bentuk).
         // (via unknown: the generated row type calls this column Json.)
         forms: ((row as { forms?: unknown }).forms as EggForm[] | null) ?? undefined,
+        // Egg-only: bundles that are only ever counted, never received.
+        countForms:
+          ((row as { count_forms?: unknown }).count_forms as EggForm[] | null) ?? undefined,
       }));
 
       setItemTypes(mapped);
@@ -95,51 +99,11 @@ export function useItemTypes() {
     [itemTypes]
   );
 
-  // Omitted entirely when undefined, so saving a non-egg item leaves the column
-  // alone; an empty array IS written, because that is how the last form is removed.
-  // Cast because the generated row type calls this column Json, which an EggForm[]
-  // with optional fields does not satisfy.
-  const formsColumn = (forms?: EggForm[]) =>
-    (forms === undefined ? {} : { forms }) as unknown as Record<string, never>;
-
   const addItemType = useMutation({
-    mutationFn: async ({
-      name,
-      category,
-      unit,
-      eggsPerUnit,
-      boxCapacities,
-      freshnessDays,
-      labelsPerPack,
-      lowStockThreshold,
-      countTolerance,
-      forms,
-    }: {
-      name: string;
-      category: InventoryCategory;
-      unit?: "kg" | "btr";
-      eggsPerUnit?: number;
-      boxCapacities?: Record<string, number>;
-      freshnessDays?: number;
-      labelsPerPack?: number;
-      lowStockThreshold?: number;
-      countTolerance?: number;
-      forms?: EggForm[];
-    }) => {
+    mutationFn: async ({ category, ...input }: ItemTypeWrite & { category: InventoryCategory }) => {
       const { data, error } = await supabase
         .from("item_types")
-        .insert({
-          name,
-          category,
-          unit: unit ?? null,
-          eggs_per_unit: eggsPerUnit ?? null,
-          box_capacities: boxCapacities ?? null,
-          freshness_days: freshnessDays ?? null,
-          labels_per_pack: labelsPerPack ?? null,
-          low_stock_threshold: lowStockThreshold ?? null,
-          count_tolerance: countTolerance ?? null,
-          ...formsColumn(forms),
-        })
+        .insert({ ...itemTypeColumns(input), category })
         .select()
         .single();
 
@@ -152,41 +116,10 @@ export function useItemTypes() {
   });
 
   const updateItemType = useMutation({
-    mutationFn: async ({
-      id,
-      name,
-      unit,
-      eggsPerUnit,
-      boxCapacities,
-      freshnessDays,
-      labelsPerPack,
-      lowStockThreshold,
-      countTolerance,
-      forms,
-    }: {
-      id: string;
-      name: string;
-      unit?: "kg" | "btr";
-      eggsPerUnit?: number;
-      boxCapacities?: Record<string, number>;
-      freshnessDays?: number;
-      labelsPerPack?: number;
-      lowStockThreshold?: number;
-      countTolerance?: number;
-      forms?: EggForm[];
-    }) => {
+    mutationFn: async ({ id, ...input }: ItemTypeWrite & { id: string }) => {
       const { data, error } = await supabase
         .from("item_types")
-        .update({
-          name,
-          unit: unit ?? null,
-          eggs_per_unit: eggsPerUnit ?? null,
-          box_capacities: boxCapacities ?? null,
-          freshness_days: freshnessDays ?? null,
-          labels_per_pack: labelsPerPack ?? null,
-          low_stock_threshold: lowStockThreshold ?? null,
-          count_tolerance: countTolerance ?? null,
-        })
+        .update(itemTypeColumns(input))
         .eq("id", id)
         .select()
         .single();
