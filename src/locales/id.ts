@@ -1109,6 +1109,7 @@ export const id = {
     returnsRecordedTo: 'Retur tercatat sampai {date}.',
     returnSpike: '{n} faktur dengan retur dalam {period}, biasanya {usual}.',
     seeInDeliveries: 'Lihat di Pengiriman',
+    returnPoList: 'PO dengan retur gudang',
     hasReturnsChip: 'Ada retur · {n}',
     mergedSpellings: 'Ejaan yang digabung (huruf besar/kecil, spasi)',
     rhythm: 'Ritme pesanan',

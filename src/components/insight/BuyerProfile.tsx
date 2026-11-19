@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AlertCircle, ArrowRight, Calculator, ChevronRight, Egg, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { addDays, localToday, nextLikelyWeekday, skuShares, toLocalDate, typicalDay, weekdayOf } from "@/lib/buyerProfile";
+import { addDays, localToday, nextLikelyWeekday, skuShares, toLocalDate, typicalDay, weekdayOf, windowOrders } from "@/lib/buyerProfile";
 import { RETURN_REASON_LABEL_ID } from "@/lib/deliveryExport";
 import {
   BuyerSummary,
@@ -276,6 +276,15 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
   // "Terkirim 0" with only a few fakturs logged would read as nothing delivered.
   const logCovered = r.logged >= r.orders * RELIABILITY_MIN_LOGGED && r.logged > 0;
 
+  // Orders in the 8-week window that have warehouse returns (outflowId in returnedIds).
+  const ordersWithReturns = useMemo(
+    () =>
+      windowOrders(b.orders, asOf).filter((o) =>
+        (o.outflowIds ?? []).some((id) => returnedIds.has(id))
+      ),
+    [b.orders, asOf, returnedIds]
+  );
+
   return (
     <div className={cn(CARD, "mb-3.5 px-[18px] py-4")}>
       <CardHead title={i.reliability} note={i.eightWeeks} />
@@ -291,6 +300,23 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
               {RETURN_REASON_LABEL_ID[x.reason] ?? x.reason} <b className="text-ek-fg">{x.count}</b>
             </span>
           ))}
+        </div>
+      )}
+      {ordersWithReturns.length > 0 && (
+        <div className="mt-3 border-t border-ek-border pt-3">
+          <p className="mb-1.5 text-[12.5px] font-semibold text-ek-mfg">{i.returnPoList}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {ordersWithReturns.map((o) => (
+              <span
+                key={(o.invoiceRef ?? "") + o.outflowDate}
+                className="inline-flex items-center rounded-lg border border-ek-border bg-[#fef2f2] px-2 py-0.5 font-mono text-[12.5px] font-semibold text-red-700"
+              >
+                {o.invoiceRef
+                  ? o.invoiceRef
+                  : toLocalDate(o.outflowDate).toLocaleDateString(locale, { day: "numeric", month: "short" })}
+              </span>
+            ))}
+          </div>
         </div>
       )}
       <div className="mt-3 flex flex-col gap-1 text-[12.5px] leading-[1.4] text-ek-mfg">

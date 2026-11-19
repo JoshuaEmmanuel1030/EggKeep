@@ -28,12 +28,14 @@ vi.mock("@/hooks/useItemTypes", () => ({
         forms: [{ id: "iket300", name: "Iket 300", size: 300, unit: "butir", unitWord: "iket" }],
       },
       { id: "3", category: "egg", name: "PUYUH BARU" }, // no conversion, no forms
+      // Stock only arrives through a return, so Masuk must not offer it.
+      { id: "4", category: "egg", name: "NEGERI OMEGA (RETAKAN)", unit: "kg", eggsPerUnit: 15.5, isRetakan: true },
     ],
     conversionMap: {
       "NEGERI OMEGA": { unit: "kg", eggs_per_unit: 15.5 },
       "KAMPUNG BIASA": { unit: "butir", eggs_per_unit: 1 },
     },
-    eggProductNames: ["KAMPUNG BIASA", "NEGERI OMEGA", "PUYUH BARU"], // PUYUH BARU: no conversion
+    eggProductNames: ["KAMPUNG BIASA", "NEGERI OMEGA", "NEGERI OMEGA (RETAKAN)", "PUYUH BARU"], // PUYUH BARU: no conversion
     getTypesByCategory: (category: string) =>
       ({ box: [{ name: "BOX OSAVE" }], label: [{ name: "LABEL OSAVE" }], packaging: [{ name: "MIKA 10" }] })[category] ?? [],
   }),
@@ -85,6 +87,14 @@ describe.each([
   ["tablet", true],
 ])("InflowForm submit payload (%s)", (_layout, tablet) => {
   const renderForm = (onSubmit: ReturnType<typeof vi.fn>) => render(form(onSubmit, tablet));
+
+  it("offers every egg product except the (RETAKAN) children", () => {
+    renderForm(vi.fn(async () => true));
+    toggle("Telur");
+    fireEvent.click(screen.getAllByRole("combobox")[0]);
+    const offered = screen.getAllByRole("option").map((o) => o.textContent?.trim());
+    expect(offered).toEqual(["KAMPUNG BIASA", "NEGERI OMEGA", "PUYUH BARU"]);
+  });
 
   it("sends one entry per valid row in category order, each in the product's native unit", async () => {
     const onSubmit = vi.fn(async () => true);

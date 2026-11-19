@@ -86,7 +86,6 @@ const Index = () => {
           },
         });
       }
-      setActiveTab("dashboard");
     }
     return success;
   }, [addMultipleInflows, addActivityLog]);
@@ -98,11 +97,9 @@ const Index = () => {
       const result = await submitOrderOutflows(entries);
 
       const logPayloads = toOutflowLogPayloads(entries, userEmail, metadata, new Date().toISOString());
-      // A tablet Kas Tunai sale (saleId) stays on Pesanan: the next walk-in and
-      // the "Hari ini" list are right there. Everything else goes to Beranda.
-      const done = () => {
-        if (!metadata?.saleId) setActiveTab("dashboard");
-      };
+      // Stay on the outflow page after a successful order: the next order
+      // and the queue are right there. Kas Tunai (saleId) was already staying.
+      const done = () => {};
 
       if (!result.ok) {
         if (result.kind === "network") {
