@@ -2,6 +2,12 @@
 
 Live React/TS + Supabase PWA for an Indonesian egg-distribution business (real warehouse, real users on phones). Treat production data as sacred.
 
+> **Read `docs/HANDOFF.md` before your first action in this repo.** This file is the
+> condensed version. The handoff carries the rest: the non-negotiable rules in full,
+> the decisions already declined (several look like free wins and are not), why
+> "merged" never means "working" here, and the queries for live state — it quotes no
+> figures, because the repo is public and a written figure goes stale.
+
 ## Skills
 - **Reading a photo of a hand-filled paper form** (Formulir Penerimaan/Pengiriman, "barang masuk/keluar", daftar ambil) → use the `read-egg-form` skill (`.claude/skills/read-egg-form/`). It OCRs the handwriting, snaps values to the catalog, enforces Osave box math, and returns a reviewable table with per-cell confidence flags. It never writes to the DB — data entry is a separate, human-confirmed step.
 
