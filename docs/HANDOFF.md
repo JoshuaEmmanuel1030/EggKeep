@@ -58,8 +58,11 @@ business data, or put a wrong figure in front of a warehouse.
 
 ### 1.3 Git hygiene
 
-- **`.claude/` is NOT gitignored.** `git add -A` would commit agent definitions,
-  hooks and every worktree into a public repo. **Always stage explicit paths.**
+- **Most of `.claude/` is NOT gitignored.** The repo ignores only
+  `.claude/worktrees/` (added in July, the day four agent worktrees were committed
+  by accident as nested-repo pointers and then removed). Everything else there —
+  agent definitions, hooks, skills, `settings.json`, launch configs — would be
+  swept in by `git add -A`, into a public repo. **Always stage explicit paths.**
 - **`.env` is tracked and usually modified.** Never commit it. It carries a live key.
 - Commit or push only when the owner asks.
 - Worktrees live under `.claude/worktrees/`. The git stash stack is shared across
