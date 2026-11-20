@@ -31,7 +31,7 @@ vi.mock("@/hooks/use-toast", () => ({ toast: vi.fn() }));
 const addCustomer = vi.fn(async ({ name }: { name: string }) => ({ id: "c-new", name, isActive: true }));
 const customers = [
   { id: "c-rina", name: "Bu Rina", isActive: true },
-  { id: "c-budi", name: "Pa Budi", isActive: true },
+  { id: "c-joko", name: "Pa Joko", isActive: true },
   { id: "c-old", name: "Bu Lama", isActive: false },
 ];
 vi.mock("@/hooks/useCashCustomers", () => ({
