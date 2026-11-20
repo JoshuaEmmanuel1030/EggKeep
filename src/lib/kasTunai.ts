@@ -3,7 +3,7 @@
 // sales, and the picked-date label. No React / Supabase, so it stays tested.
 import { isSameDay, parseISO } from "date-fns";
 import type { ConversionMap, ItemType, OutflowEntry } from "@/types/inventory";
-import type { ActivityLog } from "@/types/activityLog";
+import type { ActivityLog, ActivityLogMetadata } from "@/types/activityLog";
 import type { RadialItem } from "@/components/RadialAddButton";
 import { parseQtyInput } from "@/lib/stockCount";
 import { entryKind } from "@/lib/activityGrouping";
@@ -120,3 +120,98 @@ export function kasSaleSummary(sale: KasSale, conversionMap: ConversionMap, loca
 // A picked yyyy-MM-dd as "Sen, 2 Nov" (id-ID) / "Mon, Nov 2" (en-US).
 export const kasDateLabel = (date: string, locale: string) =>
   parseISO(date).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
+
+// ── Queue (several cash sales built up, then recorded together) ──────────────
+// Mirrors the PO builder's "Tambah ke Antrian": a sale is snapshotted, the form
+// clears for the next customer, and "Catat Semua" records each sale as its own
+// atomic record_order_outflows call. In memory only, like the PO queue: the
+// drawer stays mounted, so the queue survives closing it but not a reload.
+export interface KasQueuedSale {
+  id: string; // becomes the sale's metadata.saleId
+  date: string | null; // null = today, resolved when it is recorded
+  customerName: string;
+  note: string;
+  lines: KasLine[]; // valid lines only
+  failed?: boolean; // the server rejected it on the last "Catat Semua"
+}
+
+// Snapshot of the form, or null when there is nothing to record or a line
+// would be dropped (broken lines block the queue just as they block a sale).
+export function snapshotKasSale(
+  form: { date: string | null; customerName: string; note: string; lines: KasLine[] },
+  conversionMap: ConversionMap,
+  id: string = crypto.randomUUID()
+): KasQueuedSale | null {
+  if (form.lines.some((l) => isBrokenKasLine(l, conversionMap))) return null;
+  const lines = form.lines.filter((l) => isValidKasLine(l, conversionMap));
+  if (lines.length === 0) return null;
+  return { id, date: form.date, customerName: form.customerName.trim(), note: form.note.trim(), lines };
+}
+
+// Nothing typed: loading a queued sale into the form can't lose anything.
+export const isBlankKasForm = (form: { customerName: string; note: string; lines: KasLine[] }) =>
+  !form.customerName.trim() && !form.note.trim() && form.lines.every((l) => !l.product && !l.qty.trim());
+
+// The RPC payload of one sale: one egg entry per line + the Kas metadata.
+export function buildKasSale(
+  sale: KasQueuedSale,
+  conversionMap: ConversionMap,
+  recordedAt: string,
+  today: string,
+  newId?: () => string
+): { entries: OutflowEntry[]; metadata: ActivityLogMetadata } {
+  const outflowDate = sale.date ?? today;
+  return {
+    entries: buildKasEntries(sale.lines, outflowDate, conversionMap, recordedAt, newId),
+    metadata: {
+      orderType: "manual",
+      outflowDate,
+      saleId: sale.id,
+      ...(sale.customerName ? { customerName: sale.customerName } : {}),
+      ...(sale.note ? { note: sale.note } : {}),
+    },
+  };
+}
+
+// Native quantity per egg across the queue (2 dp, so 0,1 + 0,2 kg reads 0,3).
+// Per product only: kg and butir are never summed together.
+export function kasQueuedTotals(queue: KasQueuedSale[], conversionMap: ConversionMap): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const sale of queue) {
+    for (const l of sale.lines) {
+      const sum = (totals.get(l.product) ?? 0) + kasStockQty(l, conversionMap);
+      totals.set(l.product, Math.round(sum * 100) / 100);
+    }
+  }
+  return totals;
+}
+
+// "2 kg NEGERI BIASA · 30 butir KAMPUNG" from per-egg totals (native units).
+export function kasTotalsSummary(totals: Map<string, number>, conversionMap: ConversionMap, locale: string): string {
+  return [...totals]
+    .map(([product, qty]) => `${qty.toLocaleString(locale)} ${getStockUnit(product, "egg", conversionMap)} ${product}`)
+    .join(" · ");
+}
+
+// Record queued sales one by one, each its own atomic call. A rejected sale
+// never stops the ones after it; it comes back marked failed so it stays in
+// the queue, and the recorded ones are gone so a re-press can't record them
+// twice. `submit` is false only when the server rejected (already toasted).
+export async function submitKasQueue(
+  queue: KasQueuedSale[],
+  submit: (sale: KasQueuedSale) => Promise<boolean>
+): Promise<{ recorded: KasQueuedSale[]; failed: KasQueuedSale[] }> {
+  const recorded: KasQueuedSale[] = [];
+  const failed: KasQueuedSale[] = [];
+  for (const sale of queue) {
+    let ok = false;
+    try {
+      ok = await submit(sale);
+    } catch (error) {
+      console.error("Kas Tunai sale failed:", error);
+    }
+    if (ok) recorded.push({ ...sale, failed: undefined });
+    else failed.push({ ...sale, failed: true });
+  }
+  return { recorded, failed };
+}

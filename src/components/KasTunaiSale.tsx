@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
-import { AlertCircle, Check, ChevronRight, ChevronsUpDown, ShoppingCart, Trash2 } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, ChevronRight, ChevronsUpDown, Pencil, Plus, ShoppingCart, Trash2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -17,15 +17,22 @@ import { loadOutbox } from "@/lib/outflowOutbox";
 import { RadialAddButton, revealPickedRow, type RadialItem } from "./RadialAddButton";
 import { SubtleDateLink } from "./SubtleDateLink";
 import {
-  buildKasEntries,
+  buildKasSale,
   eggRingItems,
+  isBlankKasForm,
   isBrokenKasLine,
   isValidKasLine,
+  kasDateLabel,
+  kasQueuedTotals,
   kasSaleSummary,
   kasStockQty,
+  kasTotalsSummary,
   mergeKasSales,
+  snapshotKasSale,
+  submitKasQueue,
   todaysKasSales,
   type KasLine,
+  type KasQueuedSale,
   type KasSale,
 } from "@/lib/kasTunai";
 
@@ -34,7 +41,7 @@ interface KasTunaiSaleProps {
   logs: ActivityLog[];
   onSubmit: (entries: OutflowEntry[], userEmail: string, metadata?: ActivityLogMetadata) => Promise<boolean>;
   onClose: () => void;
-  // Lines with a product and qty > 0, for the rail's count pill.
+  // Lines with a product and qty > 0 (form + queue), for the rail's count pill.
   onValidCountChange: (n: number) => void;
 }
 
@@ -64,6 +71,9 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
   const [lines, setLines] = useState<KasLine[]>(() => [emptyLine()]);
   const [submitting, setSubmitting] = useState(false);
   const [justRecorded, setJustRecorded] = useState<KasSale[]>([]);
+  // Sales built up for "Catat Semua", like the PO builder's queue.
+  const [queue, setQueue] = useState<KasQueuedSale[]>([]);
+  const [queueOpen, setQueueOpen] = useState(true);
 
   const availableByProduct = useMemo(() => {
     const m = new Map<string, number>();
@@ -75,7 +85,18 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
 
   const validCount = lines.filter((l) => isValidKasLine(l, conversionMap)).length;
   const hasBrokenLine = lines.some((l) => isBrokenKasLine(l, conversionMap));
-  useEffect(() => onValidCountChange(validCount), [validCount, onValidCountChange]);
+  const queuedLineCount = queue.reduce((n, s) => n + s.lines.length, 0);
+  useEffect(() => onValidCountChange(validCount + queuedLineCount), [validCount, queuedLineCount, onValidCountChange]);
+  // What the queue will take, per egg: the form's stock hint counts it as gone.
+  const queuedTotals = useMemo(() => kasQueuedTotals(queue, conversionMap), [queue, conversionMap]);
+  const form = { date, customerName, note, lines };
+  const formBlank = isBlankKasForm(form);
+  const formSale = snapshotKasSale(form, conversionMap);
+  const resetForm = () => {
+    setCustomerName("");
+    setNote("");
+    setLines([emptyLine()]);
+  };
 
   // The day is a dependency so a drawer left open past midnight drops
   // yesterday's sales on its next render, like the date header does.
@@ -114,48 +135,85 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
     if (row) revealPickedRow(row); // the card's only input: Jumlah
   }, [lines]);
 
-  const handleSubmit = async () => {
-    const saleDate = date ?? today();
-    const recordedAt = new Date().toISOString();
-    const entries = buildKasEntries(lines, saleDate, conversionMap, recordedAt);
-    if (entries.length === 0 || hasBrokenLine || submitting) return;
+  // Snapshot the sale and clear the form for the next customer. The date
+  // stays, so a run of back-entered sales keeps its day.
+  const addToQueue = () => {
+    if (!formSale || submitting) return;
+    setQueue((prev) => [...prev, formSale]);
+    resetForm();
+    setQueueOpen(true);
+    toast({ title: t.kas.queued.replace("{name}", formSale.customerName || t.kas.noName) });
+  };
+  const removeFromQueue = (id: string) => setQueue((prev) => prev.filter((s) => s.id !== id));
+  // Load a queued sale back into the form. A sale already in the form swaps
+  // into the queue; a half-typed one blocks it (the button is disabled), so
+  // nothing typed is ever lost.
+  const editFromQueue = (id: string) => {
+    const sale = queue.find((s) => s.id === id);
+    if (!sale || (!formBlank && !formSale)) return;
+    setQueue((prev) => [...prev.filter((s) => s.id !== id), ...(formSale ? [formSale] : [])]);
+    setDate(sale.date);
+    setCustomerName(sale.customerName);
+    setNote(sale.note);
+    setLines(sale.lines.map((l) => ({ ...l })));
+  };
+  const canEditQueued = !submitting && (formBlank || !!formSale);
 
-    const saleId = crypto.randomUUID();
-    const name = customerName.trim();
-    const metadata: ActivityLogMetadata = {
-      orderType: "manual",
-      outflowDate: saleDate,
-      saleId,
-      ...(name ? { customerName: name } : {}),
-      ...(note.trim() ? { note: note.trim() } : {}),
-    };
+  // One sale, or the queue plus the form's sale: each is its own atomic
+  // record_order_outflows call (submitKasQueue). Recorded ones leave the
+  // queue; a rejected queued sale stays, marked; a rejected form sale stays in
+  // the form.
+  const handleSubmit = async () => {
+    if (hasBrokenLine || submitting) return;
+    const toRecord = [...queue, ...(formSale ? [formSale] : [])];
+    if (toRecord.length === 0) return;
+
+    const todayStr = today();
+    const recordedAt = new Date().toISOString();
+    let entryCount = 0;
+    let offline = false;
+    const recordedSales: KasSale[] = [];
 
     setSubmitting(true);
-    const ok = await onSubmit(entries, user?.email || "", metadata);
+    const { recorded, failed } = await submitKasQueue(toRecord, async (sale) => {
+      const { entries, metadata } = buildKasSale(sale, conversionMap, recordedAt, todayStr);
+      const ok = await onSubmit(entries, user?.email || "", metadata);
+      if (!ok) return false;
+      entryCount += entries.length;
+      if (loadOutbox().some((o) => o.entries.some((e) => e.id === entries[0].id))) offline = true;
+      recordedSales.unshift({
+        saleId: sale.id,
+        recordedAt,
+        customerName: sale.customerName || undefined,
+        lines: entries.map((e) => ({ product: e.product, quantity: e.quantityInButir })),
+      });
+      return true;
+    });
     setSubmitting(false);
+
+    if (recordedSales.length) setJustRecorded((prev) => [...recordedSales, ...prev]);
+    const formFailed = !!formSale && failed.some((s) => s.id === formSale.id);
+    setQueue(failed.filter((s) => s.id !== formSale?.id));
+    if (formSale && !formFailed) {
+      resetForm();
+      if (failed.length === 0) setDate(null);
+    }
 
     // The toast store keeps one toast, so ours would replace the one already
     // shown: a rejection ("Stok Tidak Cukup: <egg>") toasts in the RPC hook,
     // and a sale queued offline toasts "saved offline" in Index, where
     // "dipotong dari stok" would be untrue.
-    if (!ok) return;
-    const queued = loadOutbox().some((o) => o.entries.some((e) => e.id === entries[0].id));
-
-    setJustRecorded((prev) => [
-      {
-        saleId,
-        recordedAt,
-        customerName: name || undefined,
-        lines: entries.map((e) => ({ product: e.product, quantity: e.quantityInButir })),
-      },
-      ...prev,
-    ]);
-    setDate(null);
-    setCustomerName("");
-    setNote("");
-    setLines([emptyLine()]);
-    if (!queued) toast({ title: t.kas.recorded, description: t.kas.recordedDesc.replace("{n}", String(entries.length)) });
+    if (failed.length > 0 || offline || recorded.length === 0) return;
+    if (recorded.length === 1) toast({ title: t.kas.recorded, description: t.kas.recordedDesc.replace("{n}", String(entryCount)) });
+    else toast({ title: t.kas.recordedMany.replace("{n}", String(recorded.length)), description: t.kas.recordedManyDesc });
   };
+
+  const submitCount = queue.length + (formSale ? 1 : 0);
+  const submitLabel = submitting
+    ? t.outflow.recording
+    : queue.length > 0
+      ? `${t.kas.submitAll} (${submitCount})`
+      : t.kas.submit;
 
   return (
     <>
@@ -181,6 +239,84 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
       </div>
 
       <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {queue.length > 0 && (
+          <div className="mb-4 rounded-[14px] border border-ek-border bg-[#faf8f4]">
+            <button
+              type="button"
+              aria-expanded={queueOpen}
+              onClick={() => setQueueOpen((o) => !o)}
+              className={cn(
+                "flex min-h-[50px] w-full items-center gap-2 px-3 py-1.5 text-left text-[14.5px] font-semibold text-ek-fg",
+                queueOpen && "border-b border-ek-border"
+              )}
+            >
+              <Users aria-hidden className="h-[17px] w-[17px] shrink-0" />
+              <span className="min-w-0 leading-[1.2]">{t.kas.queue}</span>
+              <span className="inline-flex h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full bg-amber-600 px-1.5 text-xs font-bold text-white">
+                {queue.length}
+              </span>
+              <ChevronDown aria-hidden className={cn("ml-auto h-4 w-4 shrink-0 transition-transform", queueOpen && "rotate-180")} />
+            </button>
+            {queueOpen && (
+              <div className="flex flex-col gap-2 p-2">
+                {queue.map((sale) => {
+                  const name = sale.customerName || t.kas.noName;
+                  return (
+                    <div
+                      key={sale.id}
+                      data-queued-sale={sale.id}
+                      className={cn(
+                        "flex items-center gap-0.5 rounded-[11px] border bg-card py-2 pl-3 pr-1",
+                        sale.failed ? "border-red-300" : "border-ek-border"
+                      )}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[15px] font-bold text-ek-fg">{name}</div>
+                        <div className="mt-[3px] text-[12.5px] leading-[1.35] text-ek-mfg">
+                          {sale.date && (
+                            <span className="mr-1 inline-block whitespace-nowrap rounded-md border border-ek-border px-1.5 py-px text-xs font-semibold text-ek-nav">
+                              {kasDateLabel(sale.date, locale)}
+                            </span>
+                          )}
+                          {kasTotalsSummary(kasQueuedTotals([sale], conversionMap), conversionMap, locale)}
+                        </div>
+                        {sale.failed && (
+                          <div role="status" className="mt-1 text-[12.5px] font-semibold text-red-600">
+                            <AlertCircle aria-hidden className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
+                            {t.kas.rejected}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        aria-label={`${t.common.edit} ${name}`}
+                        disabled={!canEditQueued}
+                        onClick={() => editFromQueue(sale.id)}
+                        className="h-11 w-11 shrink-0 rounded-[11px] p-0 text-ek-nav hover:bg-ek-muted hover:text-ek-nav [&_svg]:size-[17px]"
+                      >
+                        <Pencil />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        aria-label={`${t.common.delete} ${name}`}
+                        disabled={submitting}
+                        onClick={() => removeFromQueue(sale.id)}
+                        className="h-11 w-11 shrink-0 rounded-[11px] p-0 text-red-600 hover:bg-red-50 hover:text-red-600 [&_svg]:size-[17px]"
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  );
+                })}
+                <div className="px-1 pt-0.5 text-[12.5px] leading-[1.35] text-ek-mfg">
+                  <b className="font-semibold text-ek-nav">{t.kas.queueTotal}:</b>{" "}
+                  {kasTotalsSummary(queuedTotals, conversionMap, locale)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <label className="flex flex-col gap-1.5">
           <span className={LABEL}>{t.kas.customerName}</span>
           <Input
@@ -198,7 +334,8 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
             line={line}
             productOptions={eggProductNames}
             conversionMap={conversionMap}
-            available={availableByProduct.get(line.product) ?? 0}
+            available={(availableByProduct.get(line.product) ?? 0) - (queuedTotals.get(line.product) ?? 0)}
+            queued={queuedTotals.get(line.product) ?? 0}
             locale={locale}
             onUpdate={(patch) => updateLine(line.id, patch)}
             onRemove={() => removeLine(line.id)}
@@ -240,12 +377,22 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
       <div className="flex flex-col gap-2.5 border-t border-ek-border px-5 pb-4 pt-3">
         <Button
           type="button"
+          variant="outline"
+          onClick={addToQueue}
+          disabled={!formSale || submitting}
+          className="h-[54px] w-full gap-2 rounded-[13px] border-ek-border bg-card text-base font-semibold text-ek-fg hover:border-[#d9cfbf] hover:bg-card hover:text-ek-fg disabled:opacity-[.45]"
+        >
+          <Plus aria-hidden className="h-[18px] w-[18px]" />
+          {t.kas.addToQueue}
+        </Button>
+        <Button
+          type="button"
           onClick={handleSubmit}
-          disabled={validCount === 0 || hasBrokenLine || submitting}
+          disabled={submitCount === 0 || hasBrokenLine || submitting}
           className="h-[54px] w-full gap-2 rounded-[13px] bg-amber-600 text-base font-semibold text-white hover:bg-amber-700 disabled:opacity-[.45]"
         >
           <ShoppingCart aria-hidden className="h-[18px] w-[18px]" />
-          {submitting ? t.outflow.recording : t.kas.submit}
+          {submitLabel}
         </Button>
       </div>
     </>
@@ -256,13 +403,14 @@ interface KasLineCardProps {
   line: KasLine;
   productOptions: string[];
   conversionMap: ConversionMap;
-  available: number; // native unit
+  available: number; // native unit, after what the queue takes
+  queued: number; // native unit already in the queue for this egg
   locale: string;
   onUpdate: (patch: Partial<KasLine>) => void;
   onRemove: () => void;
 }
 
-function KasLineCard({ line, productOptions, conversionMap, available, locale, onUpdate, onRemove }: KasLineCardProps) {
+function KasLineCard({ line, productOptions, conversionMap, available, queued, locale, onUpdate, onRemove }: KasLineCardProps) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
@@ -399,7 +547,8 @@ function KasLineCard({ line, productOptions, conversionMap, available, locale, o
               {t.outflow.exceedsStock} {nf(Math.round((stockQty - available) * 100) / 100)} {stockUnit} ·{" "}
             </>
           )}
-          {t.common.available}: <b className="font-semibold text-ek-fg">{nf(available)}</b> {stockUnit}
+          {t.common.available}: <b className="font-semibold text-ek-fg">{nf(Math.round(available * 100) / 100)}</b> {stockUnit}
+          {queued > 0 && <> · {t.kas.inQueue.replace("{n}", `${nf(queued)} ${stockUnit}`)}</>}
         </div>
       )}
     </div>

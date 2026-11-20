@@ -583,6 +583,15 @@ export const en = {
     recorded: 'Sale recorded',
     recordedDesc: '{n} egg types deducted from stock',
     close: 'Close cash sale',
+    addToQueue: 'Add to Queue',
+    queue: 'Queued Sales',
+    queued: '{name} sale queued',
+    queueTotal: 'Queue total',
+    inQueue: '{n} in queue',
+    submitAll: 'Record All',
+    recordedMany: '{n} sales recorded',
+    recordedManyDesc: 'Eggs deducted from stock',
+    rejected: 'Rejected — check stock, then edit or remove',
   },
 
   // Radial add menu (press-and-hold the tablet add button)

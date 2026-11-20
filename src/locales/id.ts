@@ -582,6 +582,15 @@ export const id = {
     recorded: 'Penjualan tercatat',
     recordedDesc: '{n} jenis telur dipotong dari stok',
     close: 'Tutup Kas Tunai',
+    addToQueue: 'Tambah ke Antrian',
+    queue: 'Penjualan dalam Antrian',
+    queued: 'Penjualan {name} masuk antrian',
+    queueTotal: 'Total antrian',
+    inQueue: '{n} di antrian',
+    submitAll: 'Catat Semua',
+    recordedMany: '{n} penjualan tercatat',
+    recordedManyDesc: 'Telur dipotong dari stok',
+    rejected: 'Ditolak — cek stok, lalu ubah atau hapus',
   },
 
   // Menu radial tambah (tekan-tahan tombol tambah di tablet)
