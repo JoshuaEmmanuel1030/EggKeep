@@ -299,4 +299,164 @@ describe("KasTunaiSale", () => {
     expect(bins()).toHaveLength(1);
     expect(screen.getByRole("combobox", { name: "Jenis Telur" })).toHaveTextContent("Pilih...");
   });
+
+  // ── Queue (Tambah ke Antrian → Catat Semua), like the PO builder ─────────────
+  const queueBtn = () => screen.getByRole("button", { name: "Tambah ke Antrian" });
+  // Pick a saved customer by its exact name, else add the typed one; "" = Umum.
+  const name = (v: string) => {
+    if (!v) return;
+    searchCustomer(v);
+    fireEvent.click(screen.queryByRole("option", { name: v }) ?? screen.getByRole("option", { name: /Tambah/ }));
+  };
+  const picker = () => screen.getByRole("combobox", { name: "Nama pelanggan" });
+  const queuedNames = () => [...document.querySelectorAll("[data-queued-sale]")].map((el) => el.querySelector(".font-bold")?.textContent);
+  const queueSale = (customer: string, qty: string) => {
+    name(customer);
+    fillKg(qty);
+    fireEvent.click(queueBtn());
+  };
+  type Call = [OutflowEntry[], string, Record<string, unknown>];
+
+  it("queues sales, then Catat Semua records each as its own sale and empties the queue", async () => {
+    vi.mocked(toast).mockClear();
+    const onSubmit = vi.fn(async () => true);
+    const onCount = vi.fn();
+    render(
+      <LanguageProvider>
+        <KasTunaiSale inflows={inflows} logs={[]} onSubmit={onSubmit} onClose={() => {}} onValidCountChange={onCount} />
+      </LanguageProvider>
+    );
+    expect(queueBtn()).toBeDisabled();
+
+    queueSale("Bu Rina", "1");
+    // The form clears for the next customer; the sale sits in the queue.
+    expect(picker()).toHaveTextContent("Umum (tanpa nama)");
+    expect(screen.getByLabelText("Jumlah (butir)")).toHaveValue("");
+    expect(screen.getByText("Penjualan dalam Antrian")).toBeInTheDocument();
+    expect(screen.getByText("Bu Rina")).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onCount).toHaveBeenLastCalledWith(1); // the rail pill still shows what's waiting
+
+    queueSale("", "0,5"); // no name
+    expect(queuedNames()).toEqual(["Bu Rina", "Umum (tanpa nama)"]);
+    expect(screen.getByText(/Total antrian/).parentElement).toHaveTextContent("1,5 kg NEGERI BIASA");
+
+    // A sale still in the form goes along as the last one.
+    name("Pak Budi");
+    fillKg("0,25");
+    // Pak Budi is new: his row comes back from the (mocked) insert before the press.
+    await waitFor(async () => expect(await addCustomer.mock.results.at(-1)?.value).toMatchObject({ name: "Pak Budi" }));
+    const submit = screen.getByRole("button", { name: "Catat Semua (3)" });
+    fireEvent.click(submit);
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(3));
+
+    const calls = onSubmit.mock.calls as unknown as Call[];
+    expect(calls.map(([e]) => e.map((x) => x.quantityInButir))).toEqual([[1], [0.5], [0.25]]);
+    expect(calls.map(([, , m]) => m.customerName)).toEqual(["Bu Rina", undefined, "Pak Budi"]);
+    expect(calls.map(([, , m]) => m.customerId)).toEqual(["c-rina", undefined, "c-new"]); // each sale keeps its own pick
+    const saleIds = calls.map(([, , m]) => m.saleId);
+    expect(new Set(saleIds).size).toBe(3);
+    expect(calls.every(([, , m]) => m.orderType === "manual")).toBe(true);
+
+    await waitFor(() => expect(screen.queryByText("Penjualan dalam Antrian")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Catat Penjualan/ })).toBeDisabled();
+    expect(screen.getByText("3 penjualan")).toBeInTheDocument();
+    expect(toast).toHaveBeenLastCalledWith({ title: "3 penjualan tercatat", description: "Telur dipotong dari stok" });
+  });
+
+  it("a rejected queued sale stays, marked, the others are recorded, and no toast of its own", async () => {
+    let n = 0;
+    const onSubmit = vi.fn(async () => ++n !== 2); // the second sale is rejected
+    renderKas(onSubmit);
+    queueSale("A", "1");
+    queueSale("B", "1");
+    queueSale("C", "1");
+    vi.mocked(toast).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Catat Semua (3)" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(3));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Catat Semua (1)" })).toBeEnabled());
+    const left = document.querySelectorAll("[data-queued-sale]");
+    expect(left).toHaveLength(1);
+    expect(left[0]).toHaveTextContent("B");
+    expect(left[0]).toHaveTextContent("Ditolak");
+    expect(screen.getByText("2 penjualan")).toBeInTheDocument();
+    expect(toast).not.toHaveBeenCalled(); // the RPC hook's "Stok Tidak Cukup" stays up
+
+    // Re-pressing records only B, with the same saleId.
+    const bSaleId = (onSubmit.mock.calls[1] as unknown as Call)[2].saleId;
+    fireEvent.click(screen.getByRole("button", { name: "Catat Semua (1)" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(4));
+    expect((onSubmit.mock.calls[3] as unknown as Call)[2]).toMatchObject({ customerName: "B", saleId: bSaleId });
+    await waitFor(() => expect(document.querySelectorAll("[data-queued-sale]")).toHaveLength(0));
+  });
+
+  it("a rejected form sale stays in the form, not the queue", async () => {
+    const onSubmit = vi.fn(async (_e: OutflowEntry[], _u: string, m?: Record<string, unknown>) => m?.customerName !== "Form");
+    renderKas(onSubmit as unknown as () => Promise<boolean>);
+    queueSale("Queued", "1");
+    name("Form");
+    fillKg("0,5");
+    fireEvent.click(screen.getByRole("button", { name: "Catat Semua (2)" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Catat Penjualan/ })).toBeEnabled());
+    expect(document.querySelectorAll("[data-queued-sale]")).toHaveLength(0);
+    expect(picker()).toHaveTextContent("Form");
+    expect(screen.getByLabelText("Jumlah (kg)")).toHaveValue("0,5");
+  });
+
+  it("Ubah loads a queued sale back; a sale in the form swaps into the queue; a half-typed form blocks it", () => {
+    renderKas(vi.fn(async () => true));
+    queueSale("Bu Rina", "1");
+    fireEvent.change(screen.getByLabelText("Catatan"), { target: { value: "x" } });
+    expect(screen.getByRole("button", { name: "Ubah Bu Rina" })).toBeDisabled(); // a note but no sale
+
+    fireEvent.change(screen.getByLabelText("Catatan"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ubah Bu Rina" }));
+    expect(picker()).toHaveTextContent("Bu Rina");
+    expect(screen.getByLabelText("Jumlah (kg)")).toHaveValue("1");
+    expect(document.querySelectorAll("[data-queued-sale]")).toHaveLength(0);
+
+    // Bu Rina's sale is in the form; editing another swaps them.
+    fireEvent.click(queueBtn());
+    queueSale("Pak Budi", "2");
+    name("Bu Sari");
+    fillKg("0,5");
+    fireEvent.click(screen.getByRole("button", { name: "Ubah Pak Budi" }));
+    expect(picker()).toHaveTextContent("Pak Budi");
+    expect(screen.getByLabelText("Jumlah (kg)")).toHaveValue("2");
+    expect(queuedNames()).toEqual(["Bu Rina", "Bu Sari"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hapus Bu Rina" }));
+    expect(document.querySelectorAll("[data-queued-sale]")).toHaveLength(1);
+  });
+
+  it("the stock hint counts what the queue already takes", () => {
+    renderKas(vi.fn(async () => true)); // 3 kg on hand
+    queueSale("A", "2");
+    fillKg("1,5");
+    expect(screen.getByText(/Melebihi stok tersedia sebanyak 0,5 kg/)).toBeInTheDocument();
+    expect(screen.getByText(/Tersedia/)).toHaveTextContent("Tersedia: 1 kg · 2 kg di antrian");
+  });
+
+  it("a queued sale keeps its picked date; the form keeps the date for the next one", async () => {
+    const onSubmit = vi.fn(async () => true);
+    renderKas(onSubmit);
+    const yesterday = format(subDays(new Date(), 1), "yyyy-MM-dd");
+    fireEvent.change(screen.getByLabelText("Tanggal"), { target: { value: yesterday } });
+    queueSale("A", "1");
+    expect(screen.getByTitle("Ubah tanggal")).toHaveTextContent(kasDateLabel(yesterday, "id-ID"));
+    expect(document.querySelector("[data-queued-sale]")).toHaveTextContent(kasDateLabel(yesterday, "id-ID"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Kembali ke hari ini" }));
+    queueSale("B", "1");
+    fireEvent.click(screen.getByRole("button", { name: "Catat Semua (2)" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    const dates = (onSubmit.mock.calls as unknown as Call[]).map(([e, , m]) => [e[0].date, m.outflowDate]);
+    expect(dates).toEqual([
+      [yesterday, yesterday],
+      [format(new Date(), "yyyy-MM-dd"), format(new Date(), "yyyy-MM-dd")],
+    ]);
+  });
 });
+

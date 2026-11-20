@@ -1,19 +1,27 @@
 import { describe, it, expect } from "vitest";
 import {
   buildKasEntries,
+  buildKasSale,
   eggRingItems,
+  isBlankKasForm,
   isBrokenKasLine,
   isValidKasLine,
   kasDateLabel,
   kasSaleSummary,
+  kasQueuedTotals,
   kasStockQty,
+  kasTotalsSummary,
   mergeKasSales,
+  snapshotKasSale,
+  submitKasQueue,
   todaysKasSales,
   type KasLine,
+  type KasQueuedSale,
   type KasSale,
 } from "../kasTunai";
 import type { ActivityLog } from "@/types/activityLog";
 import type { ConversionMap } from "@/types/inventory";
+import type { CustomerPick } from "@/lib/cashCustomers";
 
 const cm: ConversionMap = {
   "NEGERI BIASA": { unit: "kg", eggs_per_unit: 15.5 },
@@ -187,5 +195,121 @@ describe("labels", () => {
   it("formats a picked date as short weekday + day + month", () => {
     expect(kasDateLabel("2026-11-02", "id-ID")).toBe("Sen, 2 Nov");
     expect(kasDateLabel("2026-11-02", "en-US")).toBe("Mon, Nov 2");
+  });
+});
+
+describe("queue", () => {
+  const kg = (qty: string, id = "k"): KasLine => line({ id, product: "NEGERI BIASA", qty, inputUnit: "kg" });
+  const form = (lines: KasLine[], over: Partial<{ date: string | null; customer: CustomerPick; note: string }> = {}) => ({
+    date: null as string | null,
+    customer: null as CustomerPick,
+    note: "",
+    lines,
+    ...over,
+  });
+  const queued = (id: string, lines: KasLine[], over: Partial<KasQueuedSale> = {}): KasQueuedSale => ({
+    id,
+    date: null,
+    customer: null,
+    note: "",
+    lines,
+    ...over,
+  });
+
+  it("snapshots only the valid lines, the picked customer, and keeps the picked date", () => {
+    const sale = snapshotKasSale(
+      form([kg("2"), line({ id: "blank" }), line({ id: "p", qty: "30" })], { date: "2026-11-02", customer: { id: "c1", name: "Bu Rina" }, note: " lunas " }),
+      cm,
+      "s1"
+    );
+    expect(sale).toEqual({
+      id: "s1",
+      date: "2026-11-02",
+      customer: { id: "c1", name: "Bu Rina" },
+      note: "lunas",
+      lines: [kg("2"), line({ id: "p", qty: "30" })],
+    });
+  });
+
+  it("won't snapshot an empty form or one with a line that would be dropped", () => {
+    expect(snapshotKasSale(form([line({})]), cm)).toBeNull();
+    expect(snapshotKasSale(form([kg("2"), line({ id: "bad", qty: "2,5" })]), cm)).toBeNull(); // 2,5 butir
+    expect(snapshotKasSale(form([kg("2"), line({ id: "x", product: "", qty: "3" })]), cm)).toBeNull(); // qty, no egg
+  });
+
+  it("a form is blank only when nothing at all is typed", () => {
+    expect(isBlankKasForm(form([line({ product: "" })]))).toBe(true);
+    expect(isBlankKasForm(form([line({ product: "" })], { customer: { name: "Bu Rina" } }))).toBe(false); // a customer picked
+    expect(isBlankKasForm(form([line({})]))).toBe(false); // an egg picked
+    expect(isBlankKasForm(form([line({ product: "", qty: "3" })]))).toBe(false);
+    expect(isBlankKasForm(form([line({ product: "" })], { note: "x" }))).toBe(false);
+  });
+
+  it("builds one sale's payload: queued id as saleId, null date as today, Umum carries no name or note", () => {
+    let n = 0;
+    const { entries, metadata } = buildKasSale(queued("s1", [kg("2"), line({ id: "p", qty: "30" })]), cm, "T", "2026-11-03", [], () => `e${++n}`);
+    expect(entries).toEqual([
+      { id: "e1", date: "2026-11-03", product: "NEGERI BIASA", quantityInButir: 2, createdAt: "T", category: "egg" },
+      { id: "e2", date: "2026-11-03", product: "PUYUH", quantityInButir: 30, createdAt: "T", category: "egg" },
+    ]);
+    expect(metadata).toEqual({ orderType: "manual", outflowDate: "2026-11-03", saleId: "s1" });
+
+    const dated = buildKasSale(queued("s2", [kg("1")], { date: "2026-11-01", customer: { id: "c-budi", name: "Pak Budi" }, note: "titip" }), cm, "T", "2026-11-03", [
+      { id: "c-budi", name: "Pak Budi" },
+    ]);
+    expect(dated.entries[0].date).toBe("2026-11-01");
+    expect(dated.metadata).toEqual({
+      orderType: "manual",
+      outflowDate: "2026-11-01",
+      saleId: "s2",
+      customerId: "c-budi",
+      customerName: "Pak Budi",
+      note: "titip",
+    });
+  });
+
+  it("a name queued before its customer row existed picks up the id when recorded", () => {
+    const sale = queued("s3", [kg("1")], { customer: { name: "bu  sari" } });
+    expect(buildKasSale(sale, cm, "T", "2026-11-03", []).metadata).toMatchObject({ customerName: "bu sari" });
+    expect(buildKasSale(sale, cm, "T", "2026-11-03", []).metadata).not.toHaveProperty("customerId");
+    expect(buildKasSale(sale, cm, "T", "2026-11-03", [{ id: "c-sari", name: "Bu Sari" }]).metadata).toMatchObject({
+      customerId: "c-sari",
+      customerName: "Bu Sari",
+    });
+  });
+
+  it("totals the queue per egg in native units, never kg and butir together", () => {
+    const q = [
+      queued("a", [kg("0,1"), line({ id: "p", qty: "30" })]),
+      queued("b", [kg("0,2"), line({ id: "b", product: "NEGERI BIASA", qty: "31", inputUnit: "butir" })]), // 31 butir ≈ 2 kg
+    ];
+    const totals = kasQueuedTotals(q, cm);
+    expect([...totals]).toEqual([
+      ["NEGERI BIASA", 2.3],
+      ["PUYUH", 30],
+    ]);
+    expect(kasTotalsSummary(totals, cm, "id-ID")).toBe("2,3 kg NEGERI BIASA · 30 butir PUYUH");
+    expect(kasQueuedTotals([], cm).size).toBe(0);
+  });
+
+  it("records every sale in order; a rejection or a throw doesn't stop the rest and stays queued, marked", async () => {
+    const seen: string[] = [];
+    const result = await submitKasQueue(
+      [queued("a", [kg("1")]), queued("b", [kg("1")], { failed: true }), queued("c", [kg("1")]), queued("d", [kg("1")])],
+      async (sale) => {
+        seen.push(sale.id);
+        if (sale.id === "c") throw new Error("boom");
+        return sale.id !== "a";
+      }
+    );
+    expect(seen).toEqual(["a", "b", "c", "d"]);
+    expect(result.recorded.map((s) => [s.id, s.failed])).toEqual([
+      ["b", undefined],
+      ["d", undefined],
+    ]);
+    expect(result.failed.map((s) => [s.id, s.failed])).toEqual([
+      ["a", true],
+      ["c", true],
+    ]);
   });
 });
