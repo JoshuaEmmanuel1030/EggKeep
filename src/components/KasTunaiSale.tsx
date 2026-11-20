@@ -14,6 +14,9 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { loadOutbox } from "@/lib/outflowOutbox";
+import { useCashCustomers } from "@/hooks/useCashCustomers";
+import { customerMetadata, customerNameKey, type CustomerPick } from "@/lib/cashCustomers";
+import { CashCustomerPicker } from "./CashCustomerPicker";
 import { RadialAddButton, revealPickedRow, type RadialItem } from "./RadialAddButton";
 import { SubtleDateLink } from "./SubtleDateLink";
 import {
@@ -59,7 +62,9 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
   const { conversionMap, eggProductNames, itemTypes } = useItemTypes();
   // null = today, so a drawer left open past midnight still records "today".
   const [date, setDate] = useState<string | null>(null);
-  const [customerName, setCustomerName] = useState("");
+  const { customers, addCustomer } = useCashCustomers();
+  // null = anonymous walk-in ("Umum"), the default.
+  const [customer, setCustomer] = useState<CustomerPick>(null);
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<KasLine[]>(() => [emptyLine()]);
   const [submitting, setSubmitting] = useState(false);
@@ -114,6 +119,17 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
     if (row) revealPickedRow(row); // the card's only input: Jumlah
   }, [lines]);
 
+  // A new name is selected at once and saved in the background, so a slow or
+  // dead network never holds up the sale. If the row isn't back by submit, the
+  // sale carries the name alone (customerMetadata).
+  const addNewCustomer = (name: string) => {
+    setCustomer({ name });
+    addCustomer
+      .mutateAsync({ name })
+      .then((c) => setCustomer((cur) => (cur && !cur.id && customerNameKey(cur.name) === customerNameKey(c.name) ? { id: c.id, name: c.name } : cur)))
+      .catch(() => {}); // offline or a duplicate: the name still goes on the sale
+  };
+
   const handleSubmit = async () => {
     const saleDate = date ?? today();
     const recordedAt = new Date().toISOString();
@@ -121,12 +137,12 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
     if (entries.length === 0 || hasBrokenLine || submitting) return;
 
     const saleId = crypto.randomUUID();
-    const name = customerName.trim();
+    const who = customerMetadata(customer, customers);
     const metadata: ActivityLogMetadata = {
       orderType: "manual",
       outflowDate: saleDate,
       saleId,
-      ...(name ? { customerName: name } : {}),
+      ...who,
       ...(note.trim() ? { note: note.trim() } : {}),
     };
 
@@ -145,13 +161,13 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
       {
         saleId,
         recordedAt,
-        customerName: name || undefined,
+        customerName: who.customerName,
         lines: entries.map((e) => ({ product: e.product, quantity: e.quantityInButir })),
       },
       ...prev,
     ]);
     setDate(null);
-    setCustomerName("");
+    setCustomer(null);
     setNote("");
     setLines([emptyLine()]);
     if (!queued) toast({ title: t.kas.recorded, description: t.kas.recordedDesc.replace("{n}", String(entries.length)) });
@@ -181,15 +197,10 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
       </div>
 
       <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        <label className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5">
           <span className={LABEL}>{t.kas.customerName}</span>
-          <Input
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-            placeholder={t.common.optional}
-            className={INPUT}
-          />
-        </label>
+          <CashCustomerPicker customers={customers} value={customer} onChange={setCustomer} onAddNew={addNewCustomer} className={INPUT} />
+        </div>
 
         <div className={cn(LABEL, "mt-4")}>{t.kas.eggs}</div>
         {lines.map((line) => (

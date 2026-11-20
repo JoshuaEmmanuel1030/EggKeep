@@ -209,3 +209,16 @@ deliberately in Catalog once #32 and #34 are merged.
 Note which step, which device, and what you saw instead. A failure in Part A is a
 layout or wiring bug and is cheap to fix. A failure in Part B touched the database,
 so say so immediately — the receipt may need voiding before it compounds.
+
+## Kas Tunai: Pelanggan Tunai (customer picker)
+
+Needs migration `20261120000000_cash_customers.sql` applied. Tablet only (the drawer on Keluar). Every step that records a sale writes to production: do those only as a real sale, or stop before `Catat Penjualan`.
+
+1. Open the Kas Tunai drawer. `Nama pelanggan` is a button reading `Umum (tanpa nama)`, not a text box.
+2. Tap it. The list shows `Umum (tanpa nama)` first, then the saved customers A-Z.
+3. Type part of a saved name in any casing. The list narrows to the names containing it. Typing a saved name exactly shows no `Tambah` row.
+4. Type a name that is not saved. A `Tambah "<name>"` row appears at the bottom. Type `customer` or `umum`: no `Tambah` row, only `Umum (tanpa nama)`.
+5. Look, don't save: pick a saved customer, close and reopen the drawer. The pick is still there.
+6. On a real sale with a saved customer: after `Catat Penjualan` the row under `Hari ini` shows that name, and the picker is back on `Umum (tanpa nama)`.
+7. On a real anonymous sale: the row under `Hari ini` reads `Umum (tanpa nama)`.
+8. Catalog → Pelanggan Tunai (wallet icon): the list matches the picker. As admin, rename one, then check Insight → Pembeli shows its past sales under the new name. Switch one to inactive: it leaves the picker's list but still appears when its exact name is typed.

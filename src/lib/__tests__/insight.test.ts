@@ -297,6 +297,22 @@ describe("Kas Tunai", () => {
     expect(ani.variants).toEqual(["bu ani", "Bu Ani", "BU ANI", "Bu  Ani"]);
   });
 
+  it("a sale linked to the customer list follows a rename and joins name-only sales", () => {
+    const sale = (saleId: string, customerName?: string, customerId?: string) => ({ saleId, customerName, customerId, tracked: true, outflowDate: "2026-11-01", orderLines: [], eggTotals: [] });
+    const sales = [sale("a", "Ibu Ani", "c1"), sale("b", "Bu Ani", "c1"), sale("c", "bu ani"), sale("d", "Bu Tia", "gone"), sale("e"), sale("f", undefined, "c2")];
+    const c = kasTunaiCustomers(sales, [{ id: "c1", name: "Bu Ani" }, { id: "c2", name: "Pa Edi" }]);
+    expect(c.map((x) => x.key).sort()).toEqual(["bu ani", "bu tia", "pa edi"]);
+    expect(c.find((x) => x.key === "bu ani").sales.map((s) => s.saleId)).toEqual(["a", "b", "c"]);
+    expect(c.find((x) => x.key === "bu ani").name).toBe("Bu Ani");
+    // Without the list the snapshots stand as typed.
+    expect(kasTunaiCustomers(sales).map((x) => x.key).sort()).toEqual(["bu ani", "bu tia", "ibu ani"]);
+  });
+
+  it("carries the customer id from the log", () => {
+    const meta = { orderType: "manual" as const, saleId: "s9", customerName: "Bu Ani", customerId: "c1" };
+    expect(kasSalesFromLogs([log({ metadata: meta })])[0].customerId).toBe("c1");
+  });
+
   it("groups one sale's rows and keeps eggs per product in their own unit", () => {
     const meta = { orderType: "manual" as const, saleId: "s1", outflowDate: "2026-11-02", customerName: "Bu Ani" };
     const sales = kasSalesFromLogs([
