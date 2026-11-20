@@ -4,17 +4,13 @@ import { PO_COLUMNS, fetchDeliveriesInRange, rowToPo } from "@/hooks/useDeliveri
 import { fetchAllRows } from "@/hooks/usePurchaseOrders";
 import { addDays, localToday } from "@/lib/buyerProfile";
 import { eggOutflowIdsOf } from "@/lib/deliveryFlags";
-import type { OrderRow, StockCountRow } from "@/lib/insight";
+import type { OrderRow, ReturnRow, StockCountRow } from "@/lib/insight";
 
 export interface InsightOrder extends OrderRow {
   buyerName: string;
 }
 
-export interface InsightReturn {
-  outflowId: string;
-  product: string;
-  disposition: "restock" | "retakan" | "writeoff";
-  quantity: number;
+export interface InsightReturn extends ReturnRow {
   date: string;
 }
 
@@ -46,7 +42,7 @@ async function fetchInsightData() {
     fetchAllRows((from, to) =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase.from as any)("returns") // not in the generated types yet
-        .select("outflow_id, product, disposition, quantity, return_date")
+        .select("outflow_id, product, disposition, quantity, return_date, sku_code, created_at")
         .is("voided_at", null)
         .order("created_at")
         .order("id")
@@ -85,12 +81,14 @@ async function fetchInsightData() {
       dcName: p.dcName,
       outflowIds: eggOutflowIdsOf(p),
     }));
-  const returns: InsightReturn[] = (returnRows as { outflow_id: string; product: string; disposition: string; quantity: number; return_date: string }[]).map((r) => ({
+  const returns: InsightReturn[] = (returnRows as { outflow_id: string; product: string; disposition: string; quantity: number; return_date: string; sku_code: string | null; created_at: string }[]).map((r) => ({
     outflowId: r.outflow_id,
     product: r.product,
     disposition: r.disposition as InsightReturn["disposition"],
     quantity: Number(r.quantity),
     date: r.return_date,
+    skuCode: r.sku_code,
+    createdAt: r.created_at,
   }));
   const counts: StockCountRow[] = countRows.map((r) => ({
     product: r.product,

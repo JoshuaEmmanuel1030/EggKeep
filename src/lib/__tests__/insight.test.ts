@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { addDays, weekdayPattern } from "@/lib/buyerProfile";
 import {
+  orderReturnDetail,
+  orderedEggs,
   OrderRow,
   ageBands,
   atRiskThisWeek,
@@ -418,5 +420,60 @@ describe("countVariance", () => {
 describe("materialTone", () => {
   it("turns amber under 7 days and red under 3", () => {
     expect([materialTone(7), materialTone(6.9), materialTone(3), materialTone(2.9)]).toEqual(["ok", "amber", "amber", "red"]);
+  });
+});
+
+describe("orderReturnDetail", () => {
+  const ret = (outflowId: string, disposition: "restock" | "retakan" | "writeoff", quantity: number, createdAt: string, product = "NEGERI BIASA", skuCode: string | null = "N30B") =>
+    ({ outflowId, product, disposition, quantity, createdAt, skuCode });
+
+  it("counts one O/R/H split as one return, not three rows", () => {
+    const rows = [
+      ret("o1", "restock", 1.5, "2026-10-10T03:00:00Z"),
+      ret("o1", "retakan", 0.5, "2026-10-10T03:00:00Z"),
+      ret("o1", "writeoff", 0.25, "2026-10-10T03:00:00Z"),
+    ];
+    expect(orderReturnDetail({ outflowIds: ["o1"] }, rows).returnCount).toBe(1);
+  });
+
+  it("counts separate saves and separate SKUs as separate returns", () => {
+    const rows = [
+      ret("o1", "restock", 1, "2026-10-10T03:00:00Z"),
+      ret("o1", "restock", 1, "2026-10-11T03:00:00Z"),
+      ret("o1", "restock", 1, "2026-10-11T03:00:00Z", "NEGERI BIASA", "N10"),
+    ];
+    expect(orderReturnDetail({ outflowIds: ["o1"] }, rows).returnCount).toBe(3);
+  });
+
+  it("only takes this order's outflows and sums per product and disposition", () => {
+    const rows = [
+      ret("o1", "restock", 1.25, "a"),
+      ret("o1", "restock", 0.5, "b"),
+      ret("o1", "writeoff", 0.3, "b"),
+      ret("o2", "restock", 9, "c", "PUYUH", null),
+      ret("other", "restock", 7, "d"),
+    ];
+    const d = orderReturnDetail({ outflowIds: ["o1", "o2"] }, rows);
+    expect(d.lines).toEqual([
+      { product: "NEGERI BIASA", disposition: "restock", quantity: 1.75 },
+      { product: "NEGERI BIASA", disposition: "writeoff", quantity: 0.3 },
+      { product: "PUYUH", disposition: "restock", quantity: 9 },
+    ]);
+    expect(d.returnCount).toBe(3);
+  });
+
+  it("is empty for an order with no egg outflows", () => {
+    expect(orderReturnDetail({}, [ret("o1", "restock", 1, "a")])).toEqual({ lines: [], returnCount: 0 });
+  });
+});
+
+describe("orderedEggs", () => {
+  it("sums the same egg across SKUs in its native unit", () => {
+    expect(
+      orderedEggs({ eggTotals: [{ product: "NEGERI BIASA", quantity: 10.2 }, { product: "PUYUH", quantity: 50 }, { product: "NEGERI BIASA", quantity: 3.1 }] })
+    ).toEqual([
+      { product: "NEGERI BIASA", quantity: 13.3 },
+      { product: "PUYUH", quantity: 50 },
+    ]);
   });
 });

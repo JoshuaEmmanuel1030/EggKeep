@@ -489,3 +489,47 @@ export function countVariance(rows: StockCountRow[], product: string, n: number,
 export type CoverTone = "ok" | "amber" | "red";
 export const materialTone = (coverDays: number): CoverTone =>
   coverDays < MATERIAL_RED_DAYS ? "red" : coverDays < MATERIAL_AMBER_DAYS ? "amber" : "ok";
+
+// ---- Return detail for one PO (Kendalan pengiriman) ----
+export type ReturnDisposition = "restock" | "retakan" | "writeoff";
+export interface ReturnRow {
+  outflowId: string;
+  product: string;
+  disposition: ReturnDisposition;
+  quantity: number; // native unit (kg / butir)
+  skuCode?: string | null;
+  createdAt?: string;
+}
+export interface OrderReturnDetail {
+  // One row per (product, disposition), quantities summed in the native unit.
+  lines: { product: string; disposition: ReturnDisposition; quantity: number }[];
+  // Save groups (outflow, SKU, created_at): one return entry split across
+  // O / R / H writes several rows but is one return.
+  returnCount: number;
+}
+
+const DISPOSITION_ORDER: ReturnDisposition[] = ["restock", "retakan", "writeoff"];
+
+export function orderReturnDetail(order: { outflowIds?: string[] }, returns: ReturnRow[]): OrderReturnDetail {
+  const ids = new Set(order.outflowIds ?? []);
+  const mine = returns.filter((r) => ids.has(r.outflowId));
+  const groups = new Set(mine.map((r) => `${r.outflowId}|${r.skuCode ?? ""}|${r.createdAt ?? ""}`));
+  const sums = new Map<string, { product: string; disposition: ReturnDisposition; quantity: number }>();
+  for (const r of mine) {
+    const key = `${r.product}|${r.disposition}`;
+    const cur = sums.get(key) ?? { product: r.product, disposition: r.disposition, quantity: 0 };
+    cur.quantity = Math.round((cur.quantity + r.quantity) * 100) / 100;
+    sums.set(key, cur);
+  }
+  const lines = [...sums.values()].sort(
+    (a, b) => a.product.localeCompare(b.product) || DISPOSITION_ORDER.indexOf(a.disposition) - DISPOSITION_ORDER.indexOf(b.disposition)
+  );
+  return { lines, returnCount: groups.size };
+}
+
+// Ordered eggs per product in the native unit (an order can carry the same egg on several SKUs).
+export function orderedEggs(order: { eggTotals?: { product: string; quantity: number }[] }): { product: string; quantity: number }[] {
+  const sums = new Map<string, number>();
+  for (const e of order.eggTotals ?? []) sums.set(e.product, Math.round(((sums.get(e.product) ?? 0) + e.quantity) * 100) / 100);
+  return [...sums].map(([product, quantity]) => ({ product, quantity })).sort((a, b) => a.product.localeCompare(b.product));
+}

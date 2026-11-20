@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertCircle, ArrowRight, Calculator, ChevronRight, Egg, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import {
   basketBreadth,
   isComparable,
   leadTime,
+  orderReturnDetail,
+  orderedEggs,
   reliability,
   returnSpike,
   weekEnd,
@@ -22,10 +24,12 @@ import {
 } from "@/lib/insight";
 import { kasDateLabel } from "@/lib/kasTunai";
 import { cn } from "@/lib/utils";
-import type { InsightData } from "@/hooks/useInsightData";
+import type { InsightData, InsightOrder } from "@/hooks/useInsightData";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { getStockUnit } from "@/lib/inventory";
+import { nativeToPieces } from "@/lib/returnsCap";
 import { hueOf } from "./BuyerList";
 import { IdentityTile } from "./IdentityTile";
 import { WeeklyBars } from "./WeeklyBars";
@@ -285,6 +289,35 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
     [b.orders, asOf, returnedIds]
   );
 
+  const [selectedOrder, setSelectedOrder] = useState<InsightOrder | null>(null);
+
+  const { conversionMap } = useItemTypes();
+  const selectedDetail = useMemo(
+    () => (selectedOrder ? orderReturnDetail(selectedOrder, data.returns) : null),
+    [selectedOrder, data.returns]
+  );
+  const selectedOrdered = useMemo(() => (selectedOrder ? orderedEggs(selectedOrder) : []), [selectedOrder]);
+  // Native unit per product. Only returned kg eggs get a piece estimate, at the
+  // flat return-entry rate (returnsCap): returns are entered in pieces at that
+  // rate, but ordered kg was deducted at the pack's own eggs_per_kg, so a flat
+  // estimate on the ordered line would be wrong (N30B is 16.22, not 15.5).
+  const formatQty = (product: string, qty: number, withPieces: boolean) => {
+    const unit = getStockUnit(product, "egg", conversionMap);
+    const base = `${qty.toLocaleString(locale, { maximumFractionDigits: 2 })} ${unit}`;
+    return withPieces && unit === "kg" ? `${base} (≈ ${nativeToPieces(qty, "kg").toLocaleString(locale)} butir)` : base;
+  };
+
+  const dispositionLabel = (d: "restock" | "retakan" | "writeoff") => {
+    if (d === "restock") return i.dispositionRestock;
+    if (d === "retakan") return i.dispositionRetakan;
+    return i.dispositionWriteoff;
+  };
+  const dispositionClass = (d: "restock" | "retakan" | "writeoff") => {
+    if (d === "restock") return "bg-green-50 text-green-700";
+    if (d === "retakan") return "bg-orange-50 text-orange-700";
+    return "bg-red-50 text-red-700";
+  };
+
   return (
     <div className={cn(CARD, "mb-3.5 px-[18px] py-4")}>
       <CardHead title={i.reliability} note={i.eightWeeks} />
@@ -305,20 +338,88 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
       {ordersWithReturns.length > 0 && (
         <div className="mt-3 border-t border-ek-border pt-3">
           <p className="mb-1.5 text-[12.5px] font-semibold text-ek-mfg">{i.returnPoList}</p>
-          <div className="flex flex-wrap gap-1.5">
-            {ordersWithReturns.map((o) => (
-              <span
-                key={(o.invoiceRef ?? "") + o.outflowDate}
-                className="inline-flex items-center rounded-lg border border-ek-border bg-[#fef2f2] px-2 py-0.5 font-mono text-[12.5px] font-semibold text-red-700"
-              >
-                {o.invoiceRef
-                  ? o.invoiceRef
-                  : toLocalDate(o.outflowDate).toLocaleDateString(locale, { day: "numeric", month: "short" })}
-              </span>
-            ))}
-          </div>
+          <ul className="max-h-40 overflow-y-auto rounded-[11px] border border-ek-border divide-y divide-ek-border">
+            {ordersWithReturns.map((o) => {
+              const label = o.invoiceRef
+                ? o.invoiceRef
+                : toLocalDate(o.outflowDate).toLocaleDateString(locale, { day: "numeric", month: "short" });
+              const nRet = orderReturnDetail(o, data.returns).returnCount;
+              return (
+                <li key={(o.invoiceRef ?? "") + o.outflowDate}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-ek-muted active:bg-ek-muted/70 transition-colors"
+                    onClick={() => setSelectedOrder(o as InsightOrder)}
+                  >
+                    <span className="font-mono text-[12.5px] font-semibold text-red-700 truncate">{label}</span>
+                    <span className="shrink-0 text-[11.5px] text-ek-mfg">
+                      {i.nReturns.replace("{n}", String(nRet))}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
+      <Dialog open={!!selectedOrder} onOpenChange={(open) => { if (!open) setSelectedOrder(null); }}>
+        <DialogContent className="max-w-sm rounded-[16px] px-5 py-5">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-[15px] font-semibold text-red-700">
+              {selectedOrder
+                ? (selectedOrder.invoiceRef ?? toLocalDate(selectedOrder.outflowDate).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }))
+                : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedOrder && (
+            <div className="mt-1 flex flex-col gap-3 text-[13px]">
+              {selectedOrder.dcName && (
+                <span className="inline-block w-fit rounded-md bg-ek-muted px-2 py-0.5 text-[12px] text-ek-nav">{selectedOrder.dcName}</span>
+              )}
+              {selectedDetail && selectedDetail.lines.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-ek-mfg">{i.returnedEggs}</p>
+                  <ul className="flex flex-col gap-1.5">
+                    {selectedDetail.lines.map((ret) => (
+                      <li key={ret.product + ret.disposition} className="flex items-center justify-between gap-2">
+                        <span className="text-ek-fg truncate">{ret.product}</span>
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          <span className="text-ek-mfg">{formatQty(ret.product, ret.quantity, true)}</span>
+                          <span className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-semibold", dispositionClass(ret.disposition))}>
+                            {dispositionLabel(ret.disposition)}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {selectedOrdered.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-ek-mfg">{i.orderedEggs}</p>
+                  <ul className="flex flex-col gap-1.5">
+                    {selectedOrdered.map((et) => (
+                      <li key={et.product} className="flex items-center justify-between gap-2">
+                        <span className="text-ek-fg truncate">{et.product}</span>
+                        <span className="text-ek-mfg">{formatQty(et.product, et.quantity, false)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {selectedOrder.invoiceRef && (
+                <Button
+                  variant="outline"
+                  className="mt-1 h-10 w-full gap-2 rounded-[11px] border-ek-border text-sm font-semibold text-ek-fg"
+                  onClick={() => { navigate(`/deliveries?${new URLSearchParams({ buyer: b.name, returns: "1" })}`); setSelectedOrder(null); }}
+                >
+                  {i.seeInDeliveries} <ArrowRight className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       <div className="mt-3 flex flex-col gap-1 text-[12.5px] leading-[1.4] text-ek-mfg">
         <p>{i.loggedOf.replace("{n}", String(r.logged)).replace("{total}", String(r.orders))}</p>
         {returnCov.staleSince && <p>{i.returnsRecordedTo.replace("{date}", toLocalDate(returnCov.staleSince).toLocaleDateString(locale, { day: "numeric", month: "short" }))}</p>}
