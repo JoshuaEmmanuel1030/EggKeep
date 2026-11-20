@@ -2,11 +2,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Egg, Package, Tag, Box, Users, Layers, Truck } from "lucide-react";
+import { Egg, Package, Tag, Box, Users, Layers, Truck, Wallet } from "lucide-react";
 import { SKUList } from "@/components/catalog/SKUList";
 import { ItemTypeList } from "@/components/catalog/ItemTypeList";
 import { BuyerList } from "@/components/catalog/BuyerList";
 import { DriverList } from "@/components/catalog/DriverList";
+import { CashCustomerList } from "@/components/catalog/CashCustomerList";
 import { RecalculateInventoryButton } from "@/components/admin/RecalculateInventoryButton";
 import { ReconciliationButton } from "@/components/admin/ReconciliationButton";
 
@@ -30,7 +31,7 @@ export function Catalog() {
       </div>
 
       <Tabs defaultValue="skus" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-7 h-auto p-1 gap-1">
+        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8 h-auto p-1 gap-1">
           <TabsTrigger value="skus" className="gap-1.5 text-xs sm:text-sm h-9">
             <Layers className="h-4 w-4" />
             <span className="hidden sm:inline">{t.catalog.skus}</span>
@@ -58,6 +59,10 @@ export function Catalog() {
           <TabsTrigger value="drivers" className="gap-1.5 text-xs sm:text-sm h-9">
             <Truck className="h-4 w-4" />
             <span className="hidden sm:inline">{t.catalog.drivers}</span>
+          </TabsTrigger>
+          <TabsTrigger value="cash-customers" className="gap-1.5 text-xs sm:text-sm h-9" aria-label={t.kas.customers}>
+            <Wallet className="h-4 w-4" />
+            <span className="hidden sm:inline">{t.kas.customers}</span>
           </TabsTrigger>
         </TabsList>
 
@@ -155,6 +160,20 @@ export function Catalog() {
             </CardHeader>
             <CardContent>
               <DriverList isAdmin={isAdmin} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="cash-customers">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="h-5 w-5" />
+                {t.kas.customers}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CashCustomerList isAdmin={isAdmin} />
             </CardContent>
           </Card>
         </TabsContent>

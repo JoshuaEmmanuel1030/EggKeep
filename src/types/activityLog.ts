@@ -28,8 +28,11 @@ export interface ActivityLogMetadata {
   // Raw materials that were consumed
   relatedProducts?: Array<{ product: string; quantity: number; type: string }>;
   // Kas Tunai walk-in sale (tablet): every row of one sale shares saleId, plus
-  // the optional customer name / note typed on it.
+  // the optional customer / note picked on it. No customer = anonymous walk-in.
+  // customerId points at cash_customers; customerName is the name snapshot
+  // (older rows, and a name typed offline, carry the name alone).
   saleId?: string;
+  customerId?: string;
   customerName?: string;
   note?: string;
 }
