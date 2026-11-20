@@ -1118,7 +1118,7 @@ export const en = {
     dispositionRestock: 'OK',
     dispositionRetakan: 'Retak',
     dispositionWriteoff: 'Hancur',
-    nReturns: '{n} return',
+    nReturns: 'Returns: {n}',
     mergedSpellings: 'Merged spellings (case, spacing)',
     rhythm: 'Order rhythm',
     rhythmVisits: 'Visit rhythm',

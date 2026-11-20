@@ -15,6 +15,8 @@ import {
   basketBreadth,
   isComparable,
   leadTime,
+  orderReturnDetail,
+  orderedEggs,
   reliability,
   returnSpike,
   weekEnd,
@@ -27,6 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useItemTypes } from "@/hooks/useItemTypes";
 import { usePackSKUs } from "@/hooks/usePackSKUs";
 import { getStockUnit } from "@/lib/inventory";
+import { nativeToPieces } from "@/lib/returnsCap";
 import { hueOf } from "./BuyerList";
 import { IdentityTile } from "./IdentityTile";
 import { WeeklyBars } from "./WeeklyBars";
@@ -288,11 +291,19 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
 
   const [selectedOrder, setSelectedOrder] = useState<InsightOrder | null>(null);
 
-  const selectedReturns = useMemo(() => {
-    if (!selectedOrder) return [];
-    const ids = new Set(selectedOrder.outflowIds ?? []);
-    return data.returns.filter((r) => ids.has(r.outflowId));
-  }, [selectedOrder, data.returns]);
+  const { conversionMap } = useItemTypes();
+  const selectedDetail = useMemo(
+    () => (selectedOrder ? orderReturnDetail(selectedOrder, data.returns) : null),
+    [selectedOrder, data.returns]
+  );
+  const selectedOrdered = useMemo(() => (selectedOrder ? orderedEggs(selectedOrder) : []), [selectedOrder]);
+  // Native unit per product; kg eggs also show the piece estimate at the flat
+  // return-entry rate (returnsCap), not the catalogue rate.
+  const formatQty = (product: string, qty: number) => {
+    const unit = getStockUnit(product, "egg", conversionMap);
+    const base = `${qty.toLocaleString(locale, { maximumFractionDigits: 2 })} ${unit}`;
+    return unit === "kg" ? `${base} (≈ ${nativeToPieces(qty, "kg").toLocaleString(locale)} butir)` : base;
+  };
 
   const dispositionLabel = (d: "restock" | "retakan" | "writeoff") => {
     if (d === "restock") return i.dispositionRestock;
@@ -330,7 +341,7 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
               const label = o.invoiceRef
                 ? o.invoiceRef
                 : toLocalDate(o.outflowDate).toLocaleDateString(locale, { day: "numeric", month: "short" });
-              const nRet = data.returns.filter((r) => (o.outflowIds ?? []).includes(r.outflowId)).length;
+              const nRet = orderReturnDetail(o, data.returns).returnCount;
               return (
                 <li key={(o.invoiceRef ?? "") + o.outflowDate}>
                   <button
@@ -363,15 +374,15 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
               {selectedOrder.dcName && (
                 <span className="inline-block w-fit rounded-md bg-ek-muted px-2 py-0.5 text-[12px] text-ek-nav">{selectedOrder.dcName}</span>
               )}
-              {selectedReturns.length > 0 && (
+              {selectedDetail && selectedDetail.lines.length > 0 && (
                 <div>
                   <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-ek-mfg">{i.returnedEggs}</p>
                   <ul className="flex flex-col gap-1.5">
-                    {selectedReturns.map((ret, idx) => (
-                      <li key={ret.outflowId + idx} className="flex items-center justify-between gap-2">
+                    {selectedDetail.lines.map((ret) => (
+                      <li key={ret.product + ret.disposition} className="flex items-center justify-between gap-2">
                         <span className="text-ek-fg truncate">{ret.product}</span>
                         <span className="flex shrink-0 items-center gap-1.5">
-                          <span className="text-ek-mfg">{ret.quantity.toLocaleString(locale)}</span>
+                          <span className="text-ek-mfg">{formatQty(ret.product, ret.quantity)}</span>
                           <span className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-semibold", dispositionClass(ret.disposition))}>
                             {dispositionLabel(ret.disposition)}
                           </span>
@@ -381,14 +392,14 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
                   </ul>
                 </div>
               )}
-              {(selectedOrder.eggTotals?.length ?? 0) > 0 && (
+              {selectedOrdered.length > 0 && (
                 <div>
                   <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-ek-mfg">{i.orderedEggs}</p>
                   <ul className="flex flex-col gap-1.5">
-                    {selectedOrder.eggTotals!.map((et, idx) => (
-                      <li key={idx} className="flex items-center justify-between gap-2">
+                    {selectedOrdered.map((et) => (
+                      <li key={et.product} className="flex items-center justify-between gap-2">
                         <span className="text-ek-fg truncate">{et.product}</span>
-                        <span className="text-ek-mfg">{et.quantity.toLocaleString(locale)}</span>
+                        <span className="text-ek-mfg">{formatQty(et.product, et.quantity)}</span>
                       </li>
                     ))}
                   </ul>
