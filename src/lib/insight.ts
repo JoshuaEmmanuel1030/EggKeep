@@ -299,6 +299,7 @@ export const normName = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase
 
 export interface KasSaleRow extends OrderRow {
   saleId: string;
+  customerId?: string; // cash_customers id; absent on older rows and names typed offline
   customerName?: string;
   tracked: boolean; // recorded by the Kas Tunai drawer (has a saleId)
 }
@@ -319,6 +320,7 @@ export function kasSalesFromLogs(logs: ActivityLog[]): KasSaleRow[] {
     if (!sale) {
       sale = {
         saleId,
+        customerId: log.metadata?.customerId,
         customerName: log.metadata?.customerName,
         tracked: !!log.metadata?.saleId,
         outflowDate: log.metadata?.outflowDate ?? localDateOf(log.recorded_at),
@@ -342,16 +344,23 @@ export interface KasCustomer {
   firstDate: string;
 }
 
-export function kasTunaiCustomers(sales: KasSaleRow[]): KasCustomer[] {
+// A sale linked to the customer list (customerId) goes by that customer's
+// current name, so a rename in Catalog carries to its past sales and they join
+// name-only sales of the same person. Without the list, or for an id it doesn't
+// hold, the name snapshot on the sale is used.
+export function kasTunaiCustomers(sales: KasSaleRow[], listed: { id: string; name: string }[] = []): KasCustomer[] {
+  const currentName = new Map(listed.map((c) => [c.id, c.name]));
   const groups = new Map<string, KasSaleRow[]>();
+  const nameOf = (s: KasSaleRow) => (s.customerId && currentName.get(s.customerId)) || s.customerName;
   for (const s of sales) {
-    if (!s.customerName?.trim()) continue;
-    const k = normName(s.customerName);
+    const name = nameOf(s);
+    if (!name?.trim()) continue;
+    const k = normName(name);
     groups.set(k, [...(groups.get(k) ?? []), s]);
   }
   return [...groups].map(([key, rows]) => {
     const spellings = new Map<string, number>();
-    for (const r of rows) spellings.set(r.customerName as string, (spellings.get(r.customerName as string) ?? 0) + 1);
+    for (const r of rows) spellings.set(nameOf(r) as string, (spellings.get(nameOf(r) as string) ?? 0) + 1);
     const ranked = [...spellings].sort((a, b) => b[1] - a[1]).map(([s]) => s);
     return {
       key,

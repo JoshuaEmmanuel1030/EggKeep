@@ -80,6 +80,13 @@ The column names are legacy — do NOT "fix" them and do NOT convert kg↔butir 
 - Penyesuaian Stok Fisik rows are stock but never a sale or a supplier: Insight leaves them out of Kas Tunai, turnover and the latest-outflow date, and shows no supplier on their batches.
 - Insight's at-risk band is age >= `freshness_days` (default 5). The dashboard's "Lewat" figure is wider (expiring within 2 days plus overdue), so the two don't match by design.
 
+## Pelanggan Tunai (Kas Tunai customer list)
+- Table `cash_customers` (migration `20261120000000_cash_customers.sql`), managed in Catalog → Pelanggan Tunai; rules in `src/lib/cashCustomers.ts`, picker `CashCustomerPicker.tsx` on the tablet Kas Tunai drawer. Separate from `buyers` on purpose: old bundles list every `buyers` row in the PO buyer dropdown, and PO buyers and cash customers never merge.
+- A sale with no customer is the anonymous walk-in ("Umum"): no `customerName`, no `customerId`, and no reserved row. Placeholders ("Customer", "Umum", ...) are `ANONYMOUS_NAMES`, mirrored by the migration's backfill (sync test), and can never be saved as a customer.
+- A sale's `metadata.customerName` stays a name snapshot; `metadata.customerId` links the list. A new name is saved in the background and never blocks the sale, so a sale may carry the name alone (offline, old bundle). Readers resolve id → current name first, then group by `normName` (`kasTunaiCustomers(sales, listed)`).
+- Dedupe is case/space only (same as Insight rule 5). Honorific variants ("Ibu"/"Bu") are not merged by code; the picker's search is the guard. There is no merge-two-customers UI yet.
+- Customer names are private people: keep real ones out of code, tests, migrations and PR text.
+
 ## UUID migration (in progress — see docs/uuid-migration/PLAN.md)
 - Stage A APPLIED (2026-07-07): `item_type_id` on inflows/outflows, `egg/packaging_item_type_id` on pack_skus, FK-validated, resolver triggers auto-fill ids on name-only inserts.
 - Names are STILL the operational key until Stage C. Until then: renaming catalog items does NOT cascade to `pack_skus` name pointers (SQL pass required) and box names must equal the `BoxModeType` union — do not rename boxes.

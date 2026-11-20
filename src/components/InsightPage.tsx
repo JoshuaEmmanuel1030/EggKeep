@@ -18,6 +18,7 @@ import {
 } from "@/lib/insight";
 import type { ActivityLog } from "@/types/activityLog";
 import type { InflowEntry, OutflowEntry, StockSummary } from "@/types/inventory";
+import { useCashCustomers } from "@/hooks/useCashCustomers";
 import { BuyerFilter, BuyerList } from "./insight/BuyerList";
 import { BuyerProfile } from "./insight/BuyerProfile";
 import { MaterialsInsight } from "./insight/MaterialsInsight";
@@ -60,7 +61,8 @@ export function InsightPage({ stockSummary, inflows, outflows, logs, freshnessDa
   const kasSales = useMemo(() => kasSalesFromLogs(logs), [logs]);
   // Only the drawer's rows mark when cash sales really started being recorded.
   const kasCov = useMemo(() => dataCoverage(kasSales.filter((s) => s.tracked).map((s) => s.outflowDate), today), [kasSales, today]);
-  const customers = useMemo(() => kasTunaiCustomers(kasSales), [kasSales]);
+  const { customers: listedCustomers } = useCashCustomers();
+  const customers = useMemo(() => kasTunaiCustomers(kasSales, listedCustomers), [kasSales, listedCustomers]);
 
   const buyers = useMemo(() => {
     const byName = new Map<string, InsightOrder[]>();

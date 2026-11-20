@@ -14,6 +14,9 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { loadOutbox } from "@/lib/outflowOutbox";
+import { useCashCustomers } from "@/hooks/useCashCustomers";
+import { customerMetadata, customerNameKey, type CustomerPick } from "@/lib/cashCustomers";
+import { CashCustomerPicker } from "./CashCustomerPicker";
 import { RadialAddButton, revealPickedRow, type RadialItem } from "./RadialAddButton";
 import { SubtleDateLink } from "./SubtleDateLink";
 import {
@@ -66,7 +69,9 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
   const { conversionMap, eggProductNames, itemTypes } = useItemTypes();
   // null = today, so a drawer left open past midnight still records "today".
   const [date, setDate] = useState<string | null>(null);
-  const [customerName, setCustomerName] = useState("");
+  const { customers, addCustomer } = useCashCustomers();
+  // null = anonymous walk-in ("Umum"), the default.
+  const [customer, setCustomer] = useState<CustomerPick>(null);
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<KasLine[]>(() => [emptyLine()]);
   const [submitting, setSubmitting] = useState(false);
@@ -89,11 +94,11 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
   useEffect(() => onValidCountChange(validCount + queuedLineCount), [validCount, queuedLineCount, onValidCountChange]);
   // What the queue will take, per egg: the form's stock hint counts it as gone.
   const queuedTotals = useMemo(() => kasQueuedTotals(queue, conversionMap), [queue, conversionMap]);
-  const form = { date, customerName, note, lines };
+  const form = { date, customer, note, lines };
   const formBlank = isBlankKasForm(form);
   const formSale = snapshotKasSale(form, conversionMap);
   const resetForm = () => {
-    setCustomerName("");
+    setCustomer(null);
     setNote("");
     setLines([emptyLine()]);
   };
@@ -135,6 +140,17 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
     if (row) revealPickedRow(row); // the card's only input: Jumlah
   }, [lines]);
 
+  // A new name is selected at once and saved in the background, so a slow or
+  // dead network never holds up the sale. If the row isn't back by submit, the
+  // sale carries the name alone (customerMetadata).
+  const addNewCustomer = (name: string) => {
+    setCustomer({ name });
+    addCustomer
+      .mutateAsync({ name })
+      .then((c) => setCustomer((cur) => (cur && !cur.id && customerNameKey(cur.name) === customerNameKey(c.name) ? { id: c.id, name: c.name } : cur)))
+      .catch(() => {}); // offline or a duplicate: the name still goes on the sale
+  };
+
   // Snapshot the sale and clear the form for the next customer. The date
   // stays, so a run of back-entered sales keeps its day.
   const addToQueue = () => {
@@ -142,7 +158,7 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
     setQueue((prev) => [...prev, formSale]);
     resetForm();
     setQueueOpen(true);
-    toast({ title: t.kas.queued.replace("{name}", formSale.customerName || t.kas.noName) });
+    toast({ title: t.kas.queued.replace("{name}", formSale.customer?.name || t.kas.noName) });
   };
   const removeFromQueue = (id: string) => setQueue((prev) => prev.filter((s) => s.id !== id));
   // Load a queued sale back into the form. A sale already in the form swaps
@@ -153,7 +169,7 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
     if (!sale || (!formBlank && !formSale)) return;
     setQueue((prev) => [...prev.filter((s) => s.id !== id), ...(formSale ? [formSale] : [])]);
     setDate(sale.date);
-    setCustomerName(sale.customerName);
+    setCustomer(sale.customer);
     setNote(sale.note);
     setLines(sale.lines.map((l) => ({ ...l })));
   };
@@ -176,7 +192,7 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
 
     setSubmitting(true);
     const { recorded, failed } = await submitKasQueue(toRecord, async (sale) => {
-      const { entries, metadata } = buildKasSale(sale, conversionMap, recordedAt, todayStr);
+      const { entries, metadata } = buildKasSale(sale, conversionMap, recordedAt, todayStr, customers);
       const ok = await onSubmit(entries, user?.email || "", metadata);
       if (!ok) return false;
       entryCount += entries.length;
@@ -184,7 +200,7 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
       recordedSales.unshift({
         saleId: sale.id,
         recordedAt,
-        customerName: sale.customerName || undefined,
+        customerName: metadata.customerName,
         lines: entries.map((e) => ({ product: e.product, quantity: e.quantityInButir })),
       });
       return true;
@@ -260,7 +276,7 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
             {queueOpen && (
               <div className="flex flex-col gap-2 p-2">
                 {queue.map((sale) => {
-                  const name = sale.customerName || t.kas.noName;
+                  const name = sale.customer?.name || t.kas.noName;
                   return (
                     <div
                       key={sale.id}
@@ -317,15 +333,10 @@ export function KasTunaiSale({ inflows, logs, onSubmit, onClose, onValidCountCha
           </div>
         )}
 
-        <label className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5">
           <span className={LABEL}>{t.kas.customerName}</span>
-          <Input
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-            placeholder={t.common.optional}
-            className={INPUT}
-          />
-        </label>
+          <CashCustomerPicker customers={customers} value={customer} onChange={setCustomer} onAddNew={addNewCustomer} className={INPUT} />
+        </div>
 
         <div className={cn(LABEL, "mt-4")}>{t.kas.eggs}</div>
         {lines.map((line) => (

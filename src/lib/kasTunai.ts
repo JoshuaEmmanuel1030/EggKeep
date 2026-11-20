@@ -8,6 +8,7 @@ import type { RadialItem } from "@/components/RadialAddButton";
 import { parseQtyInput } from "@/lib/stockCount";
 import { entryKind } from "@/lib/activityGrouping";
 import { getStockUnit, toStockUnits } from "@/lib/inventory";
+import { customerMetadata, type CashCustomer, type CustomerPick } from "@/lib/cashCustomers";
 
 export interface KasLine {
   id: string;
@@ -129,7 +130,7 @@ export const kasDateLabel = (date: string, locale: string) =>
 export interface KasQueuedSale {
   id: string; // becomes the sale's metadata.saleId
   date: string | null; // null = today, resolved when it is recorded
-  customerName: string;
+  customer: CustomerPick; // null = Umum (anonymous walk-in)
   note: string;
   lines: KasLine[]; // valid lines only
   failed?: boolean; // the server rejected it on the last "Catat Semua"
@@ -138,26 +139,29 @@ export interface KasQueuedSale {
 // Snapshot of the form, or null when there is nothing to record or a line
 // would be dropped (broken lines block the queue just as they block a sale).
 export function snapshotKasSale(
-  form: { date: string | null; customerName: string; note: string; lines: KasLine[] },
+  form: { date: string | null; customer: CustomerPick; note: string; lines: KasLine[] },
   conversionMap: ConversionMap,
   id: string = crypto.randomUUID()
 ): KasQueuedSale | null {
   if (form.lines.some((l) => isBrokenKasLine(l, conversionMap))) return null;
   const lines = form.lines.filter((l) => isValidKasLine(l, conversionMap));
   if (lines.length === 0) return null;
-  return { id, date: form.date, customerName: form.customerName.trim(), note: form.note.trim(), lines };
+  return { id, date: form.date, customer: form.customer, note: form.note.trim(), lines };
 }
 
 // Nothing typed: loading a queued sale into the form can't lose anything.
-export const isBlankKasForm = (form: { customerName: string; note: string; lines: KasLine[] }) =>
-  !form.customerName.trim() && !form.note.trim() && form.lines.every((l) => !l.product && !l.qty.trim());
+export const isBlankKasForm = (form: { customer: CustomerPick; note: string; lines: KasLine[] }) =>
+  !form.customer && !form.note.trim() && form.lines.every((l) => !l.product && !l.qty.trim());
 
-// The RPC payload of one sale: one egg entry per line + the Kas metadata.
+// The RPC payload of one sale: one egg entry per line + the Kas metadata. The
+// customer resolves at record time (customerMetadata), so a name added while
+// offline picks up its id if the row has arrived since it was queued.
 export function buildKasSale(
   sale: KasQueuedSale,
   conversionMap: ConversionMap,
   recordedAt: string,
   today: string,
+  customers: Pick<CashCustomer, "id" | "name">[] = [],
   newId?: () => string
 ): { entries: OutflowEntry[]; metadata: ActivityLogMetadata } {
   const outflowDate = sale.date ?? today;
@@ -167,7 +171,7 @@ export function buildKasSale(
       orderType: "manual",
       outflowDate,
       saleId: sale.id,
-      ...(sale.customerName ? { customerName: sale.customerName } : {}),
+      ...customerMetadata(sale.customer, customers),
       ...(sale.note ? { note: sale.note } : {}),
     },
   };

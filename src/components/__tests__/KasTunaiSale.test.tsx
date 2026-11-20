@@ -27,6 +27,16 @@ vi.mock("@/hooks/useItemTypes", () => ({
   }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ toast: vi.fn() }));
+// The saved Kas Tunai customers; a new name resolves to its row like the insert does.
+const addCustomer = vi.fn(async ({ name }: { name: string }) => ({ id: "c-new", name, isActive: true }));
+const customers = [
+  { id: "c-rina", name: "Bu Rina", isActive: true },
+  { id: "c-joko", name: "Pa Joko", isActive: true },
+  { id: "c-old", name: "Bu Lama", isActive: false },
+];
+vi.mock("@/hooks/useCashCustomers", () => ({
+  useCashCustomers: () => ({ customers, addCustomer: { mutateAsync: addCustomer } }),
+}));
 
 // 3 kg on hand, so 3,5 kg is over stock (a warning, not a block).
 const inflows = [{ product: "NEGERI BIASA", category: "egg", remainingButir: 3 }] as InflowEntry[];
@@ -51,7 +61,13 @@ describe("KasTunaiSale", () => {
     const submit = screen.getByRole("button", { name: /Catat Penjualan/ });
     expect(submit).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Nama pelanggan"), { target: { value: " Bu Rina " } });
+    // Starts on the anonymous walk-in; searching finds the saved customer.
+    const picker = screen.getByRole("combobox", { name: "Nama pelanggan" });
+    expect(picker).toHaveTextContent("Umum (tanpa nama)");
+    fireEvent.click(picker);
+    fireEvent.change(screen.getByPlaceholderText("Cari atau ketik nama…"), { target: { value: " bu  rina " } });
+    expect(screen.queryByRole("option", { name: /Tambah/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Bu Rina" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Jenis Telur" }));
     fireEvent.click(screen.getByRole("option", { name: /NEGERI BIASA/ }));
     fireEvent.click(screen.getByRole("switch"));
@@ -71,7 +87,8 @@ describe("KasTunaiSale", () => {
     expect(email).toBe("staff@js.test");
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ product: "NEGERI BIASA", quantityInButir: 3.5, category: "egg" });
-    expect(metadata).toMatchObject({ orderType: "manual", outflowDate: entries[0].date, customerName: "Bu Rina" });
+    expect(metadata).toMatchObject({ orderType: "manual", outflowDate: entries[0].date, customerName: "Bu Rina", customerId: "c-rina" });
+    expect(addCustomer).not.toHaveBeenCalled();
     expect(typeof metadata.saleId).toBe("string");
     expect(metadata).not.toHaveProperty("note");
 
@@ -121,6 +138,71 @@ describe("KasTunaiSale", () => {
     await waitFor(() => expect(screen.getByText("1 penjualan")).toBeInTheDocument());
     expect(toast).not.toHaveBeenCalled();
     localStorage.removeItem(OUTFLOW_OUTBOX_KEY);
+  });
+
+  const submitted = async (onSubmit: ReturnType<typeof vi.fn>) => {
+    fireEvent.click(screen.getByRole("button", { name: /Catat Penjualan/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    return onSubmit.mock.calls[0][2] as Record<string, unknown>;
+  };
+  const searchCustomer = (text: string) => {
+    fireEvent.click(screen.getByRole("combobox", { name: "Nama pelanggan" }));
+    fireEvent.change(screen.getByPlaceholderText("Cari atau ketik nama…"), { target: { value: text } });
+  };
+
+  it("a sale with no customer picked is anonymous: no name, no id", async () => {
+    const onSubmit = vi.fn(async () => true);
+    renderKas(onSubmit);
+    fillKg("1");
+    const metadata = await submitted(onSubmit);
+    expect(metadata).not.toHaveProperty("customerName");
+    expect(metadata).not.toHaveProperty("customerId");
+    await waitFor(() => expect(screen.getByText("1 penjualan")).toBeInTheDocument());
+    // Listed under "Hari ini" as Umum (the picker button shows the same words).
+    expect(screen.getAllByText("Umum (tanpa nama)").length).toBeGreaterThan(1);
+  });
+
+  it("a placeholder like 'Customer' can't be added as a customer, only Umum is offered", () => {
+    renderKas(vi.fn(async () => true));
+    searchCustomer("customer");
+    expect(screen.queryByRole("option", { name: /Tambah/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Umum (tanpa nama)" })).toBeInTheDocument();
+  });
+
+  it("a new name is saved to the list and the sale carries its id", async () => {
+    addCustomer.mockClear();
+    const onSubmit = vi.fn(async () => true);
+    renderKas(onSubmit);
+    searchCustomer("  Bu   Sari ");
+    fireEvent.click(screen.getByRole("option", { name: /Tambah .Bu Sari./ }));
+    expect(addCustomer).toHaveBeenCalledWith({ name: "Bu Sari" });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Nama pelanggan" })).toHaveTextContent("Bu Sari"));
+    fillKg("1");
+    await waitFor(async () => expect(await addCustomer.mock.results[0].value).toBeTruthy());
+    const metadata = await submitted(onSubmit);
+    expect(metadata).toMatchObject({ customerName: "Bu Sari", customerId: "c-new" });
+  });
+
+  it("when saving the new name fails (offline), the sale still carries the name", async () => {
+    addCustomer.mockClear();
+    addCustomer.mockRejectedValueOnce(new Error("Failed to fetch"));
+    const onSubmit = vi.fn(async () => true);
+    renderKas(onSubmit);
+    searchCustomer("Bu Sari");
+    fireEvent.click(screen.getByRole("option", { name: /Tambah/ }));
+    fillKg("1");
+    const metadata = await submitted(onSubmit);
+    expect(metadata).toMatchObject({ customerName: "Bu Sari" });
+    expect(metadata).not.toHaveProperty("customerId");
+  });
+
+  it("an inactive customer is hidden from search but reused on its exact name", () => {
+    renderKas(vi.fn(async () => true));
+    searchCustomer("bu");
+    expect(screen.queryByRole("option", { name: "Bu Lama" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Cari atau ketik nama…"), { target: { value: "bu lama" } });
+    expect(screen.getByRole("option", { name: "Bu Lama" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Tambah/ })).not.toBeInTheDocument();
   });
 
   it("a typed qty that won't be recorded blocks the sale", () => {
@@ -220,7 +302,14 @@ describe("KasTunaiSale", () => {
 
   // ── Queue (Tambah ke Antrian → Catat Semua), like the PO builder ─────────────
   const queueBtn = () => screen.getByRole("button", { name: "Tambah ke Antrian" });
-  const name = (v: string) => fireEvent.change(screen.getByLabelText("Nama pelanggan"), { target: { value: v } });
+  // Pick a saved customer by its exact name, else add the typed one; "" = Umum.
+  const name = (v: string) => {
+    if (!v) return;
+    searchCustomer(v);
+    fireEvent.click(screen.queryByRole("option", { name: v }) ?? screen.getByRole("option", { name: /Tambah/ }));
+  };
+  const picker = () => screen.getByRole("combobox", { name: "Nama pelanggan" });
+  const queuedNames = () => [...document.querySelectorAll("[data-queued-sale]")].map((el) => el.querySelector(".font-bold")?.textContent);
   const queueSale = (customer: string, qty: string) => {
     name(customer);
     fillKg(qty);
@@ -241,7 +330,7 @@ describe("KasTunaiSale", () => {
 
     queueSale("Bu Rina", "1");
     // The form clears for the next customer; the sale sits in the queue.
-    expect(screen.getByLabelText("Nama pelanggan")).toHaveValue("");
+    expect(picker()).toHaveTextContent("Umum (tanpa nama)");
     expect(screen.getByLabelText("Jumlah (butir)")).toHaveValue("");
     expect(screen.getByText("Penjualan dalam Antrian")).toBeInTheDocument();
     expect(screen.getByText("Bu Rina")).toBeInTheDocument();
@@ -249,12 +338,14 @@ describe("KasTunaiSale", () => {
     expect(onCount).toHaveBeenLastCalledWith(1); // the rail pill still shows what's waiting
 
     queueSale("", "0,5"); // no name
-    expect(screen.getByText("Tanpa nama")).toBeInTheDocument();
+    expect(queuedNames()).toEqual(["Bu Rina", "Umum (tanpa nama)"]);
     expect(screen.getByText(/Total antrian/).parentElement).toHaveTextContent("1,5 kg NEGERI BIASA");
 
     // A sale still in the form goes along as the last one.
     name("Pak Budi");
     fillKg("0,25");
+    // Pak Budi is new: his row comes back from the (mocked) insert before the press.
+    await waitFor(async () => expect(await addCustomer.mock.results.at(-1)?.value).toMatchObject({ name: "Pak Budi" }));
     const submit = screen.getByRole("button", { name: "Catat Semua (3)" });
     fireEvent.click(submit);
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(3));
@@ -262,6 +353,7 @@ describe("KasTunaiSale", () => {
     const calls = onSubmit.mock.calls as unknown as Call[];
     expect(calls.map(([e]) => e.map((x) => x.quantityInButir))).toEqual([[1], [0.5], [0.25]]);
     expect(calls.map(([, , m]) => m.customerName)).toEqual(["Bu Rina", undefined, "Pak Budi"]);
+    expect(calls.map(([, , m]) => m.customerId)).toEqual(["c-rina", undefined, "c-new"]); // each sale keeps its own pick
     const saleIds = calls.map(([, , m]) => m.saleId);
     expect(new Set(saleIds).size).toBe(3);
     expect(calls.every(([, , m]) => m.orderType === "manual")).toBe(true);
@@ -309,7 +401,7 @@ describe("KasTunaiSale", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole("button", { name: /Catat Penjualan/ })).toBeEnabled());
     expect(document.querySelectorAll("[data-queued-sale]")).toHaveLength(0);
-    expect(screen.getByLabelText("Nama pelanggan")).toHaveValue("Form");
+    expect(picker()).toHaveTextContent("Form");
     expect(screen.getByLabelText("Jumlah (kg)")).toHaveValue("0,5");
   });
 
@@ -321,7 +413,7 @@ describe("KasTunaiSale", () => {
 
     fireEvent.change(screen.getByLabelText("Catatan"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Ubah Bu Rina" }));
-    expect(screen.getByLabelText("Nama pelanggan")).toHaveValue("Bu Rina");
+    expect(picker()).toHaveTextContent("Bu Rina");
     expect(screen.getByLabelText("Jumlah (kg)")).toHaveValue("1");
     expect(document.querySelectorAll("[data-queued-sale]")).toHaveLength(0);
 
@@ -331,12 +423,9 @@ describe("KasTunaiSale", () => {
     name("Bu Sari");
     fillKg("0,5");
     fireEvent.click(screen.getByRole("button", { name: "Ubah Pak Budi" }));
-    expect(screen.getByLabelText("Nama pelanggan")).toHaveValue("Pak Budi");
+    expect(picker()).toHaveTextContent("Pak Budi");
     expect(screen.getByLabelText("Jumlah (kg)")).toHaveValue("2");
-    expect([...document.querySelectorAll("[data-queued-sale]")].map((el) => el.querySelector(".font-bold")?.textContent)).toEqual([
-      "Bu Rina",
-      "Bu Sari",
-    ]);
+    expect(queuedNames()).toEqual(["Bu Rina", "Bu Sari"]);
 
     fireEvent.click(screen.getByRole("button", { name: "Hapus Bu Rina" }));
     expect(document.querySelectorAll("[data-queued-sale]")).toHaveLength(1);
