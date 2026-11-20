@@ -297,12 +297,14 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
     [selectedOrder, data.returns]
   );
   const selectedOrdered = useMemo(() => (selectedOrder ? orderedEggs(selectedOrder) : []), [selectedOrder]);
-  // Native unit per product; kg eggs also show the piece estimate at the flat
-  // return-entry rate (returnsCap), not the catalogue rate.
-  const formatQty = (product: string, qty: number) => {
+  // Native unit per product. Only returned kg eggs get a piece estimate, at the
+  // flat return-entry rate (returnsCap): returns are entered in pieces at that
+  // rate, but ordered kg was deducted at the pack's own eggs_per_kg, so a flat
+  // estimate on the ordered line would be wrong (N30B is 16.22, not 15.5).
+  const formatQty = (product: string, qty: number, withPieces: boolean) => {
     const unit = getStockUnit(product, "egg", conversionMap);
     const base = `${qty.toLocaleString(locale, { maximumFractionDigits: 2 })} ${unit}`;
-    return unit === "kg" ? `${base} (≈ ${nativeToPieces(qty, "kg").toLocaleString(locale)} butir)` : base;
+    return withPieces && unit === "kg" ? `${base} (≈ ${nativeToPieces(qty, "kg").toLocaleString(locale)} butir)` : base;
   };
 
   const dispositionLabel = (d: "restock" | "retakan" | "writeoff") => {
@@ -382,7 +384,7 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
                       <li key={ret.product + ret.disposition} className="flex items-center justify-between gap-2">
                         <span className="text-ek-fg truncate">{ret.product}</span>
                         <span className="flex shrink-0 items-center gap-1.5">
-                          <span className="text-ek-mfg">{formatQty(ret.product, ret.quantity)}</span>
+                          <span className="text-ek-mfg">{formatQty(ret.product, ret.quantity, true)}</span>
                           <span className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-semibold", dispositionClass(ret.disposition))}>
                             {dispositionLabel(ret.disposition)}
                           </span>
@@ -399,7 +401,7 @@ function ReliabilityCard({ b, asOf, days, periodLabel, data, returnedIds, return
                     {selectedOrdered.map((et) => (
                       <li key={et.product} className="flex items-center justify-between gap-2">
                         <span className="text-ek-fg truncate">{et.product}</span>
-                        <span className="text-ek-mfg">{formatQty(et.product, et.quantity)}</span>
+                        <span className="text-ek-mfg">{formatQty(et.product, et.quantity, false)}</span>
                       </li>
                     ))}
                   </ul>
