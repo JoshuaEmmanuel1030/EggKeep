@@ -294,9 +294,9 @@ export default function Deliveries() {
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div className="px-6 py-6">
             {titleBar}
-            <div className="flex gap-4">
+            <div className="flex gap-4 items-start">
               <div className="w-[340px] shrink-0">{list}</div>
-              <div className="min-w-0 flex-1 border-l pl-4">
+              <div className="min-w-0 flex-1 border-l pl-4 sticky top-6 self-start max-h-[calc(100dvh-6rem)] overflow-y-auto">
                 {detail ?? <p className="py-8 text-center text-muted-foreground">{t.deliveries.pickDelivery}</p>}
               </div>
             </div>

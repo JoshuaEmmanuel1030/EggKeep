@@ -418,9 +418,10 @@ export default function StockCount() {
                         type="button"
                         aria-label={`${t.stockCount.bundleCount} ${it.name}`}
                         onClick={() => setBundleFor({ id, name: it.name, unit, eggsPerUnit: it.eggsPerUnit })}
-                        className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="shrink-0 flex flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                       >
                         <Calculator className="h-4 w-4" aria-hidden />
+                        <span className="text-[9px] font-semibold leading-none">{t.stockCount.bundleCountShort}</span>
                       </button>
                     )}
                   </div>
@@ -470,7 +471,14 @@ export default function StockCount() {
                       <CommandList>
                         <CommandEmpty>{t.stockCount.noResults}</CommandEmpty>
                         <CommandGroup>
-                          {eggs.map((it) => {
+                          {/* Available (not yet counted) items first; already-counted items sink to bottom. */}
+                          {[...eggs]
+                            .sort((a, b) => {
+                              const aAdded = lines.includes(a.id) ? 1 : 0;
+                              const bAdded = lines.includes(b.id) ? 1 : 0;
+                              return aAdded - bAdded;
+                            })
+                            .map((it) => {
                             const added = lines.includes(it.id);
                             const unit = getStockUnit(it.name, "egg", conversionMap);
                             const sys = systemStock[it.name] ?? 0;
