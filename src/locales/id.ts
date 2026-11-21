@@ -124,6 +124,7 @@ export const id = {
     colDev: 'Dev.',
     colLocation: 'Lokasi',
     bundleCount: 'Hitung per ikat:',
+    bundleCountShort: 'Iketan',
     bundleTotal: 'Total',
     bundleApply: 'Masukkan ke {loc}',
     bundleNative: 'Jumlah diketik langsung dalam {unit}',

@@ -124,6 +124,7 @@ export const en = {
     colDev: 'Dev.',
     colLocation: 'Location',
     bundleCount: 'Count in bundles:',
+    bundleCountShort: 'Bundles',
     bundleTotal: 'Total',
     bundleApply: 'Put into {loc}',
     bundleNative: 'Amount typed directly in {unit}',
